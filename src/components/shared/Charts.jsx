@@ -89,8 +89,8 @@ export const DonutChart = ({ tasks }) => {
   );
 };
 
-// Bar Chart — Weekly workload (tasks by day of week)
-export const BarChart = ({ tasks }) => {
+// Bar Chart — Workload (tasks by day)
+export const BarChart = ({ tasks, timeRange = 'month' }) => {
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   // Count tasks by day of week of their startDate
@@ -141,18 +141,19 @@ export const BarChart = ({ tasks }) => {
   );
 };
 
-// Line Chart — Monthly progress trend (cumulative completions last 30 days)
-export const LineChart = ({ tasks }) => {
-  const days = Array.from({ length: 30 }, (_, i) => {
+// Line Chart — Progress trend (cumulative completions)
+export const LineChart = ({ tasks, timeRange = 'month' }) => {
+  const numDays = timeRange === 'week' ? 7 : timeRange === 'day' ? 1 : 30;
+
+  const days = Array.from({ length: numDays }, (_, i) => {
     const d = new Date();
-    d.setDate(d.getDate() - (29 - i));
+    d.setDate(d.getDate() - (numDays - 1 - i));
     return d;
   });
 
   const dayLabels = days.map(d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
 
   // Cumulative completions per day
-  let cumulative = 0;
   const cumulativeData = days.map(day => {
     const dayEnd = new Date(day);
     dayEnd.setHours(23, 59, 59, 999);
@@ -164,11 +165,17 @@ export const LineChart = ({ tasks }) => {
     return completedOnOrBefore;
   });
 
+  // Filter labels for huge 30-day views to prevent crowding
+  const labelFilter = (val, i) => {
+    if (numDays <= 7) return true; // Show all for week/day
+    return i % 5 === 0 || i === numDays - 1; // Sparse view for month
+  };
+
   const data = {
-    labels: dayLabels.filter((_, i) => i % 5 === 0 || i === 29),
+    labels: dayLabels.filter(labelFilter),
     datasets: [{
       label: 'Completed Tasks',
-      data: cumulativeData.filter((_, i) => i % 5 === 0 || i === 29),
+      data: cumulativeData.filter(labelFilter),
       borderColor: '#22C55E',
       backgroundColor: 'rgba(34,197,94,0.08)',
       fill: true,
@@ -176,7 +183,7 @@ export const LineChart = ({ tasks }) => {
       pointBackgroundColor: '#22C55E',
       pointBorderColor: '#161B22',
       pointBorderWidth: 2,
-      pointRadius: 4,
+      pointRadius: numDays <= 7 ? 6 : 4,
     }],
   };
 
