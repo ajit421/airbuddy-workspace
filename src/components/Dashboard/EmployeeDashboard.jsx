@@ -29,6 +29,9 @@ export default function EmployeeDashboard() {
   // timeFilter: 'month' | 'week' | 'day'
   const [timeFilter, setTimeFilter] = useState('month');
 
+  // statusFilter for the task list below the charts
+  const [statusFilter, setStatusFilter] = useState('all');
+
   // Filter tasks based on selected timeframe
   const filteredTasks = tasks.filter(t => {
     // If no dates, keep it (or decide to exclude). We'll keep it for broad stats.
@@ -68,13 +71,17 @@ export default function EmployeeDashboard() {
   // Upcoming deadlines logic usually ignores the backward filter, but we'll use global tasks for it.
   const upcoming = getUpcomingTasks(7).length;
 
-  const nextTasks = [...tasks]
-    .filter(t => t.status !== 'completed')
-    .sort((a, b) => {
-      const da = a.dueDate?.toDate ? a.dueDate.toDate() : new Date(a.dueDate);
-      const db_ = b.dueDate?.toDate ? b.dueDate.toDate() : new Date(b.dueDate);
-      return da - db_;
-    });
+  // All tasks sorted by due date (not filtered by completeness) for the status-tab list
+  const nextTasks = [...tasks].sort((a, b) => {
+    const da = a.dueDate?.toDate ? a.dueDate.toDate() : new Date(a.dueDate);
+    const db_ = b.dueDate?.toDate ? b.dueDate.toDate() : new Date(b.dueDate);
+    return da - db_;
+  });
+
+  // Apply the status tab filter
+  const statusFilteredTasks = statusFilter === 'all'
+    ? nextTasks
+    : nextTasks.filter(t => t.status === statusFilter);
 
   if (loading) {
     return (
@@ -106,8 +113,8 @@ export default function EmployeeDashboard() {
                   key={view}
                   onClick={() => setTimeFilter(val)}
                   className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${timeFilter === val
-                      ? 'bg-orange text-white shadow-sm'
-                      : 'text-text-secondary hover:text-text-primary hover:bg-surfaceHover'
+                    ? 'bg-orange text-white shadow-sm'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-surfaceHover'
                     }`}
                 >
                   {view}
@@ -193,20 +200,59 @@ export default function EmployeeDashboard() {
 
       {/* Upcoming Tasks */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="section-title">Upcoming Tasks</h3>
-          <span className="text-xs text-text-muted">{nextTasks.length} task{nextTasks.length !== 1 ? 's' : ''}</span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <h3 className="section-title">All Tasks</h3>
+          <span className="text-xs text-text-muted">{nextTasks.length} task{nextTasks.length !== 1 ? 's' : ''} total</span>
         </div>
 
-        {nextTasks.length === 0 ? (
+        {/* Status Filter Tabs */}
+        <div className="flex gap-1 mb-4 bg-surface border border-border rounded-xl p-1 overflow-x-auto">
+          {[
+            { label: 'All', value: 'all', count: nextTasks.length, color: '' },
+            { label: 'In Progress', value: 'in-progress', count: nextTasks.filter(t => t.status === 'in-progress').length, color: 'text-blue-400' },
+            { label: 'Pending', value: 'pending', count: nextTasks.filter(t => t.status === 'pending').length, color: 'text-orange' },
+            { label: 'Completed', value: 'completed', count: tasks.filter(t => t.status === 'completed').length, color: 'text-green-400' },
+          ].map(tab => (
+            <button
+              key={tab.value}
+              onClick={() => setStatusFilter(tab.value)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${statusFilter === tab.value
+                ? 'bg-orange text-white shadow-sm'
+                : 'text-text-secondary hover:text-text-primary hover:bg-surfaceHover'
+                }`}
+            >
+              {tab.label}
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${statusFilter === tab.value
+                ? 'bg-white/20 text-white'
+                : 'bg-border text-text-muted'
+                }`}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {statusFilteredTasks.length === 0 ? (
           <div className="card text-center py-10">
-            <div className="text-4xl mb-3">🎉</div>
-            <p className="font-semibold text-text-primary">All caught up!</p>
-            <p className="text-sm text-text-muted mt-1">No pending tasks right now.</p>
+            <div className="text-4xl mb-3">
+              {statusFilter === 'completed' ? '🎉' : statusFilter === 'in-progress' ? '🚀' : '📋'}
+            </div>
+            <p className="font-semibold text-text-primary">
+              {statusFilter === 'completed'
+                ? 'No completed tasks yet!'
+                : statusFilter === 'in-progress'
+                  ? 'Nothing in progress right now.'
+                  : statusFilter === 'pending'
+                    ? 'No pending tasks!'
+                    : 'All caught up!'}
+            </p>
+            <p className="text-sm text-text-muted mt-1">
+              {statusFilter === 'all' ? 'No tasks assigned yet.' : `Switch to another tab to see other tasks.`}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {nextTasks.map(task => (
+            {statusFilteredTasks.map(task => (
               <TaskCard key={task.id} task={task} onClick={setSelectedTask} />
             ))}
           </div>

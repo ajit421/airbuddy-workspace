@@ -111,7 +111,23 @@ export default function Navbar({ onMenuToggle }) {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-text-primary font-medium truncate">{n.title}</p>
                           <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{n.message}</p>
-                          <p className="text-xs text-text-muted mt-1">{formatDate(n.createdAt)}</p>
+                          <div className="flex items-center justify-between mt-1">
+                            <p className="text-xs text-text-muted">{formatDate(n.createdAt)}</p>
+                            {n.eventLink && (
+                              <a
+                                href={n.eventLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                className="flex items-center gap-1 text-[11px] font-semibold text-blue-400 hover:text-blue-300"
+                              >
+                                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                                  <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 18H5V9h14v13zM7 11h5v5H7z" />
+                                </svg>
+                                View in Calendar
+                              </a>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>

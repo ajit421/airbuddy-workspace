@@ -67,8 +67,9 @@ service cloud.firestore {
 
     // Notifications Collection
     match /notifications/{userId}/items/{notificationId} {
-      // Users can only read, update (mark read), or delete their own notifications.
-      // Functions will handle creation.
+      // Any authenticated user can CREATE a notification for anyone (needed for client-side cross-user notifications)
+      allow create: if isAuthenticated();
+      // Only the notification owner can read, update (mark read), or delete their own notifications
       allow read, update, delete: if isAuthenticated() && request.auth.uid == userId;
     }
   }

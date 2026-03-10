@@ -2,6 +2,10 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../services/firebase';
+import { requestBrowserNotifPermission } from '../services/notificationService';
+import { GoogleAuthProvider } from 'firebase/auth';
+
+const GTOKEN_KEY = 'goog_cal_token';
 
 const AuthContext = createContext(null);
 
@@ -9,6 +13,10 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Load from sessionStorage so token survives page refreshes within the session
+  const [googleAccessToken, setGoogleAccessToken] = useState(
+    () => sessionStorage.getItem(GTOKEN_KEY) || null
+  );
 
   // Try to use the notifications hook, but handle case where it might be used outside its provider context
   // Usually AuthProvider wraps the whole app, and Notifications typically go inside or alongside
@@ -42,6 +50,8 @@ export const AuthProvider = ({ children }) => {
           } else {
             setUserProfile(snap.data());
           }
+          // Ask for browser notification permission as soon as user is authenticated
+          requestBrowserNotifPermission();
         } catch (error) {
           console.error("Error setting up user profile:", error);
           setAuthError("Failed to load user profile. Please try logging in again.");
@@ -63,6 +73,12 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
     try {
       const result = await signInWithPopup(auth, googleProvider);
+      // Capture the Google OAuth access token for Calendar API calls
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setGoogleAccessToken(credential.accessToken);
+        sessionStorage.setItem(GTOKEN_KEY, credential.accessToken);
+      }
       return result;
     } catch (error) {
       console.error("Login failed:", error);
@@ -82,10 +98,29 @@ export const AuthProvider = ({ children }) => {
   const signOut = async () => {
     try {
       await firebaseSignOut(auth);
+      setGoogleAccessToken(null);
+      sessionStorage.removeItem(GTOKEN_KEY);
     } catch (error) {
       console.error("Sign out failed:", error);
       setAuthError("Failed to sign out properly.");
     }
+  };
+
+  // Silently re-authenticate with Google to get a fresh access token
+  // (called automatically if calendarService gets a 401)
+  const refreshGoogleToken = async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setGoogleAccessToken(credential.accessToken);
+        sessionStorage.setItem(GTOKEN_KEY, credential.accessToken);
+        return credential.accessToken;
+      }
+    } catch (err) {
+      console.warn('Could not refresh Google token:', err);
+    }
+    return null;
   };
 
   const clearAuthError = () => setAuthError(null);
@@ -93,7 +128,7 @@ export const AuthProvider = ({ children }) => {
   const isAdmin = userProfile?.role === 'admin';
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, signInWithGoogle, signOut, isAdmin, authError, clearAuthError }}>
+    <AuthContext.Provider value={{ user, userProfile, loading, signInWithGoogle, signOut, isAdmin, authError, clearAuthError, googleAccessToken, refreshGoogleToken }}>
       {children}
       {/* Basic Toast Notification UI inline in AuthProvider */}
       {authError && (

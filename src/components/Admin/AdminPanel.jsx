@@ -8,6 +8,8 @@ import { useAuth } from '../../context/AuthContext';
 import { formatDate } from '../../utils/dateHelpers';
 import { PriorityBadge, StatusBadge, ProgressBar } from '../shared/TaskCard';
 import { PRIORITY_OPTIONS, STATUS_OPTIONS, MODULE_OPTIONS } from '../../utils/permissions';
+import { notifyUsers, sendNotification } from '../../services/notificationService';
+import { addTaskToGoogleCalendar } from '../../services/googleCalendarService';
 
 // ─── Team Overview ───────────────────────────────────────────
 const TeamOverview = ({ users, allTasks }) => {
@@ -63,7 +65,7 @@ const TeamOverview = ({ users, allTasks }) => {
 
 // ─── Assign Task Form ────────────────────────────────────────
 const AssignTask = ({ users }) => {
-  const { userProfile } = useAuth();
+  const { userProfile, googleAccessToken } = useAuth();
   const [form, setForm] = useState({
     title: '', description: '', module: MODULE_OPTIONS[0],
     priority: 'medium', status: 'pending', progress: 0,
@@ -100,6 +102,34 @@ const AssignTask = ({ users }) => {
         createdBy: userProfile?.uid,
       });
       setSuccess('Task assigned successfully!');
+
+      // Sync task to Google Calendar (admin's calendar)
+      const calTaskObj = {
+        title: form.title,
+        description: form.description,
+        module: form.module,
+        priority: form.priority,
+        startDate: form.startDate ? new Date(form.startDate) : new Date(),
+        dueDate: form.dueDate ? new Date(form.dueDate) : new Date(),
+      };
+      const assigneeNames = form.assignedTo
+        .map(uid => users.find(u => u.uid === uid)?.name || 'Team Member')
+        .join(', ');
+      const calEvent = await addTaskToGoogleCalendar(googleAccessToken, calTaskObj, assigneeNames);
+      const eventLink = calEvent?.htmlLink || null;
+
+      // Notify each assigned employee (with calendar link if available)
+      await Promise.all(
+        form.assignedTo
+          .filter(uid => uid !== userProfile?.uid)
+          .map(uid => sendNotification(
+            uid,
+            '🆕 New Task Assigned',
+            `"${form.title}" has been assigned to you.${eventLink ? ' Check your Google Calendar.' : ''}`,
+            'task_assigned',
+            eventLink
+          ))
+      );
       setForm({ title: '', description: '', module: MODULE_OPTIONS[0], priority: 'medium', status: 'pending', progress: 0, startDate: '', dueDate: '', assignedTo: [], links: [], attachments: [] });
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -155,11 +185,10 @@ const AssignTask = ({ users }) => {
               type="button"
               key={u.uid}
               onClick={() => toggleEmployee(u.uid)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
-                form.assignedTo.includes(u.uid)
-                  ? 'border-orange bg-orange-muted text-orange'
-                  : 'border-border bg-surface text-text-secondary hover:border-orange/40'
-              }`}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${form.assignedTo.includes(u.uid)
+                ? 'border-orange bg-orange-muted text-orange'
+                : 'border-border bg-surface text-text-secondary hover:border-orange/40'
+                }`}
             >
               {u.avatar ? <img src={u.avatar} className="w-5 h-5 rounded-full" alt="" /> :
                 <div className="w-5 h-5 rounded-full bg-orange-muted flex items-center justify-center text-orange font-bold text-xs">{u.name?.[0]?.toUpperCase()}</div>}
@@ -271,6 +300,18 @@ const AnnouncementsManager = ({ users }) => {
         isRead: [],
         createdAt: serverTimestamp(),
       });
+      // Notify all users about the new announcement
+      const usersSnap = await getDocs(collection(db, 'users'));
+      await Promise.all(usersSnap.docs.map(d => {
+        const uid = d.id;
+        if (uid === userProfile?.uid) return Promise.resolve(); // skip self
+        return sendNotification(
+          uid,
+          '📣 New Announcement',
+          `${userProfile?.name || 'Admin'}: "${form.title}"`,
+          'announcement'
+        );
+      }));
       setForm({ title: '', message: '', priority: 'normal', meetingLink: '', targetAudience: 'all' });
     } catch (err) { console.error(err); }
     setSaving(false);
@@ -378,11 +419,10 @@ export default function AdminPanel() {
           <button
             key={tab}
             onClick={() => setActiveTab(i)}
-            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap transition-all ${
-              activeTab === i
-                ? 'bg-orange text-white'
-                : 'text-text-secondary hover:text-text-primary hover:bg-surfaceHover'
-            }`}
+            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap transition-all ${activeTab === i
+              ? 'bg-orange text-white'
+              : 'text-text-secondary hover:text-text-primary hover:bg-surfaceHover'
+              }`}
           >
             {tab}
           </button>
