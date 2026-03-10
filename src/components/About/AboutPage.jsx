@@ -101,9 +101,7 @@ export default function AboutPage() {
         </div>
 
         <p className="text-sm text-text-secondary leading-relaxed mb-4">
-          WorkSpace is the central hub for the AirBuddy Aerospace team — a 15-member aerospace engineering company. 
-          It provides task management, real-time collaboration, calendar integration, AI-powered assistance, 
-          and team announcements in one unified dark-themed platform.
+          Workspace is a unified productivity platform for the AirBuddy Aerospace team that integrates task management, real-time collaboration, calendar scheduling, AI assistance, and team announcements in a modern dark-themed interface, helping the team stay organized and efficiently manage aerospace projects.
         </p>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -151,8 +149,8 @@ export default function AboutPage() {
           </div>
           <div>
             <p className="text-sm font-semibold text-text-primary">AirBuddy HR Admin</p>
-            <a href="mailto:admin@airbuddyaerospace.com" className="text-xs text-orange hover:underline">
-              admin@airbuddyaerospace.com
+            <a href="mailto:alisha@airbuddy.in" className="text-xs text-orange hover:underline">
+              alisha@airbuddy.in
             </a>
           </div>
         </div>

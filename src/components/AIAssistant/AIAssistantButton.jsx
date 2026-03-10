@@ -127,7 +127,7 @@ const AIChatSidebar = ({ onClose }) => {
             </svg>
           </button>
         </div>
-        <p className="text-xs text-text-muted mt-1.5 text-center">Powered by Gemini AI</p>
+        <p className="text-xs text-text-muted mt-1.5 text-center">Powered by AirBuddy AI</p>
       </div>
     </div>
   );
