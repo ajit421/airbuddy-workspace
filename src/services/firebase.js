@@ -24,7 +24,7 @@ googleProvider.addScope('https://www.googleapis.com/auth/calendar');
 let messaging = null;
 try {
   messaging = getMessaging(app);
-} catch(e) {
+} catch (_e) {
   console.warn('FCM not supported in this browser.');
 }
 export { messaging };
@@ -46,7 +46,7 @@ export const requestNotificationPermission = async () => {
 };
 
 export const onForegroundMessage = (callback) => {
-  if (!messaging) return () => {};
+  if (!messaging) return () => { };
   return onMessage(messaging, callback);
 };
 

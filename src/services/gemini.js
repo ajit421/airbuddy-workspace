@@ -1,10 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
 import { formatDate } from '../utils/dateHelpers';
-
-// Initialize the Google Gen AI client with the API key from environment variables
-const ai = new GoogleGenAI({
-  apiKey: import.meta.env.VITE_GEMINI_API_KEY,
-});
 
 const SYSTEM_PROMPT = `
 You are the AI Assistant for AirBuddy Aerospace WorkSpace, a workforce management platform.
@@ -24,17 +18,13 @@ Guidelines:
 `;
 
 /**
- * Send a conversation to Gemini and get a response
+ * Send a conversation to Gemini (via Vercel Serverless Function)
  * @param {Array} history - Array of previous messages { role: 'user' | 'model', parts: [{ text: '...' }] }
  * @param {Array} currentTasks - The user's current tasks from Firestore
  * @param {String} newMessage - The latest user message
  * @returns {Promise<string>} The AI's response text
  */
 export const sendMessage = async (history, currentTasks, newMessage) => {
-  if (!import.meta.env.VITE_GEMINI_API_KEY) {
-    throw new Error('Gemini API key is missing. Please add VITE_GEMINI_API_KEY to your .env file.');
-  }
-
   // Format tasks for the prompt
   const taskSummary = currentTasks.map(t => ({
     title: t.title,
@@ -49,25 +39,29 @@ export const sendMessage = async (history, currentTasks, newMessage) => {
     .replace('{CURRENT_DATE}', formatDate(new Date()));
 
   try {
-    // We send the system prompt as the first message, and build history
-    const contents = [
-      { role: 'user', parts: [{ text: dynamicSystemPrompt }] },
-      { role: 'model', parts: [{ text: 'Understood. I am ready to help with your tasks.' }] },
-      ...history,
-      { role: 'user', parts: [{ text: newMessage }] },
-    ];
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-lite',
-      contents: contents,
-      config: {
-        temperature: 0.7,
-      }
+    // Determine the base URL. In development, we can point to local Vercel CLI server or just use relative path
+    // Assuming relative path works well in production and local Vite dev proxy
+    const response = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        history,
+        systemPrompt: dynamicSystemPrompt,
+        newMessage
+      })
     });
 
-    return response.text;
+    if (!response.ok) {
+      const errData = await response.json();
+      throw new Error(errData.error || 'Server responded with an error');
+    }
+
+    const data = await response.json();
+    return data.reply;
   } catch (error) {
-    console.error('Gemini API Error:', error);
-    throw new Error(error.message || 'Failed to connect to the AI service');
+    console.error('Gemini API Error (via Vercel):', error);
+    throw new Error(error.message || 'Failed to connect to the AI API endpoint');
   }
 };
