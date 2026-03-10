@@ -1,0 +1,73 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Users Collection
+    // Read: All authenticated users can read basic profiles (names/avatars for UI)
+    // Write: User can create/edit own profile, Admins can edit any
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Tasks Collection
+    match /tasks/{taskId} {
+      // Read: Admin can read all. Employee can read if they are assigned or if they created it.
+      allow read: if isAuthenticated() && 
+        (isAdmin() || 
+         (resource.data.assignedTo != null && request.auth.uid in resource.data.assignedTo) ||
+         resource.data.createdBy == request.auth.uid);
+         
+      // Create: Admin can create any. Employee can create personal tasks (!isAdminTask).
+      allow create: if isAuthenticated() && 
+        (isAdmin() || 
+         (request.resource.data.isAdminTask == false && request.resource.data.createdBy == request.auth.uid));
+         
+      // Update: Admin can update any. Employee can update progress/status/dueDate of assigned tasks, or fully edit self-created tasks.
+      allow update: if isAuthenticated() && 
+        (isAdmin() || 
+         (resource.data.isAdminTask == false && resource.data.createdBy == request.auth.uid) ||
+         (resource.data.assignedTo != null && request.auth.uid in resource.data.assignedTo && 
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['title', 'description', 'assignedTo', 'startDate', 'priority', 'module', 'isAdminTask'])));
+
+      // Delete: Admin can delete any. Employee can delete self-created tasks.
+      allow delete: if isAuthenticated() &&
+        (isAdmin() || 
+         (resource.data.isAdminTask == false && resource.data.createdBy == request.auth.uid));
+    }
+
+    // Announcements Collection
+    match /announcements/{announcementId} {
+      // Read: All authenticated users can read. (Filters applied in client UI)
+      allow read: if isAuthenticated();
+      
+      // Mark as read (Update isRead array): Any authenticated user can append their uid
+      allow update: if isAuthenticated() && 
+        (isAdmin() || 
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']));
+
+      // Create/Delete: Admins only
+      allow create, delete: if isAdmin();
+    }
+
+    // Notifications Collection
+    match /notifications/{userId}/items/{notificationId} {
+      // Users can only read, update (mark read), or delete their own notifications.
+      // Functions will handle creation.
+      allow read, update, delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+  }
+}
