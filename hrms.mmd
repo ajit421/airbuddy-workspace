@@ -1,0 +1,38 @@
+erDiagram
+    USERS ||--o{ ATTENDANCE : "logs"
+    USERS ||--o{ LEAVES : "applies for"
+    USERS ||--o{ PERFORMANCE : "receives"
+    
+    USERS {
+        string uid PK
+        string name
+        string role "admin/employee/hr"
+        string department
+        string designation
+    }
+    
+    ATTENDANCE {
+        string id PK
+        string userId FK
+        timestamp date
+        timestamp checkIn
+        timestamp checkOut
+        string status "Present/Absent/Half-Day"
+    }
+    
+    LEAVES {
+        string id PK
+        string userId FK
+        string type "Sick/Casual/Earned"
+        timestamp startDate
+        timestamp endDate
+        string status "Pending/Approved/Rejected"
+    }
+    
+    RECRUITMENT {
+        string id PK
+        string candidateName
+        string roleApplied
+        string stage "Applied/Interview/Hired/Rejected"
+        string resumeLink
+    }

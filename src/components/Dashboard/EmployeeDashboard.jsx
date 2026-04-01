@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTasks } from '../../context/TaskContext';
 import { useAuth } from '../../context/AuthContext';
 import { DonutChart, BarChart, LineChart } from '../shared/Charts';
@@ -6,6 +6,8 @@ import TaskCard from '../shared/TaskCard';
 import TaskDetailModal from '../Calendar/TaskDetailModal';
 import SelfTaskModal from './SelfTaskModal';
 import { getDueDateLabel, getDueDateColor } from '../../utils/dateHelpers';
+// HRMS Dashboard Widget — attendance punch service
+import { recordPunch, getTodayAttendance } from '../../services/hrmsService';
 
 const StatCard = ({ icon, label, value, color, sublabel }) => (
   <div className="stat-card">
@@ -19,6 +21,115 @@ const StatCard = ({ icon, label, value, color, sublabel }) => (
     </div>
   </div>
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HRMS Dashboard Widget — Quick Punch In/Out card
+// Self-contained: manages its own clock interval and punch state.
+// ─────────────────────────────────────────────────────────────────────────────
+function QuickPunchWidget({ uid }) {
+  // 'unknown' | 'in' | 'out' | 'done'
+  const [punchStatus, setPunchStatus] = useState('unknown');
+  const [todayRecord, setTodayRecord] = useState(null);
+  const [punching, setPunching]       = useState(false);
+  const [clockStr, setClockStr]       = useState('');
+  const intervalRef = useRef(null);
+
+  // Format a Firestore Timestamp or null to a time string like "09:32 AM"
+  const fmtTime = (ts) => {
+    if (!ts) return null;
+    const d = typeof ts.toDate === 'function' ? ts.toDate() : new Date(ts);
+    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  };
+
+  // Live clock — updates every 30 seconds
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setClockStr(now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }));
+    };
+    tick();
+    intervalRef.current = setInterval(tick, 30_000);
+    return () => clearInterval(intervalRef.current);
+  }, []);
+
+  // Load today's record on mount
+  useEffect(() => {
+    if (!uid) return;
+    getTodayAttendance(uid)
+      .then((rec) => {
+        setTodayRecord(rec);
+        if (!rec)             setPunchStatus('unknown'); // not yet punched in
+        else if (!rec.punchOut) setPunchStatus('in');   // punched in, no out yet
+        else                    setPunchStatus('done');  // full shift recorded
+      })
+      .catch(() => setPunchStatus('unknown'));
+  }, [uid]);
+
+  const handlePunch = async () => {
+    if (!uid || punching || punchStatus === 'done') return;
+    setPunching(true);
+    try {
+      const result = await recordPunch(uid);
+      if (result === 'in')  setPunchStatus('in');
+      if (result === 'out') setPunchStatus('done');
+      // Refresh the record to get timestamps
+      const updated = await getTodayAttendance(uid);
+      setTodayRecord(updated);
+    } catch (e) {
+      console.error('[QuickPunchWidget] punch failed:', e);
+    } finally {
+      setPunching(false);
+    }
+  };
+
+  // Derive button appearance from state
+  const btnConfig = {
+    unknown: { label: 'Punch In',        cls: 'bg-green-500 hover:bg-green-600 text-white', emoji: '🟢' },
+    in:      { label: 'Punch Out',       cls: 'bg-orange   hover:bg-orange-hover text-white', emoji: '🟠' },
+    done:    { label: 'Shift Completed', cls: 'bg-surface  text-text-muted cursor-not-allowed border border-border', emoji: '✅' },
+  };
+  const btn = btnConfig[punchStatus] ?? btnConfig.unknown;
+
+  return (
+    // HRMS Dashboard Widget — container card
+    <div className="card flex flex-col sm:flex-row sm:items-center gap-4">
+      {/* Clock + greeting */}
+      <div className="flex items-center gap-3 flex-1">
+        <div className="w-10 h-10 rounded-xl bg-orange/10 flex items-center justify-center flex-shrink-0">
+          <svg className="w-5 h-5 text-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div>
+          <p className="text-lg font-black text-text-primary tabular-nums">{clockStr}</p>
+          <p className="text-xs text-text-muted">
+            {punchStatus === 'done'
+              ? `Shift done · In ${fmtTime(todayRecord?.punchIn)} · Out ${fmtTime(todayRecord?.punchOut)}`
+              : punchStatus === 'in'
+              ? `Punched in at ${fmtTime(todayRecord?.punchIn)}`
+              : 'You haven\'t punched in today'}
+          </p>
+        </div>
+      </div>
+
+      {/* Punch button */}
+      <button
+        onClick={handlePunch}
+        disabled={punching || punchStatus === 'done'}
+        className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold
+                    transition-colors disabled:opacity-70 flex-shrink-0 ${btn.cls}`}
+      >
+        {punching
+          ? <span className="w-4 h-4 border-2 border-current/40 border-t-current rounded-full animate-spin" />
+          : <span>{btn.emoji}</span>
+        }
+        {punching ? 'Recording…' : btn.label}
+      </button>
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function EmployeeDashboard() {
   const { tasks, loading, getUpcomingTasks } = useTasks();
@@ -133,7 +244,11 @@ export default function EmployeeDashboard() {
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* ── HRMS Dashboard Widget: Quick Punch In/Out ─────────────────────── */}
+      {/* Passes the uid from AuthContext; renders nothing if user is not loaded yet */}
+      {userProfile?.uid && <QuickPunchWidget uid={userProfile.uid} />}
+      {/* ─────────────────────────────────────────────────────────────────── */}
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={<span className="text-xl">📋</span>}

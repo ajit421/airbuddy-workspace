@@ -72,5 +72,74 @@ service cloud.firestore {
       // Only the notification owner can read, update (mark read), or delete their own notifications
       allow read, update, delete: if isAuthenticated() && request.auth.uid == userId;
     }
+
+    // Leave Management Collection
+    // Schema: leaves/{leaveId}
+    // { uid, applicantName, type, startDate, endDate, reason, status, createdAt, reviewedBy? }
+    match /leaves/{leaveId} {
+      // Read: owner can read own; admin can read all (for pending approvals view)
+      allow read: if isAuthenticated() &&
+        (resource.data.uid == request.auth.uid || isAdmin());
+
+      // Create: any authenticated user can apply for their own leave
+      allow create: if isAuthenticated() &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.status == 'pending';
+
+      // Update: only admins can change status (approve / reject)
+      allow update: if isAdmin();
+
+      // Delete: admins only
+      allow delete: if isAdmin();
+    }
+
+    // Attendance Collection
+    // Schema: attendance/{uid}/records/{recordId}
+    // Each user owns their own attendance sub-collection.
+    // Admins can read any user's records (e.g., for manager dashboards).
+    // Users can only read/write their own records.
+    match /attendance/{userId}/records/{recordId} {
+      // Read: own records always; admin can read anyone's
+      allow read: if isAuthenticated() &&
+        (request.auth.uid == userId || isAdmin());
+
+      // Create: only the owner can punch in (create a new record for themselves)
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+
+      // Update: only the owner can punch out (update their own open record)
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+
+      // Delete: admins only (e.g., correcting erroneous records)
+      allow delete: if isAdmin();
+    }
+
+    // Recruitment — Candidates Collection
+    // Schema: candidates/{candidateId}
+    // { name, email, role, experience, status, notes, createdAt, updatedAt }
+    match /candidates/{candidateId} {
+      // All authenticated users can view the recruitment pipeline
+      allow read: if isAuthenticated();
+
+      // Only admins can add candidates or move them between columns
+      allow create, update: if isAdmin();
+
+      // Delete: admins only
+      allow delete: if isAdmin();
+    }
+
+    // Performance Reviews Collection
+    // Schema: performances/{reviewId}
+    // { uid, employeeName, reviewedBy, period, skills{...}, goalsAssigned, goalsCompleted, notes, createdAt }
+    match /performances/{reviewId} {
+      // Employee can read their own reviews; admins can read all
+      allow read: if isAuthenticated() &&
+        (resource.data.uid == request.auth.uid || isAdmin());
+
+      // Only admins can create or update reviews
+      allow create, update: if isAdmin();
+
+      // Delete: admins only
+      allow delete: if isAdmin();
+    }
   }
 }

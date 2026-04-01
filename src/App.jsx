@@ -10,6 +10,13 @@ import AnnouncementList from './components/Announcement/AnnouncementList';
 import AboutPage from './components/About/AboutPage';
 import AdminPanel from './components/Admin/AdminPanel';
 
+// HRMS Module imports — added for the new HRMS feature set
+import EmployeeDirectory    from './components/HRMS/Directory/EmployeeDirectory';
+import AttendanceManager    from './components/HRMS/Attendance/AttendanceManager';
+import LeaveManagement      from './components/HRMS/Attendance/LeaveManagement';
+import RecruitmentBoard     from './components/HRMS/Recruitment/RecruitmentBoard';
+import PerformanceDashboard from './components/HRMS/Performance/PerformanceDashboard';
+
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
   if (loading) return (
@@ -66,6 +73,13 @@ const AppRoutes = () => {
             </AdminRoute>
           }
         />
+
+        {/* HRMS Routes — Human Resource Management System module */}
+        <Route path="hrms/directory"   element={<EmployeeDirectory />} />
+        <Route path="hrms/attendance"  element={<AttendanceManager />} />
+        <Route path="hrms/leaves"      element={<LeaveManagement />} />
+        <Route path="hrms/recruitment" element={<RecruitmentBoard />} />
+        <Route path="hrms/performance" element={<PerformanceDashboard />} />
       </Route>
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
