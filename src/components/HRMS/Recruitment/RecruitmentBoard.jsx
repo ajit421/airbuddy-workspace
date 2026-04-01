@@ -95,8 +95,8 @@ function AddCandidateModal({ onClose, onAdded }) {
         {/* Form */}
         <form onSubmit={submit} className="p-6 space-y-4">
           {[
-            { k: 'name',       label: 'Full Name *',     ph: 'Priya Sharma'     },
-            { k: 'email',      label: 'Email',            ph: 'priya@example.com'},
+            { k: 'name',       label: 'Full Name *',     ph: 'Ajit Kumar'     },
+            { k: 'email',      label: 'Email',            ph: 'ajit@example.com'},
             { k: 'role',       label: 'Applying For *',  ph: 'Senior Engineer'  },
             { k: 'experience', label: 'Experience',       ph: '3 years'          },
             { k: 'resumeUrl',  label: 'Resume Link',      ph: 'https://drive.google.com/...' },

@@ -160,7 +160,7 @@ export default function EmployeeModal({ isOpen, onClose, onSaved, employee, isAd
               name="name"
               value={form.name}
               onChange={handleChange}
-              placeholder="e.g. Priya Sharma"
+              placeholder="e.g. Ajit Kumar"
               className={inputCls}
               autoComplete="off"
             />
@@ -173,7 +173,7 @@ export default function EmployeeModal({ isOpen, onClose, onSaved, employee, isAd
               name="email"
               value={form.email}
               onChange={handleChange}
-              placeholder="e.g. priya@airbuddy.co"
+              placeholder="e.g. ajit@airbuddy.in"
               className={inputCls}
               autoComplete="off"
               // Disable email editing in edit mode — email is an identity field
@@ -220,7 +220,7 @@ export default function EmployeeModal({ isOpen, onClose, onSaved, employee, isAd
                 name="salaryBase"
                 value={form.salaryBase}
                 onChange={handleChange}
-                placeholder="e.g. 75000"
+                placeholder="e.g. 45000"
                 min="0"
                 step="500"
                 className={inputCls}
