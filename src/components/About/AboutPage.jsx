@@ -91,8 +91,12 @@ export default function AboutPage() {
       {/* Platform Overview */}
       <div className="card p-6">
         <div className="flex items-center gap-4 mb-5">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange to-orange-hover glow-orange flex items-center justify-center">
-            <span className="text-white font-black text-2xl">AB</span>
+          <div className="w-14 h-14 rounded-2xl bg-white shadow-xl p-1.5 flex items-center justify-center">
+            <img
+              src="/airbuddyin_logo.png"
+              alt="AirBuddy Aerospace"
+              className="w-full h-full object-contain"
+            />
           </div>
           <div>
             <h2 className="text-xl font-black text-text-primary">AirBuddy Aerospace WorkSpace</h2>

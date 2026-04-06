@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../hooks/useNotifications';
 import { formatDate } from '../../utils/dateHelpers';
+import RoleBadge from './RoleBadge';
 
 const BellIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -57,8 +58,12 @@ export default function Navbar({ onMenuToggle }) {
           <MenuIcon />
         </button>
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-orange-muted border border-orange/30 flex items-center justify-center">
-            <span className="text-orange font-bold text-sm">AB</span>
+          <div className="w-8 h-8 rounded-lg bg-white shadow-md flex items-center justify-center p-0.5 flex-shrink-0">
+            <img
+              src="/airbuddyin_logo.png"
+              alt="AirBuddy Aerospace"
+              className="w-full h-full object-contain"
+            />
           </div>
           <div className="hidden sm:block">
             <p className="text-xs text-text-secondary font-medium">AirBuddy Aerospace</p>
@@ -154,7 +159,7 @@ export default function Navbar({ onMenuToggle }) {
             )}
             <div className="hidden sm:block text-left">
               <p className="text-xs font-semibold text-text-primary leading-tight">{userProfile?.name || 'User'}</p>
-              <p className="text-xs text-text-muted capitalize">{userProfile?.role || 'employee'}</p>
+              <RoleBadge role={userProfile?.role} customRole={userProfile?.customRole} size="xs" />
             </div>
           </button>
 
@@ -163,7 +168,9 @@ export default function Navbar({ onMenuToggle }) {
               <div className="px-4 py-3 border-b border-border">
                 <p className="text-sm font-semibold text-text-primary">{userProfile?.name}</p>
                 <p className="text-xs text-text-muted truncate">{userProfile?.email}</p>
-                {isAdmin && <span className="badge-orange mt-1">Admin</span>}
+                <div className="mt-1.5">
+                  <RoleBadge role={userProfile?.role} customRole={userProfile?.customRole} size="xs" />
+                </div>
               </div>
               {isAdmin && (
                 <Link to="/admin" onClick={() => setUserMenuOpen(false)} className="block px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-surfaceHover transition-colors">

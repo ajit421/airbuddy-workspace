@@ -27,8 +27,12 @@ export default function LoginPage() {
       <div className="relative z-10 w-full max-w-md animate-fade-in">
         {/* Logo */}
         <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-orange to-orange-hover glow-orange mb-6">
-            <span className="text-white font-black text-3xl">AB</span>
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white shadow-2xl glow-orange mb-6 p-1.5">
+            <img
+              src="/airbuddyin_logo.png"
+              alt="AirBuddy Aerospace"
+              className="w-full h-full object-contain"
+            />
           </div>
           <h1 className="text-3xl font-black text-text-primary tracking-tight">
             Air<span className="text-gradient">Buddy</span>
