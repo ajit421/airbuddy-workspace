@@ -16,6 +16,7 @@ import AttendanceManager    from './components/HRMS/Attendance/AttendanceManager
 import LeaveManagement      from './components/HRMS/Attendance/LeaveManagement';
 import RecruitmentBoard     from './components/HRMS/Recruitment/RecruitmentBoard';
 import PerformanceDashboard from './components/HRMS/Performance/PerformanceDashboard';
+import TeamMembers          from './components/HRMS/Directory/TeamMembers';
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -63,6 +64,7 @@ const AppRoutes = () => {
         <Route index element={<EmployeeDashboard />} />
         <Route path="calendar" element={<CalendarView />} />
         <Route path="work-partner" element={<WorkPartner />} />
+        <Route path="team" element={<TeamMembers />} />
         <Route path="announcements" element={<AnnouncementList />} />
         <Route path="about" element={<AboutPage />} />
         <Route

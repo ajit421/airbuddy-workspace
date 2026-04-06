@@ -8,6 +8,9 @@ import { formatDate, formatDateTime, getDueDateLabel, getDueDateColor, isOverdue
 import { canEditTask, canUpdateProgress } from '../../utils/permissions';
 import { notifyUsers } from '../../services/notificationService';
 import { addTaskToGoogleCalendar } from '../../services/googleCalendarService';
+import { recordStatusChange, recordProgressUpdate } from '../../services/collaborationService';
+import WorkPartnersSection from '../WorkPartner/WorkPartnersSection';
+import TaskTimeline from '../WorkPartner/TaskTimeline';
 
 // ─── Completion Dialog ────────────────────────────────────────────────────────
 // Shown when user tries to save progress at 100%
@@ -135,9 +138,13 @@ export default function TaskDetailModal({ task, onClose }) {
   const doSaveProgress = async ({ commitMessage, attachment } = {}) => {
     setSaving(true);
     try {
+      const prevProgress = task.progress || 0;
+      const prevStatus   = task.status || 'pending';
+      const newStatus    = progress === 100 ? 'completed' : progress > 0 ? 'in-progress' : 'pending';
+
       const updatePayload = {
         progress,
-        status: progress === 100 ? 'completed' : progress > 0 ? 'in-progress' : 'pending',
+        status: newStatus,
         updatedAt: new Date(),
       };
 
@@ -156,6 +163,23 @@ export default function TaskDetailModal({ task, onClose }) {
       }
 
       await updateDoc(doc(db, 'tasks', task.id), updatePayload);
+
+      // ── Timeline events (fire-and-forget — errors logged, not surfaced) ──
+      const timelineAuthor = {
+        uid:    userProfile?.uid    || '',
+        name:   userProfile?.name   || userProfile?.email || 'Unknown',
+        avatar: userProfile?.avatar || '',
+      };
+      // Record progress change if delta >= 10 points (throttled inside service)
+      recordProgressUpdate(task.id, timelineAuthor, prevProgress, progress).catch(
+        (e) => console.error('[TaskDetailModal] recordProgressUpdate failed:', e)
+      );
+      // Record status transition if status actually changed
+      if (newStatus !== prevStatus) {
+        recordStatusChange(task.id, timelineAuthor, prevStatus, newStatus).catch(
+          (e) => console.error('[TaskDetailModal] recordStatusChange failed:', e)
+        );
+      }
 
       // Notify all assignees about the progress update / completion
       const recipients = task.assignedTo || [];
@@ -345,6 +369,16 @@ export default function TaskDetailModal({ task, onClose }) {
               </div>
             </div>
           )}
+
+          {/* ── Work Partners ──────────────────────────────────────── */}
+          <div className="py-1 border-t border-border pt-4">
+            <WorkPartnersSection task={task} />
+          </div>
+
+          {/* ── Collaboration Timeline ─────────────────────────────── */}
+          <div className="border-t border-border pt-4">
+            <TaskTimeline taskId={task.id} task={task} />
+          </div>
 
           {/* Links */}
           {task.links?.length > 0 && (

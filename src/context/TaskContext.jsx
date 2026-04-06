@@ -45,15 +45,20 @@ export const TaskProvider = ({ children }) => {
         setLoading(false);
       });
     } else {
-      // Employee view: tasks assigned to current user
-      const employeeQuery = query(
-        collection(db, 'tasks'),
-        where('assignedTo', 'array-contains', user.uid)
-      );
+      // Employee view: tasks where assigned OR where they are a work partner.
+      // Firestore doesn't support OR queries across different fields, so we run
+      // two separate queries and merge + deduplicate the results client-side.
+      const mergedMap = new Map(); // taskId → task doc
+      let assignedSnap = null;
+      let partnerSnap  = null;
 
-      unsubTasks = onSnapshot(employeeQuery, (snap) => {
-        const taskList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        // Sort manually by date to avoid requiring a composite index in Firestore
+      const tryMerge = () => {
+        if (assignedSnap === null || partnerSnap === null) return; // wait for both
+        mergedMap.clear();
+        [...assignedSnap.docs, ...partnerSnap.docs].forEach(d => {
+          mergedMap.set(d.id, { id: d.id, ...d.data() });
+        });
+        const taskList = Array.from(mergedMap.values());
         taskList.sort((a, b) => {
           const dateA = a.dueDate?.toDate ? a.dueDate.toDate() : new Date(a.dueDate);
           const dateB = b.dueDate?.toDate ? b.dueDate.toDate() : new Date(b.dueDate);
@@ -61,10 +66,35 @@ export const TaskProvider = ({ children }) => {
         });
         setTasks(taskList);
         setLoading(false);
+      };
+
+      // Query 1: tasks assigned to this user
+      const assignedQuery = query(
+        collection(db, 'tasks'),
+        where('assignedTo', 'array-contains', user.uid)
+      );
+      const unsubAssigned = onSnapshot(assignedQuery, (snap) => {
+        assignedSnap = snap;
+        tryMerge();
       }, (err) => {
-        console.error('Task listener employee error:', err);
+        console.error('Task listener (assignedTo) error:', err);
         setLoading(false);
       });
+
+      // Query 2: tasks where user is a work partner
+      const partnerQuery = query(
+        collection(db, 'tasks'),
+        where('workPartnerUids', 'array-contains', user.uid)
+      );
+      const unsubPartner = onSnapshot(partnerQuery, (snap) => {
+        partnerSnap = snap;
+        tryMerge();
+      }, (err) => {
+        console.error('Task listener (workPartnerUids) error:', err);
+        setLoading(false);
+      });
+
+      unsubTasks = () => { unsubAssigned(); unsubPartner(); };
     }
 
     return () => {

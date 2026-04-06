@@ -14,12 +14,18 @@ import { addTaskToGoogleCalendar } from '../../services/googleCalendarService';
 // ─── Team Overview ───────────────────────────────────────────
 const TeamOverview = ({ users, allTasks }) => {
   const getStats = (uid) => {
-    const assigned = allTasks.filter(t => t.assignedTo?.includes(uid));
-    const completed = assigned.filter(t => t.status === 'completed').length;
+    const assigned   = allTasks.filter(t => t.assignedTo?.includes(uid));
+    const partnered  = allTasks.filter(t =>
+      Array.isArray(t.workPartnerUids) && t.workPartnerUids.includes(uid) && !t.assignedTo?.includes(uid)
+    );
+    const allInvolved = [...assigned, ...partnered];
+    const completed  = allInvolved.filter(t => t.status === 'completed').length;
     return {
-      total: assigned.length,
+      assigned:  assigned.length,
+      partnered: partnered.length,
+      total:     allInvolved.length,
       completed,
-      rate: assigned.length > 0 ? Math.round((completed / assigned.length) * 100) : 0,
+      rate: allInvolved.length > 0 ? Math.round((completed / allInvolved.length) * 100) : 0,
     };
   };
 
@@ -28,7 +34,7 @@ const TeamOverview = ({ users, allTasks }) => {
       <table className="w-full text-sm">
         <thead className="bg-background">
           <tr>
-            {['Member', 'Role', 'Tasks', 'Completed', 'Rate'].map(h => (
+            {['Member', 'Role', 'Assigned', 'As Partner', 'Completed', 'Rate'].map(h => (
               <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">{h}</th>
             ))}
           </tr>
@@ -46,7 +52,13 @@ const TeamOverview = ({ users, allTasks }) => {
                   </div>
                 </td>
                 <td className="px-4 py-3"><span className="badge-orange capitalize">{u.role}</span></td>
-                <td className="px-4 py-3 text-text-primary font-semibold">{s.total}</td>
+                <td className="px-4 py-3 text-text-primary font-semibold">{s.assigned}</td>
+                <td className="px-4 py-3">
+                  {s.partnered > 0
+                    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">🤝 {s.partnered}</span>
+                    : <span className="text-text-muted text-xs">—</span>
+                  }
+                </td>
                 <td className="px-4 py-3 text-green-400 font-semibold">{s.completed}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">

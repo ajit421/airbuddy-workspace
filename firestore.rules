@@ -10,45 +10,126 @@ service cloud.firestore {
     
     function isAdmin() {
       return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin';
+    }
+
+    function isTaskParticipantLocal(taskData) {
+      let assigned = taskData.get('assignedTo', []);
+      let isAssignee = (assigned is string && assigned == request.auth.uid) || (assigned is list && request.auth.uid in assigned);
+      return isAdmin() ||
+             taskData.get('createdBy', '') == request.auth.uid ||
+             isAssignee ||
+             (request.auth.uid in taskData.get('workPartnerUids', []));
+    }
+
+    function isTaskParticipant(taskId) {
+      return isTaskParticipantLocal(get(/databases/$(database)/documents/tasks/$(taskId)).data);
     }
 
     // Users Collection
-    // Read: All authenticated users can read basic profiles (names/avatars for UI)
-    // Write: User can create/edit own profile, Admins can edit any
+    // Read:   Any authenticated user can read profiles (needed for Team Members grid)
+    // Create: First-time Google login creates own profile with role = 'employee' only
+    // Update: User can update their own SAFE personal fields only;
+    //         Admin can update any user's full profile
+    // Delete: Admins only
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.auth.uid == userId && request.resource.data.role == 'employee';
-      allow update: if isAuthenticated() &&
-        (isAdmin() || 
-        (request.auth.uid == userId && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']))));
+
+      allow create: if isAuthenticated()
+        && request.auth.uid == userId
+        && request.resource.data.role == 'employee';
+
+      allow update: if isAuthenticated() && (
+        isAdmin()
+        || (
+          request.auth.uid == userId
+          && !request.resource.data.diff(resource.data)
+              .affectedKeys()
+              .hasAny(['role', 'uid', 'email', 'salaryBase', 'department', 'designation', 'fcmToken'])
+        )
+      );
+
       allow delete: if isAdmin();
     }
 
     // Tasks Collection
+    //
+    // Field schema additions (never remove existing fields):
+    //   workPartners:    array of { uid, name, avatar, addedBy, addedByName, addedAt }
+    //                    Rich object array — read by UI components only.
+    //   workPartnerUids: string[]  — parallel flat array of UIDs extracted from workPartners.
+    //                    ONLY used for Firestore security rules (rules cannot query into
+    //                    array-of-maps). Always updated atomically with workPartners in the
+    //                    same updateDoc call via arrayUnion/arrayRemove. See taskService.js.
     match /tasks/{taskId} {
-      // Read: Admin can read all. Employee can read if they are assigned or if they created it.
-      allow read: if isAuthenticated() && 
-        (isAdmin() || 
-         (resource.data.assignedTo != null && request.auth.uid in resource.data.assignedTo) ||
-         resource.data.createdBy == request.auth.uid);
-         
-      // Create: Admin can create any. Employee can create personal tasks (!isAdminTask).
-      allow create: if isAuthenticated() && 
-        (isAdmin() || 
-         (request.resource.data.isAdminTask == false && request.resource.data.createdBy == request.auth.uid));
-         
-      // Update: Admin can update any. Employee can update progress/status/dueDate of assigned tasks, or fully edit self-created tasks.
-      allow update: if isAuthenticated() && 
-        (isAdmin() || 
-         (resource.data.isAdminTask == false && resource.data.createdBy == request.auth.uid) ||
-         (resource.data.assignedTo != null && request.auth.uid in resource.data.assignedTo && 
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['title', 'description', 'assignedTo', 'startDate', 'priority', 'module', 'isAdminTask'])));
 
-      // Delete: Admin can delete any. Employee can delete self-created tasks.
-      allow delete: if isAuthenticated() &&
-        (isAdmin() || 
-         (resource.data.isAdminTask == false && resource.data.createdBy == request.auth.uid));
+      // Read: Admin sees all. Employee sees tasks they are assigned to, created, or partnered on.
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        ('assignedTo' in resource.data && request.auth.uid in resource.data.assignedTo) ||
+        ('createdBy' in resource.data && resource.data.createdBy == request.auth.uid) ||
+        ('workPartnerUids' in resource.data && request.auth.uid in resource.data.workPartnerUids)
+      );
+
+      // Create: Admin can create any. Employee can create personal tasks (isAdminTask == false/undefined).
+      allow create: if isAuthenticated() && (
+        isAdmin() ||
+        (request.resource.data.get('isAdminTask', false) == false && request.resource.data.get('createdBy', '') == request.auth.uid)
+      );
+
+      // Update: Admin can update any.
+      // 1. Creator can update personal tasks.
+      // 2. Assignee can update progress/status/dueDate/completionNote/attachments (denied from core metadata).
+      // 3. ANY participant (Creator, Assignee, Work Partner) can update the workPartner arrays + updatedAt.
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        (resource.data.get('isAdminTask', false) == false && resource.data.get('createdBy', '') == request.auth.uid) ||
+        (
+          ('assignedTo' in resource.data) &&
+          ((resource.data.assignedTo is string && resource.data.assignedTo == request.auth.uid) || 
+           (resource.data.assignedTo is list && request.auth.uid in resource.data.assignedTo)) &&
+          !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['title', 'description', 'assignedTo', 'startDate', 'priority', 'module', 'isAdminTask'])
+        ) ||
+        (
+          isTaskParticipantLocal(resource.data) &&
+          request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['workPartners', 'workPartnerUids', 'updatedAt'])
+        )
+      );
+
+      // Delete: Admin can delete any. Employee can delete own personal tasks.
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        (resource.data.get('isAdminTask', false) == false && resource.data.get('createdBy', '') == request.auth.uid)
+      );
+
+      // ── Timeline Events Subcollection ────────────────────────────────────────
+      // Schema: tasks/{taskId}/events/{eventId}
+      // {
+      //   type:         "partner_added" | "status_changed" | "progress_updated" | "commit"
+      //   authorUid:    string   — UID of the triggering user
+      //   authorName:   string   — denormalized display name
+      //   authorAvatar: string   — denormalized avatar URL
+      //   message:      string   — human-readable description
+      //   metadata:     object   — type-specific extra data (see taskService.js for shapes)
+      //   createdAt:    Timestamp — server timestamp; used for ordering (sorted client-side)
+      // }
+      match /events/{eventId} {
+
+        // Read: Anyone who can read the parent task can read its events.
+        allow read: if isAuthenticated() && isTaskParticipant(taskId);
+
+        // Create: Only task participants (assignees, creator, work partners, admin) can post events.
+        // authorUid must equal the requesting user — no spoofing.
+        allow create: if isAuthenticated() && isTaskParticipant(taskId) && request.resource.data.authorUid == request.auth.uid;
+
+        // Update / Delete: Only the event author or an admin can modify or delete an event.
+        allow update, delete: if isAuthenticated() && (
+          isAdmin() ||
+          resource.data.authorUid == request.auth.uid
+        );
+      }
     }
 
     // Announcements Collection
