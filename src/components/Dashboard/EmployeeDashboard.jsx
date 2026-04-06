@@ -23,8 +23,8 @@ const StatCard = ({ icon, label, value, color, sublabel }) => (
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HRMS Dashboard Widget — Quick Punch In/Out card
-// Self-contained: manages its own clock interval and punch state.
+// HRMS Dashboard Widget — Quick Check In/Out card
+// Self-contained: manages its own clock interval and check state.
 // ─────────────────────────────────────────────────────────────────────────────
 function QuickPunchWidget({ uid }) {
   // 'unknown' | 'in' | 'out' | 'done'
@@ -84,8 +84,8 @@ function QuickPunchWidget({ uid }) {
 
   // Derive button appearance from state
   const btnConfig = {
-    unknown: { label: 'Punch In',        cls: 'bg-green-500 hover:bg-green-600 text-white', emoji: '🟢' },
-    in:      { label: 'Punch Out',       cls: 'bg-orange   hover:bg-orange-hover text-white', emoji: '🟠' },
+    unknown: { label: 'Check In',        cls: 'bg-green-500 hover:bg-green-600 text-white', emoji: '🟢' },
+    in:      { label: 'Check Out',       cls: 'bg-orange   hover:bg-orange-hover text-white', emoji: '🟠' },
     done:    { label: 'Shift Completed', cls: 'bg-surface  text-text-muted cursor-not-allowed border border-border', emoji: '✅' },
   };
   const btn = btnConfig[punchStatus] ?? btnConfig.unknown;
@@ -107,8 +107,8 @@ function QuickPunchWidget({ uid }) {
             {punchStatus === 'done'
               ? `Shift done · In ${fmtTime(todayRecord?.punchIn)} · Out ${fmtTime(todayRecord?.punchOut)}`
               : punchStatus === 'in'
-              ? `Punched in at ${fmtTime(todayRecord?.punchIn)}`
-              : 'You haven\'t punched in today'}
+              ? `Checked in at ${fmtTime(todayRecord?.punchIn)}`
+              : 'You haven\'t checked in today'}
           </p>
         </div>
       </div>
@@ -244,7 +244,7 @@ export default function EmployeeDashboard() {
         </div>
       </div>
 
-      {/* ── HRMS Dashboard Widget: Quick Punch In/Out ─────────────────────── */}
+      {/* ── HRMS Dashboard Widget: Quick Check In/Out ─────────────────────── */}
       {/* Passes the uid from AuthContext; renders nothing if user is not loaded yet */}
       {userProfile?.uid && <QuickPunchWidget uid={userProfile.uid} />}
       {/* ─────────────────────────────────────────────────────────────────── */}

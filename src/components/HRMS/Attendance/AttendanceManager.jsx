@@ -220,7 +220,7 @@ function AttendanceTable({ days, recordMap, approvedLeavesMap }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-background">
-              {['Date', 'Punch In', 'Punch Out', 'Total Hours', 'Status'].map((h) => (
+              {['Date', 'Check In', 'Check Out', 'Total Hours', 'Status'].map((h) => (
                 <th
                   key={h}
                   className="px-5 py-3.5 text-left text-xs font-semibold text-text-muted

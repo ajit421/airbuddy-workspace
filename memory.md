@@ -45,7 +45,7 @@ Two RBAC roles govern all access:
 - **Team Members** — Public profile grid (all users). Any user can view profiles; owners and admins can edit. Cards show live task stats, lazy-loaded attendance rate, social links, and skills. RBAC+custom role badge.
 - **HRMS Suite:**
   - **Employee Directory** — Full CRUD on employee HR records (department, designation, salary).
-  - **Attendance & Leaves** — Daily punch in/out, leave requests with admin approval workflow.
+  - **Attendance & Leaves** — Daily check in/out, leave requests with admin approval workflow.
   - **Recruitment Board** — Kanban pipeline: Applied → Interviewing → Hired → Rejected.
   - **Performance Reviews** — Periodic skill-based reviews with goal tracking.
 - **Admin Panel** — Comprehensive admin portal (team overview, task monitor, announcements, employee management).
@@ -443,8 +443,8 @@ useTeamMembers hook
 ```javascript
 {
   date:      "2024-05-10",   // YYYY-MM-DD string (used for querying)
-  punchIn:   Timestamp,
-  punchOut:  Timestamp | null,   // null = still clocked in
+  punchIn:   Timestamp,      // internal field name; UI shows as "Check In"
+  punchOut:  Timestamp | null,   // internal field name; UI shows as "Check Out" (null = still clocked in)
   createdAt: Timestamp,
   updatedAt: Timestamp
 }
