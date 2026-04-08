@@ -15,7 +15,7 @@
  * Commit nodes are large filled circles with a dark inner ring (GitHub style).
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTasks } from '../../context/TaskContext';
 import { timeFromNow } from '../../utils/dateHelpers';
@@ -266,6 +266,7 @@ export default function GitBranchGraph({ task, events = [], loading = false, onA
   const [showSelector, setShowSelector] = useState(false);
   const [adding,       setAdding]       = useState(false);
   const [addError,     setAddError]     = useState(null);
+  const addBranchBtnRef = useRef(null); // for Portal-based selector positioning
 
   const partners    = Array.isArray(task?.workPartners) ? task.workPartners : [];
   const assignees   = Array.isArray(task?.assignedTo)  ? task.assignedTo  : [];
@@ -411,6 +412,7 @@ export default function GitBranchGraph({ task, events = [], loading = false, onA
         {canAdd && (
           <div style={{ position: 'relative' }}>
             <button
+              ref={addBranchBtnRef}
               onClick={() => setShowSelector(v => !v)}
               disabled={adding}
               style={{
@@ -434,14 +436,13 @@ export default function GitBranchGraph({ task, events = [], loading = false, onA
               Add Branch
             </button>
             {showSelector && (
-              <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 8, zIndex: 9999 }}>
-                <WorkPartnerSelector
-                  currentPartners={partners}
-                  currentUserUid={userProfile?.uid}
-                  onSelect={handleSelect}
-                  onClose={() => setShowSelector(false)}
-                />
-              </div>
+              <WorkPartnerSelector
+                currentPartners={partners}
+                currentUserUid={userProfile?.uid}
+                onSelect={handleSelect}
+                onClose={() => setShowSelector(false)}
+                triggerRef={addBranchBtnRef}
+              />
             )}
           </div>
         )}

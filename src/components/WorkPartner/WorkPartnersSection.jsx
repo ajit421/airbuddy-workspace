@@ -17,7 +17,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTasks } from '../../context/TaskContext';
 import { addWorkPartner, removeWorkPartner, checkCanAddPartner } from '../../services/collaborationService';
@@ -55,7 +55,8 @@ export default function WorkPartnersSection({ task, onPartnerAdded }) {
   const [showSelector, setShowSelector] = useState(false);
   const [adding, setAdding]             = useState(false);
   const [addError, setAddError]         = useState(null);
-  const [removingUid, setRemovingUid]   = useState(null); // uid currently being removed
+  const [removingUid, setRemovingUid]   = useState(null);
+  const addBtnRef = useRef(null); // for portal-based selector positioning
 
   if (!task) return null;
 
@@ -116,6 +117,7 @@ export default function WorkPartnersSection({ task, onPartnerAdded }) {
         {canAddPartner && (
           <div className="relative">
             <button
+              ref={addBtnRef}
               type="button"
               onClick={() => setShowSelector((prev) => !prev)}
               disabled={adding}
@@ -146,6 +148,7 @@ export default function WorkPartnersSection({ task, onPartnerAdded }) {
                 currentUserUid={userProfile?.uid}
                 onSelect={handleSelectPartner}
                 onClose={() => setShowSelector(false)}
+                triggerRef={addBtnRef}
               />
             )}
           </div>
