@@ -214,6 +214,56 @@ export async function getAttendanceLast30Days(uid) {
   }
 }
 
+// ─── getAttendanceDateRange ───────────────────────────────────────────────────
+/**
+ * Fetches attendance records for a user between startDate and endDate (inclusive).
+ *
+ * @param {string} uid
+ * @param {string} startDate - 'YYYY-MM-DD'
+ * @param {string} endDate   - 'YYYY-MM-DD'
+ * @returns {Promise<Array<Object>>} Array of records sorted by date desc.
+ */
+export async function getAttendanceDateRange(uid, startDate, endDate) {
+  try {
+    const q = query(
+      attendancePath(uid),
+      where('date', '>=', startDate),
+      where('date', '<=', endDate),
+      orderBy('date', 'desc'),
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (err) {
+    console.error(`[hrmsService] getAttendanceDateRange failed for uid "${uid}":`, err);
+    throw err;
+  }
+}
+
+// ─── getAllEmployeesAttendanceSummary ─────────────────────────────────────────
+/**
+ * Admin-only: fetches attendance for every employee in the given date range
+ * by running parallel queries (one per user).
+ *
+ * @param {Array<{uid: string, name: string, email: string, avatar?: string}>} employees
+ * @param {string} startDate - 'YYYY-MM-DD'
+ * @param {string} endDate   - 'YYYY-MM-DD'
+ * @returns {Promise<Array<{employee, records}>>}
+ */
+export async function getAllEmployeesAttendanceSummary(employees, startDate, endDate) {
+  try {
+    const results = await Promise.all(
+      employees.map(async (emp) => {
+        const records = await getAttendanceDateRange(emp.uid || emp.id, startDate, endDate);
+        return { employee: emp, records };
+      })
+    );
+    return results;
+  } catch (err) {
+    console.error('[hrmsService] getAllEmployeesAttendanceSummary failed:', err);
+    throw err;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LEAVE MANAGEMENT
 // Collection: leaves/{leaveId}
