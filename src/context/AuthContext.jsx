@@ -18,6 +18,9 @@ export const AuthProvider = ({ children }) => {
     () => sessionStorage.getItem(GTOKEN_KEY) || null
   );
 
+  // Toggle state to allow an admin to preview the app as a standard employee
+  const [isEmployeeView, setIsEmployeeView] = useState(false);
+
   // Try to use the notifications hook, but handle case where it might be used outside its provider context
   // Usually AuthProvider wraps the whole app, and Notifications typically go inside or alongside
   // So we'll provide a local fallback if useNotifications isn't available or we'll just use raw window.alert as a simple toast fallback
@@ -125,10 +128,17 @@ export const AuthProvider = ({ children }) => {
 
   const clearAuthError = () => setAuthError(null);
 
-  const isAdmin = userProfile?.role === 'admin';
+  const realIsAdmin = userProfile?.role === 'admin';
+  const isAdmin = realIsAdmin && !isEmployeeView;
+
+  const toggleEmployeeView = () => setIsEmployeeView(prev => !prev);
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, signInWithGoogle, signOut, isAdmin, authError, clearAuthError, googleAccessToken, refreshGoogleToken }}>
+    <AuthContext.Provider value={{
+      user, userProfile, loading, signInWithGoogle, signOut,
+      isAdmin, realIsAdmin, isEmployeeView, toggleEmployeeView,
+      authError, clearAuthError, googleAccessToken, refreshGoogleToken
+    }}>
       {children}
       {/* Basic Toast Notification UI inline in AuthProvider */}
       {authError && (

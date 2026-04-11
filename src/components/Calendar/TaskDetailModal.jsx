@@ -115,6 +115,11 @@ export default function TaskDetailModal({ task, onClose }) {
   const [calendarSyncing, setCalendarSyncing] = useState(false);
   const [calendarSynced, setCalendarSynced] = useState(false);
 
+  // ── Edit Task state ──────────────────────────────────────────────────────────
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(task?.title || '');
+  const [editDescription, setEditDescription] = useState(task?.description || '');
+
   if (!task) return null;
 
   const canEdit = canEditTask(task, userProfile);
@@ -122,6 +127,28 @@ export default function TaskDetailModal({ task, onClose }) {
   const overdue = isOverdue(task.dueDate) && task.status !== 'completed';
   const dueDays = getDueDateLabel(task.dueDate);
   const dueDateColor = getDueDateColor(task.dueDate);
+
+  // Permission: task creator OR admin can edit
+  const canEditDetails =
+    userProfile?.role === 'admin' || task.createdBy === userProfile?.uid;
+
+  const handleSaveEdit = async () => {
+    if (!editTitle.trim()) return;
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, 'tasks', task.id), {
+        title: editTitle.trim(),
+        description: editDescription.trim(),
+        updatedAt: new Date(),
+      });
+      setIsEditing(false);
+    } catch (err) {
+      console.error('Failed to update task:', err);
+      alert('Failed to save changes. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // Called when user clicks "Save Progress"
   const handleProgressSave = async () => {
@@ -254,7 +281,18 @@ export default function TaskDetailModal({ task, onClose }) {
           {/* Header */}
           <div>
             <div className="flex items-start gap-3 flex-wrap">
-              <h2 className="text-xl font-bold text-text-primary flex-1">{task.title}</h2>
+              {isEditing ? (
+                <input
+                  type="text"
+                  className="input-field flex-1 text-lg font-bold"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  placeholder="Task title"
+                  autoFocus
+                />
+              ) : (
+                <h2 className="text-xl font-bold text-text-primary flex-1">{task.title}</h2>
+              )}
               {task.isAdminTask === false && (
                 <span className="badge bg-purple-500/10 text-purple-400 border border-purple-500/20">Self-Assigned</span>
               )}
@@ -267,12 +305,22 @@ export default function TaskDetailModal({ task, onClose }) {
           </div>
 
           {/* Description */}
-          {task.description && (
-            <div>
-              <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Description</h4>
-              <p className="text-sm text-text-secondary leading-relaxed">{task.description}</p>
-            </div>
-          )}
+          <div>
+            <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Description</h4>
+            {isEditing ? (
+              <textarea
+                className="input-field w-full resize-none text-sm"
+                rows={4}
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                placeholder="Add a description..."
+              />
+            ) : (
+              <p className="text-sm text-text-secondary leading-relaxed">
+                {task.description || <span className="italic text-text-muted">No description provided.</span>}
+              </p>
+            )}
+          </div>
 
           {/* Dates */}
           <div className="grid grid-cols-2 gap-4">
@@ -467,18 +515,64 @@ export default function TaskDetailModal({ task, onClose }) {
               {task.updatedAt && <span>Updated {formatDate(task.updatedAt)}</span>}
             </div>
 
-            {(userProfile?.role === 'admin' || (task.isAdminTask === false && task.createdBy === userProfile?.uid)) && (
-              <button
-                onClick={handleDelete}
-                disabled={saving}
-                className="text-xs font-semibold text-red-400 hover:text-red-300 transition-colors flex items-center gap-1"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                Delete Task
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {/* Edit / Save Changes button */}
+              {canEditDetails && (
+                isEditing ? (
+                  <>
+                    <button
+                      onClick={handleSaveEdit}
+                      disabled={saving || !editTitle.trim()}
+                      className="text-xs font-semibold text-green-400 hover:text-green-300 transition-colors flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      {saving ? 'Saving...' : 'Save Changes'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsEditing(false);
+                        setEditTitle(task.title || '');
+                        setEditDescription(task.description || '');
+                      }}
+                      disabled={saving}
+                      className="text-xs font-semibold text-text-muted hover:text-text-primary transition-colors flex items-center gap-1"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    disabled={saving}
+                    className="text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Edit Task
+                  </button>
+                )
+              )}
+
+              {/* Delete button */}
+              {(userProfile?.role === 'admin' || (task.isAdminTask === false && task.createdBy === userProfile?.uid)) && (
+                <button
+                  onClick={handleDelete}
+                  disabled={saving}
+                  className="text-xs font-semibold text-red-400 hover:text-red-300 transition-colors flex items-center gap-1"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete Task
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </Modal>
