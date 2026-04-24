@@ -1,9 +1,13 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
+import {
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut as firebaseSignOut,
+  GoogleAuthProvider,
+} from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../services/firebase';
 import { requestBrowserNotifPermission } from '../services/notificationService';
-import { GoogleAuthProvider } from 'firebase/auth';
 
 const GTOKEN_KEY = 'goog_cal_token';
 
@@ -17,19 +21,11 @@ export const AuthProvider = ({ children }) => {
   const [googleAccessToken, setGoogleAccessToken] = useState(
     () => sessionStorage.getItem(GTOKEN_KEY) || null
   );
-
-  // Toggle state to allow an admin to preview the app as a standard employee
+  
   const [isEmployeeView, setIsEmployeeView] = useState(false);
-
-  // Try to use the notifications hook, but handle case where it might be used outside its provider context
-  // Usually AuthProvider wraps the whole app, and Notifications typically go inside or alongside
-  // So we'll provide a local fallback if useNotifications isn't available or we'll just use raw window.alert as a simple toast fallback
-  // Wait, let's look at how useNotifications is imported. Actually AuthProvider is at the root. We can just use an internal state for a simple toast if the project doesn't have a global toast container setup yet.
-
-  // We'll implement a basic local toast state just for auth errors to be safe and self-contained 
-  // as requested "user-friendly toast notifications in AuthContext.jsx"
   const [authError, setAuthError] = useState(null);
 
+  // ── Auth state listener ──────────────────────────────────────────────────────
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
@@ -39,7 +35,7 @@ export const AuthProvider = ({ children }) => {
           const snap = await getDoc(profileRef);
 
           if (!snap.exists()) {
-            // First login — create profile
+            // First login — create profile with employee role
             const newProfile = {
               uid: firebaseUser.uid,
               name: firebaseUser.displayName || 'Team Member',
@@ -53,11 +49,10 @@ export const AuthProvider = ({ children }) => {
           } else {
             setUserProfile(snap.data());
           }
-          // Ask for browser notification permission as soon as user is authenticated
           requestBrowserNotifPermission();
         } catch (error) {
-          console.error("Error setting up user profile:", error);
-          setAuthError("Failed to load user profile. Please try logging in again.");
+          console.error('Error setting up user profile:', error);
+          setAuthError('Failed to load user profile. Please try logging in again.');
           await firebaseSignOut(auth);
           setUser(null);
           setUserProfile(null);
@@ -72,11 +67,11 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
+  // ── Sign-in with Google (Popup) ──────────────────────────────────────────────
   const signInWithGoogle = async () => {
     setAuthError(null);
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      // Capture the Google OAuth access token for Calendar API calls
       const credential = GoogleAuthProvider.credentialFromResult(result);
       if (credential?.accessToken) {
         setGoogleAccessToken(credential.accessToken);
@@ -84,12 +79,16 @@ export const AuthProvider = ({ children }) => {
       }
       return result;
     } catch (error) {
-      console.error("Login failed:", error);
-      let errorMessage = "An error occurred during login. Please try again.";
+      console.error('Login failed:', error);
+      let errorMessage = 'Sign-in failed. Please try again.';
       if (error.code === 'auth/popup-closed-by-user') {
-        errorMessage = "Sign-in popup was closed before completing.";
+        errorMessage = 'Sign-in was cancelled. Please try again.';
+      } else if (error.code === 'auth/popup-blocked') {
+        errorMessage = 'Popup was blocked by your browser. Please allow popups for the AirBuddy site and try again.';
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        errorMessage = 'Another sign-in is in progress. Please wait.';
       } else if (error.code === 'auth/network-request-failed') {
-        errorMessage = "Network error. Please check your internet connection.";
+        errorMessage = 'Network error. Please check your internet connection.';
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -98,19 +97,19 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // ── Sign-out ─────────────────────────────────────────────────────────────────
   const signOut = async () => {
     try {
       await firebaseSignOut(auth);
       setGoogleAccessToken(null);
       sessionStorage.removeItem(GTOKEN_KEY);
     } catch (error) {
-      console.error("Sign out failed:", error);
-      setAuthError("Failed to sign out properly.");
+      console.error('Sign out failed:', error);
+      setAuthError('Failed to sign out properly.');
     }
   };
 
-  // Silently re-authenticate with Google to get a fresh access token
-  // (called automatically if calendarService gets a 401)
+  // ── Refresh Google OAuth token silently (called on Calendar 401) ─────────────
   const refreshGoogleToken = async () => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
@@ -130,7 +129,6 @@ export const AuthProvider = ({ children }) => {
 
   const realIsAdmin = userProfile?.role === 'admin';
   const isAdmin = realIsAdmin && !isEmployeeView;
-
   const toggleEmployeeView = () => setIsEmployeeView(prev => !prev);
 
   return (
@@ -140,11 +138,13 @@ export const AuthProvider = ({ children }) => {
       authError, clearAuthError, googleAccessToken, refreshGoogleToken
     }}>
       {children}
-      {/* Basic Toast Notification UI inline in AuthProvider */}
       {authError && (
-        <div className="fixed bottom-4 right-4 z-50 bg-red-500 text-white px-6 py-3 rounded shadow-lg flex items-center justify-between gap-4 animate-bounce">
-          <span>{authError}</span>
-          <button onClick={clearAuthError} className="text-white hover:text-gray-200 font-bold bg-transparent border-0 text-xl font-mono px-2">
+        <div className="fixed bottom-4 right-4 z-50 bg-red-500 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center justify-between gap-4">
+          <span className="text-sm font-medium">{authError}</span>
+          <button
+            onClick={clearAuthError}
+            className="text-white hover:text-gray-200 font-bold text-xl leading-none"
+          >
             &times;
           </button>
         </div>
