@@ -4,15 +4,15 @@ import { db } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
 
 export const useNotifications = () => {
-  const { user } = useAuth();
+  const { user, effectiveUid } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !effectiveUid) return;
 
     const q = query(
-      collection(db, 'notifications', user.uid, 'items'),
+      collection(db, 'notifications', effectiveUid, 'items'),
       orderBy('createdAt', 'desc'),
       limit(20)
     );
@@ -24,11 +24,11 @@ export const useNotifications = () => {
     });
 
     return unsub;
-  }, [user]);
+  }, [user, effectiveUid]);
 
   const markAsRead = async (notifId) => {
     if (!user) return;
-    await updateDoc(doc(db, 'notifications', user.uid, 'items', notifId), { read: true });
+    await updateDoc(doc(db, 'notifications', effectiveUid, 'items', notifId), { read: true });
   };
 
   const markAllRead = async () => {

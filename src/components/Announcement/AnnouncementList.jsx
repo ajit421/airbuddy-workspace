@@ -105,7 +105,9 @@ const AnnouncementCard = ({ announcement, currentUser }) => {
 export default function AnnouncementList() {
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { user, userProfile } = useAuth();
+  const { user, userProfile, effectiveUid } = useAuth();
+  // Create a synthetic user object with the effective UID for read tracking
+  const effectiveUser = user ? { ...user, uid: effectiveUid || user.uid } : null;
 
   useEffect(() => {
     const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
@@ -114,17 +116,17 @@ export default function AnnouncementList() {
       // Filter by targetAudience
       const visible = items.filter(a => {
         if (a.targetAudience === 'all') return true;
-        if (Array.isArray(a.targetAudience)) return a.targetAudience.includes(user?.uid);
+        if (Array.isArray(a.targetAudience)) return a.targetAudience.includes(effectiveUid || user?.uid);
         return true;
       });
       setAnnouncements(visible);
       setLoading(false);
     });
     return unsub;
-  }, [user]);
+  }, [user, effectiveUid]);
 
   const unreadCount = announcements.filter(
-    a => !Array.isArray(a.isRead) || !a.isRead.includes(user?.uid)
+    a => !Array.isArray(a.isRead) || !a.isRead.includes(effectiveUid || user?.uid)
   ).length;
 
   if (loading) {
@@ -151,7 +153,7 @@ export default function AnnouncementList() {
       ) : (
         <div className="space-y-3">
           {announcements.map(a => (
-            <AnnouncementCard key={a.id} announcement={a} currentUser={user} />
+            <AnnouncementCard key={a.id} announcement={a} currentUser={effectiveUser} />
           ))}
         </div>
       )}

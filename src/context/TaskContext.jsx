@@ -6,14 +6,14 @@ import { useAuth } from './AuthContext';
 const TaskContext = createContext(null);
 
 export const TaskProvider = ({ children }) => {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, effectiveUid } = useAuth();
   const [tasks, setTasks] = useState([]);
   const [allTasks, setAllTasks] = useState([]);
   const [allUsers, setAllUsers] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !effectiveUid) {
       setTasks([]);
       setAllTasks([]);
       setAllUsers({});
@@ -71,7 +71,7 @@ export const TaskProvider = ({ children }) => {
       // Query 1: tasks assigned to this user
       const assignedQuery = query(
         collection(db, 'tasks'),
-        where('assignedTo', 'array-contains', user.uid)
+        where('assignedTo', 'array-contains', effectiveUid)
       );
       const unsubAssigned = onSnapshot(assignedQuery, (snap) => {
         assignedSnap = snap;
@@ -84,7 +84,7 @@ export const TaskProvider = ({ children }) => {
       // Query 2: tasks where user is a work partner
       const partnerQuery = query(
         collection(db, 'tasks'),
-        where('workPartnerUids', 'array-contains', user.uid)
+        where('workPartnerUids', 'array-contains', effectiveUid)
       );
       const unsubPartner = onSnapshot(partnerQuery, (snap) => {
         partnerSnap = snap;
@@ -101,7 +101,7 @@ export const TaskProvider = ({ children }) => {
       unsubUsers();
       unsubTasks();
     };
-  }, [user, isAdmin]);
+  }, [user, isAdmin, effectiveUid]);
 
   const getTasksByStatus = (status) => tasks.filter(t => t.status === status);
   const getUpcomingTasks = (days = 7) => {

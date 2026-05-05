@@ -44,7 +44,7 @@ function EmptyState({ query, filterRole }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function TeamMembers() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, effectiveUid } = useAuth();
   const { members, loading, error } = useTeamMembers();
 
   // ── Local UI state ──
@@ -156,14 +156,14 @@ export default function TeamMembers() {
           <EmptyState query={searchQuery} filterRole={filterRole} />
         ) : (
           filteredMembers.map((member) => {
-            const canEdit = isAdmin || member.uid === user?.uid;
+            const canEdit = isAdmin || member.uid === effectiveUid;
             return (
               <ProfileCard
                 key={member.uid}
                 user={member}
                 attendanceData={attendanceMap[member.uid] || null}
                 attendanceLoading={attendanceLoading[member.uid] === true}
-                currentUserUid={user?.uid}
+                currentUserUid={effectiveUid}
                 isAdmin={isAdmin}
                 onEdit={(u) => {
                   openEditModal(u);
@@ -185,7 +185,7 @@ export default function TeamMembers() {
           isOpen
           onClose={closeModal}
           user={selectedUser}
-          currentUserUid={user?.uid}
+          currentUserUid={effectiveUid}
           isAdmin={isAdmin}
         />
       )}

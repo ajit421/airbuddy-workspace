@@ -235,7 +235,7 @@ const WorkPartnerCard = ({ task, currentUid, allUsers, onClick }) => {
 
 export default function WorkPartner() {
   const { tasks, loading, allUsers } = useTasks();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, effectiveUid } = useAuth();
   const [selectedTask, setSelectedTask] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
 
@@ -248,9 +248,9 @@ export default function WorkPartner() {
     if (isAdmin) {
       isIncluded = hasMultipleAssignees || hasWorkPartners;
     } else {
-      const isMultiAssignee = hasMultipleAssignees && assignedArr.includes(user?.uid);
-      const isWorkPartner = hasWorkPartners && t.workPartners.some((p) => p.uid === user?.uid);
-      const isCreatorWithPartners = hasWorkPartners && t.createdBy === user?.uid;
+      const isMultiAssignee = hasMultipleAssignees && assignedArr.includes(effectiveUid);
+      const isWorkPartner = hasWorkPartners && t.workPartners.some((p) => p.uid === effectiveUid);
+      const isCreatorWithPartners = hasWorkPartners && t.createdBy === effectiveUid;
       isIncluded = isMultiAssignee || isWorkPartner || isCreatorWithPartners;
     }
 
@@ -267,7 +267,7 @@ export default function WorkPartner() {
         ...(Array.isArray(selectedTask.workPartners) ? selectedTask.workPartners.map(p => p.uid) : [])
       ]
       .filter((uid, index, array) => array.indexOf(uid) === index)
-      .filter(uid => uid !== user?.uid)
+      .filter(uid => uid !== effectiveUid)
       .map(uid => ({ uid, ...(allUsers[uid] || {}) }))
     : [];
 
@@ -321,7 +321,7 @@ export default function WorkPartner() {
             <WorkPartnerCard
               key={task.id}
               task={task}
-              currentUid={user?.uid}
+              currentUid={effectiveUid}
               allUsers={allUsers}
               onClick={() => setSelectedTask(task)}
             />

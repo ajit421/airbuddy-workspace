@@ -39,3 +39,9 @@ ui-debug.log
 
 # Mac
 .DS_Store
+
+# Firebase Admin SDK - NEVER commit this!
+serviceAccountKey.json
+*.serviceAccountKey.json
+migrateAttendance.cjs
+
