@@ -31,6 +31,24 @@ export const AuthProvider = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
+          // ── Whitelist / Invite-Only gate ─────────────────────────────────────
+          // Check the allowed_emails collection BEFORE any other logic.
+          // The document ID is the user's email address.
+          const allowedEmailRef = doc(db, 'allowed_emails', firebaseUser.email);
+          const allowedEmailSnap = await getDoc(allowedEmailRef);
+
+          if (!allowedEmailSnap.exists()) {
+            // Email is NOT whitelisted — reject immediately
+            await firebaseSignOut(auth);
+            setAuthError('Unauthorized access: Your email is not whitelisted. Please contact the admin.');
+            setUser(null);
+            setEffectiveUid(null);
+            setUserProfile(null);
+            setLoading(false);
+            return;
+          }
+          // ── Email is whitelisted — continue with normal flow ─────────────────
+
           setUser(firebaseUser);
           
           // Check if this email is a secondary/linked email mapped to a primary user

@@ -8,6 +8,12 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Returns true only if the signed-in user's email exists in the allowed_emails
+    // whitelist collection (document ID == email address).
+    function isEmailAllowed() {
+      return exists(/databases/$(database)/documents/allowed_emails/$(request.auth.token.email));
+    }
+
     // Resolves secondary emails to their primary UID via user_email_map.
     // If the logged-in email is in the map, returns the primaryUid; otherwise
     // returns the Firebase Auth UID unchanged. This makes secondary-account
@@ -41,23 +47,32 @@ service cloud.firestore {
       return isTaskParticipantLocal(get(/databases/$(database)/documents/tasks/$(taskId)).data);
     }
 
+    // ── Whitelist / Allowed Emails Collection ───────────────────────────────
+    // Document ID == email address. Existence = access granted.
+    // Read:  Any authenticated user (needed for the Firestore-native isEmailAllowed() gate).
+    // Write: Admins only — only the admin can invite or revoke access.
+    match /allowed_emails/{emailId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
     // Users Collection
-    // Read:   Any authenticated user can read profiles (needed for Team Members grid)
+    // Read:   Any whitelisted authenticated user can read profiles (needed for Team Members grid)
     // Create: First-time Google login creates own profile with role = 'employee' only
     // Update: User can update their own SAFE personal fields only;
     //         Admin can update any user's full profile
     // Delete: Admins only
     match /users/{userId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && isEmailAllowed();
 
-      allow create: if isAuthenticated()
+      allow create: if isAuthenticated() && isEmailAllowed()
         && request.auth.uid == userId
         && request.resource.data.role == 'employee'
         // Block secondary emails from creating new user docs —
         // they are handled by AuthContext's email-map redirect
         && !exists(/databases/$(database)/documents/user_email_map/$(request.auth.token.email));
 
-      allow update: if isAuthenticated() && (
+      allow update: if isAuthenticated() && isEmailAllowed() && (
         isAdmin()
         || (
           request.auth.uid == userId
@@ -90,7 +105,7 @@ service cloud.firestore {
     match /tasks/{taskId} {
 
       // Read: Admin sees all. Employee sees tasks they are assigned to, created, or partnered on.
-      allow read: if isAuthenticated() && (
+      allow read: if isAuthenticated() && isEmailAllowed() && (
         isAdmin() ||
         ('assignedTo' in resource.data && getEffectiveUid() in resource.data.assignedTo) ||
         ('createdBy' in resource.data && resource.data.createdBy == getEffectiveUid()) ||
@@ -98,7 +113,7 @@ service cloud.firestore {
       );
 
       // Create: Admin can create any. Employee can create personal tasks (isAdminTask == false/undefined).
-      allow create: if isAuthenticated() && (
+      allow create: if isAuthenticated() && isEmailAllowed() && (
         isAdmin() ||
         (request.resource.data.get('isAdminTask', false) == false && request.resource.data.get('createdBy', '') == getEffectiveUid())
       );
@@ -107,7 +122,7 @@ service cloud.firestore {
       // 1. Creator can update personal tasks.
       // 2. Assignee can update progress/status/dueDate/completionNote/attachments (denied from core metadata).
       // 3. ANY participant (Creator, Assignee, Work Partner) can update the workPartner arrays + updatedAt.
-      allow update: if isAuthenticated() && (
+      allow update: if isAuthenticated() && isEmailAllowed() && (
         isAdmin() ||
         (resource.data.get('isAdminTask', false) == false && resource.data.get('createdBy', '') == getEffectiveUid()) ||
         (
@@ -125,7 +140,7 @@ service cloud.firestore {
       );
 
       // Delete: Admin can delete any. Employee can delete own personal tasks.
-      allow delete: if isAuthenticated() && (
+      allow delete: if isAuthenticated() && isEmailAllowed() && (
         isAdmin() ||
         (resource.data.get('isAdminTask', false) == false && resource.data.get('createdBy', '') == getEffectiveUid())
       );
@@ -144,14 +159,14 @@ service cloud.firestore {
       match /events/{eventId} {
 
         // Read: Anyone who can read the parent task can read its events.
-        allow read: if isAuthenticated() && isTaskParticipant(taskId);
+        allow read: if isAuthenticated() && isEmailAllowed() && isTaskParticipant(taskId);
 
         // Create: Only task participants (assignees, creator, work partners, admin) can post events.
         // authorUid must equal the requesting user — no spoofing.
-        allow create: if isAuthenticated() && isTaskParticipant(taskId) && request.resource.data.authorUid == getEffectiveUid();
+        allow create: if isAuthenticated() && isEmailAllowed() && isTaskParticipant(taskId) && request.resource.data.authorUid == getEffectiveUid();
 
         // Update / Delete: Only the event author or an admin can modify or delete an event.
-        allow update, delete: if isAuthenticated() && (
+        allow update, delete: if isAuthenticated() && isEmailAllowed() && (
           isAdmin() ||
           resource.data.authorUid == getEffectiveUid()
         );
@@ -160,11 +175,11 @@ service cloud.firestore {
 
     // Announcements Collection
     match /announcements/{announcementId} {
-      // Read: All authenticated users can read. (Filters applied in client UI)
-      allow read: if isAuthenticated();
+      // Read: All whitelisted authenticated users can read. (Filters applied in client UI)
+      allow read: if isAuthenticated() && isEmailAllowed();
       
-      // Mark as read (Update isRead array): Any authenticated user can append their uid
-      allow update: if isAuthenticated() && 
+      // Mark as read (Update isRead array): Any whitelisted authenticated user can append their uid
+      allow update: if isAuthenticated() && isEmailAllowed() && 
         (isAdmin() || 
          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']));
 
@@ -174,10 +189,10 @@ service cloud.firestore {
 
     // Notifications Collection
     match /notifications/{userId}/items/{notificationId} {
-      // Any authenticated user can CREATE a notification for anyone (needed for client-side cross-user notifications)
-      allow create: if isAuthenticated();
+      // Any whitelisted authenticated user can CREATE a notification for anyone (needed for client-side cross-user notifications)
+      allow create: if isAuthenticated() && isEmailAllowed();
       // Only the notification owner can read, update (mark read), or delete their own notifications
-      allow read, update, delete: if isAuthenticated() && (getEffectiveUid() == userId || request.auth.uid == userId);
+      allow read, update, delete: if isAuthenticated() && isEmailAllowed() && (getEffectiveUid() == userId || request.auth.uid == userId);
     }
 
     // Leave Management Collection
@@ -185,11 +200,11 @@ service cloud.firestore {
     // { uid, applicantName, type, startDate, endDate, reason, status, createdAt, reviewedBy? }
     match /leaves/{leaveId} {
       // Read: owner can read own; admin can read all (for pending approvals view)
-      allow read: if isAuthenticated() &&
+      allow read: if isAuthenticated() && isEmailAllowed() &&
         (resource.data.uid == getEffectiveUid() || isAdmin());
 
-      // Create: any authenticated user can apply for their own leave
-      allow create: if isAuthenticated() &&
+      // Create: any whitelisted authenticated user can apply for their own leave
+      allow create: if isAuthenticated() && isEmailAllowed() &&
         request.resource.data.uid == getEffectiveUid() &&
         request.resource.data.status == 'pending';
 
@@ -207,14 +222,14 @@ service cloud.firestore {
     // Users can only read/write their own records.
     match /attendance/{userId}/records/{recordId} {
       // Read: own records always; admin can read anyone's
-      allow read: if isAuthenticated() &&
+      allow read: if isAuthenticated() && isEmailAllowed() &&
         (getEffectiveUid() == userId || isAdmin());
 
       // Create: only the owner can punch in (create a new record for themselves)
-      allow create: if isAuthenticated() && getEffectiveUid() == userId;
+      allow create: if isAuthenticated() && isEmailAllowed() && getEffectiveUid() == userId;
 
       // Update: only the owner can punch out (update their own open record)
-      allow update: if isAuthenticated() && getEffectiveUid() == userId;
+      allow update: if isAuthenticated() && isEmailAllowed() && getEffectiveUid() == userId;
 
       // Delete: admins only (e.g., correcting erroneous records)
       allow delete: if isAdmin();
@@ -224,8 +239,8 @@ service cloud.firestore {
     // Schema: candidates/{candidateId}
     // { name, email, role, experience, status, notes, createdAt, updatedAt }
     match /candidates/{candidateId} {
-      // All authenticated users can view the recruitment pipeline
-      allow read: if isAuthenticated();
+      // All whitelisted authenticated users can view the recruitment pipeline
+      allow read: if isAuthenticated() && isEmailAllowed();
 
       // Only admins can add candidates or move them between columns
       allow create, update: if isAdmin();
@@ -239,7 +254,7 @@ service cloud.firestore {
     // { uid, employeeName, reviewedBy, period, skills{...}, goalsAssigned, goalsCompleted, notes, createdAt }
     match /performances/{reviewId} {
       // Employee can read their own reviews; admins can read all
-      allow read: if isAuthenticated() &&
+      allow read: if isAuthenticated() && isEmailAllowed() &&
         (resource.data.uid == getEffectiveUid() || isAdmin());
 
       // Only admins can create or update reviews
