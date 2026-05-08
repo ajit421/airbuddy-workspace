@@ -6,6 +6,8 @@ import TaskCard from '../shared/TaskCard';
 import TaskDetailModal from '../Calendar/TaskDetailModal';
 import SelfTaskModal from './SelfTaskModal';
 import { getDueDateLabel, getDueDateColor } from '../../utils/dateHelpers';
+import TaskFilterBar from './TaskFilterBar';
+import { useTaskFilters } from '../../hooks/useTaskFilters';
 // HRMS Dashboard Widget — attendance punch service
 import { recordPunch, getTodayAttendance } from '../../services/hrmsService';
 
@@ -132,16 +134,29 @@ function QuickPunchWidget({ uid }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function EmployeeDashboard() {
-  const { tasks, loading, getUpcomingTasks } = useTasks();
-  const { userProfile } = useAuth();
+  const { tasks, loading, getUpcomingTasks, allUsers } = useTasks();
+  const { userProfile, isAdmin } = useAuth();
   const [selectedTask, setSelectedTask] = useState(null);
   const [isSelfTaskModalOpen, setIsSelfTaskModalOpen] = useState(false);
 
   // timeFilter: 'month' | 'week' | 'day'
   const [timeFilter, setTimeFilter] = useState('month');
 
-  // statusFilter for the task list below the charts
-  const [statusFilter, setStatusFilter] = useState('all');
+  const {
+    state,
+    filteredTasks: taskListTasks,
+    workPartners,
+    employeeList,
+    setStatusFilter,
+    setSortOrder,
+    togglePriority,
+    setWorkPartner,
+    setEmployee,
+    toggleFiltersOpen,
+    resetFilters,
+    isFilterActive,
+    taskCountByStatus,
+  } = useTaskFilters(tasks, allUsers, isAdmin);
 
   // Filter tasks based on selected timeframe
   const filteredTasks = tasks.filter(t => {
@@ -181,18 +196,6 @@ export default function EmployeeDashboard() {
 
   // Upcoming deadlines logic usually ignores the backward filter, but we'll use global tasks for it.
   const upcoming = getUpcomingTasks(7).length;
-
-  // All tasks sorted by due date (not filtered by completeness) for the status-tab list
-  const nextTasks = [...tasks].sort((a, b) => {
-    const da = a.dueDate?.toDate ? a.dueDate.toDate() : new Date(a.dueDate);
-    const db_ = b.dueDate?.toDate ? b.dueDate.toDate() : new Date(b.dueDate);
-    return da - db_;
-  });
-
-  // Apply the status tab filter
-  const statusFilteredTasks = statusFilter === 'all'
-    ? nextTasks
-    : nextTasks.filter(t => t.status === statusFilter);
 
   if (loading) {
     return (
@@ -316,28 +319,50 @@ export default function EmployeeDashboard() {
       {/* Upcoming Tasks */}
       <div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <h3 className="section-title">All Tasks</h3>
-          <span className="text-xs text-text-muted">{nextTasks.length} task{nextTasks.length !== 1 ? 's' : ''} total</span>
+          <div className="flex items-center gap-3">
+            <h3 className="section-title m-0">All Tasks</h3>
+            <span className="text-xs text-text-muted">{taskCountByStatus.all} task{taskCountByStatus.all !== 1 ? 's' : ''} total</span>
+          </div>
+          <button
+            onClick={toggleFiltersOpen}
+            className={`
+              relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+              border transition-all
+              ${state.filtersOpen
+                ? 'bg-orange/10 border-orange/40 text-orange'
+                : 'bg-surface border-border text-text-secondary hover:text-text-primary hover:border-orange/30'
+              }
+            `}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+            </svg>
+            Filters
+            {isFilterActive && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-orange" />
+            )}
+          </button>
         </div>
 
         {/* Status Filter Tabs */}
         <div className="flex gap-1 mb-4 bg-surface border border-border rounded-xl p-1 overflow-x-auto">
           {[
-            { label: 'All', value: 'all', count: nextTasks.length, color: '' },
-            { label: 'In Progress', value: 'in-progress', count: nextTasks.filter(t => t.status === 'in-progress').length, color: 'text-blue-400' },
-            { label: 'Pending', value: 'pending', count: nextTasks.filter(t => t.status === 'pending').length, color: 'text-orange' },
-            { label: 'Completed', value: 'completed', count: tasks.filter(t => t.status === 'completed').length, color: 'text-green-400' },
+            { label: 'All', value: 'all', count: taskCountByStatus.all, color: '' },
+            { label: 'In Progress', value: 'in-progress', count: taskCountByStatus['in-progress'], color: 'text-blue-400' },
+            { label: 'Pending', value: 'pending', count: taskCountByStatus['pending'], color: 'text-orange' },
+            { label: 'Completed', value: 'completed', count: taskCountByStatus['completed'], color: 'text-green-400' },
           ].map(tab => (
             <button
               key={tab.value}
               onClick={() => setStatusFilter(tab.value)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${statusFilter === tab.value
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${state.statusFilter === tab.value
                 ? 'bg-orange text-white shadow-sm'
                 : 'text-text-secondary hover:text-text-primary hover:bg-surfaceHover'
                 }`}
             >
               {tab.label}
-              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${statusFilter === tab.value
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${state.statusFilter === tab.value
                 ? 'bg-white/20 text-white'
                 : 'bg-border text-text-muted'
                 }`}>
@@ -347,27 +372,40 @@ export default function EmployeeDashboard() {
           ))}
         </div>
 
-        {statusFilteredTasks.length === 0 ? (
+        <TaskFilterBar
+          state={state}
+          isAdmin={isAdmin}
+          workPartners={workPartners}
+          employeeList={employeeList}
+          isFilterActive={isFilterActive}
+          setSortOrder={setSortOrder}
+          togglePriority={togglePriority}
+          setWorkPartner={setWorkPartner}
+          setEmployee={setEmployee}
+          resetFilters={resetFilters}
+        />
+
+        {taskListTasks.length === 0 ? (
           <div className="card text-center py-10">
             <div className="text-4xl mb-3">
-              {statusFilter === 'completed' ? '🎉' : statusFilter === 'in-progress' ? '🚀' : '📋'}
+              {state.statusFilter === 'completed' ? '🎉' : state.statusFilter === 'in-progress' ? '🚀' : '📋'}
             </div>
             <p className="font-semibold text-text-primary">
-              {statusFilter === 'completed'
+              {state.statusFilter === 'completed'
                 ? 'No completed tasks yet!'
-                : statusFilter === 'in-progress'
+                : state.statusFilter === 'in-progress'
                   ? 'Nothing in progress right now.'
-                  : statusFilter === 'pending'
+                  : state.statusFilter === 'pending'
                     ? 'No pending tasks!'
                     : 'All caught up!'}
             </p>
             <p className="text-sm text-text-muted mt-1">
-              {statusFilter === 'all' ? 'No tasks assigned yet.' : `Switch to another tab to see other tasks.`}
+              {state.statusFilter === 'all' ? 'No tasks assigned yet.' : `Switch to another tab to see other tasks.`}
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {statusFilteredTasks.map(task => (
+            {taskListTasks.map(task => (
               <TaskCard key={task.id} task={task} onClick={setSelectedTask} />
             ))}
           </div>
