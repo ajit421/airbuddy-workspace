@@ -24,7 +24,9 @@ import {
 const LEAVE_TYPES = [
   { value: 'sick',    label: 'Sick Leave'   },
   { value: 'casual',  label: 'Casual Leave' },
-  { value: 'unpaid',  label: 'Unpaid Leave' },
+  { value: 'Privilege',  label: 'Privilege Leave' },
+  { value: 'Compensatory',  label: 'Compensatory Off' },
+  { value: 'Emergecy',  label: 'Emergecy Leave' },
 ];
 
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -66,7 +68,9 @@ function TypeChip({ type }) {
   const map = {
     sick:   'bg-blue-500/10 text-blue-400',
     casual: 'bg-purple-500/10 text-purple-400',
-    unpaid: 'bg-orange/10 text-orange',
+    Privilege: 'bg-green-500/10 text-green-400',
+    Compensatory: 'bg-yellow-500/10 text-yellow-400',
+    Emergecy: 'bg-red-500/10 text-red-400',
   };
   const label = LEAVE_TYPES.find((t) => t.value === type)?.label ?? type;
   return (

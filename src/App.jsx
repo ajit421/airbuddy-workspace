@@ -9,6 +9,7 @@ import WorkPartner from './components/WorkPartner/WorkPartner';
 import AnnouncementList from './components/Announcement/AnnouncementList';
 import AboutPage from './components/About/AboutPage';
 import AdminPanel from './components/Admin/AdminPanel';
+import DocsPage from './pages/DocsPage';
 
 // HRMS Module imports — added for the new HRMS feature set
 import EmployeeDirectory    from './components/HRMS/Directory/EmployeeDirectory';
@@ -48,6 +49,8 @@ const AppRoutes = () => {
 
   return (
     <Routes>
+      <Route path="docs" element={<DocsPage />} />
+      <Route path="docs/:docId" element={<DocsPage />} />
       <Route
         path="/login"
         element={user ? <Navigate to="/" replace /> : <LoginPage />}
