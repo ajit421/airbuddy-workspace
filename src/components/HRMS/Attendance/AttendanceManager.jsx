@@ -56,7 +56,7 @@ function calcTotalMinutes(punchIn, punchOut) {
 function isWeekend(dateStr) {
   const d = new Date(dateStr);
   const day = d.getDay();
-  return day === 0 || day === 6;
+  return day === 0; // Only Sunday is a weekend; Saturday is a working day
 }
 
 function buildLast30Days() {
@@ -408,7 +408,7 @@ function AdminAttendanceTable({ summaries, dateRange, onDrillDown }) {
 }
 
 // ─── Admin Drill-Down Modal ────────────────────────────────────────────────────
-function EmployeeDrillDown({ employee, records, dateRange, onClose }) {
+function EmployeeDrillDown({ employee, records, dateRange, onClose, approvedLeavesMap = {} }) {
   const rangeDays = enumerateDaysBetween(dateRange.start, dateRange.end);
   const displayDays = rangeDays.filter(d => !isWeekend(d) || records.find(r => r.date === d));
 
@@ -445,9 +445,9 @@ function EmployeeDrillDown({ employee, records, dateRange, onClose }) {
 
         {/* Content */}
         <div className="p-6 flex flex-col gap-6">
-          <AttendanceHeatmap days={displayDays} recordMap={recordMap} approvedLeavesMap={{}} />
+          <AttendanceHeatmap days={displayDays} recordMap={recordMap} approvedLeavesMap={approvedLeavesMap} />
           <div className="border-t border-border" />
-          <AttendanceTable days={displayDays} recordMap={recordMap} approvedLeavesMap={{}} />
+          <AttendanceTable days={displayDays} recordMap={recordMap} approvedLeavesMap={approvedLeavesMap} />
         </div>
       </div>
     </div>
@@ -469,7 +469,7 @@ export default function AttendanceManager() {
   const [adminSummaries, setAdminSummaries] = useState([]);
   const [adminLoading, setAdminLoading]     = useState(false);
   const [adminError, setAdminError]         = useState(null);
-  const [drillDownTarget, setDrillDownTarget] = useState(null); // { employee, records }
+  const [drillDownTarget, setDrillDownTarget] = useState(null); // { employee, records, approvedLeavesMap }
 
   // ── Date range (shared for both views) ──
   const [startDate, setStartDate] = useState(thirtyDaysAgo());
@@ -513,6 +513,26 @@ export default function AttendanceManager() {
       setAdminLoading(false);
     }
   }, []);
+
+  // ── Admin drill-down: fetch employee leaves before opening modal ──
+  const handleAdminDrillDown = async (employee, records) => {
+    const uid = employee.uid || employee.id;
+    let approvedLeavesMap = {};
+    try {
+      const leaves = await getMyLeaves(uid);
+      leaves.forEach((leave) => {
+        if (leave.status === 'approved') {
+          enumerateDaysBetween(leave.startDate, leave.endDate).forEach((d) => {
+            approvedLeavesMap[d] = leave;
+          });
+        }
+      });
+    } catch (err) {
+      // Non-fatal: leave map stays empty, modal still opens
+      console.error('[AttendanceManager] handleAdminDrillDown leave fetch failed:', err);
+    }
+    setDrillDownTarget({ employee, records, approvedLeavesMap });
+  };
 
   // Initial load
   useEffect(() => {
@@ -565,6 +585,7 @@ export default function AttendanceManager() {
           records={drillDownTarget.records}
           dateRange={{ start: appliedStart, end: appliedEnd }}
           onClose={() => setDrillDownTarget(null)}
+          approvedLeavesMap={drillDownTarget.approvedLeavesMap ?? {}}
         />
       )}
 
@@ -659,7 +680,7 @@ export default function AttendanceManager() {
               <AdminAttendanceTable
                 summaries={adminSummaries}
                 dateRange={{ start: appliedStart, end: appliedEnd }}
-                onDrillDown={(employee, records) => setDrillDownTarget({ employee, records })}
+                onDrillDown={handleAdminDrillDown}
               />
             )}
 
