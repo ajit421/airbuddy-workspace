@@ -350,6 +350,25 @@ export async function getAllPendingLeaves() {
   }
 }
 
+// ─── getAllLeaves ─────────────────────────────────────────────────────────────
+/**
+ * Admin-only: fetches every leave document across all users, newest first.
+ * Used by the Calendar view to display all employees' leave blocks.
+ *
+ * @returns {Promise<Array<Object>>}
+ */
+export async function getAllLeaves() {
+  try {
+    const snap = await getDocs(collection(db, LEAVES_COLLECTION));
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    // Sort newest first
+    return docs.sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? ''));
+  } catch (err) {
+    console.error('[hrmsService] getAllLeaves failed:', err);
+    throw err;
+  }
+}
+
 // ─── updateLeaveStatus ───────────────────────────────────────────────────────
 /**
  * Admin action: update a leave request's status.
