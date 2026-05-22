@@ -168,7 +168,7 @@ export default function ListView({ tasks, leaves = [], onTaskClick }) {
       {sortedLeaves.length > 0 && (
         <div className="pt-4 border-t border-border">
           <h3 className="text-sm font-bold text-text-primary mb-3 flex items-center gap-2">
-            <span>🌴</span>
+            {/* <span>🌴</span> */}
             Leave Requests
             <span className="text-xs font-normal text-text-muted">({sortedLeaves.length})</span>
           </h3>

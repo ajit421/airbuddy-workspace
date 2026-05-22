@@ -63,7 +63,7 @@ function LeaveInfoPanel({ leave, onClose }) {
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
-            <span className="text-xl">🌴</span>
+            {/* <span className="text-xl">🌴</span> */}
             <h3 className="text-base font-bold text-text-primary">Leave Request</h3>
           </div>
           <button
@@ -181,7 +181,7 @@ export default function CalendarView() {
     const leaveEvents = leaves.map((leave) => {
       const start = new Date(leave.startDate);
       const end   = new Date(leave.endDate);
-      const emoji = leave.status === 'approved' ? '🌴' : leave.status === 'rejected' ? '❌' : '⏳';
+      const emoji = leave.status === 'approved' ? '✅' : leave.status === 'rejected' ? '❌' : '⏳';
       const namePrefix = isAdmin && leave.applicantName ? `${leave.applicantName}: ` : '';
       return {
         id: `leave-${leave.id}`,
