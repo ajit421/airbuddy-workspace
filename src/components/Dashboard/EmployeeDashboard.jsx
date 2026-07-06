@@ -139,8 +139,34 @@ export default function EmployeeDashboard() {
   const [selectedTask, setSelectedTask] = useState(null);
   const [isSelfTaskModalOpen, setIsSelfTaskModalOpen] = useState(false);
 
-  // timeFilter: 'month' | 'week' | 'day'
+  // timeFilter: 'month' | 'week' | 'day' | 'custom'
   const [timeFilter, setTimeFilter] = useState('month');
+  const [customRange, setCustomRange] = useState({ start: '', end: '' });
+  const [showCustomPicker, setShowCustomPicker] = useState(false);
+  const customPickerRef = useRef(null);
+
+  // Close custom picker on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (customPickerRef.current && !customPickerRef.current.contains(e.target)) {
+        setShowCustomPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Default custom range = last 30 days (pre-fill)
+  useEffect(() => {
+    if (timeFilter === 'custom' && !customRange.start && !customRange.end) {
+      const end = new Date();
+      const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+      setCustomRange({
+        start: start.toISOString().split('T')[0],
+        end: end.toISOString().split('T')[0],
+      });
+    }
+  }, [timeFilter]);
 
   const {
     state,
@@ -160,14 +186,11 @@ export default function EmployeeDashboard() {
 
   // Filter tasks based on selected timeframe
   const filteredTasks = tasks.filter(t => {
-    // If no dates, keep it (or decide to exclude). We'll keep it for broad stats.
     const refDateValue = t.dueDate || t.startDate || t.createdAt;
     if (!refDateValue) return true;
 
     const refDate = refDateValue.toDate ? refDateValue.toDate() : new Date(refDateValue);
     const now = new Date();
-
-    // reset times for day comparison
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     if (timeFilter === 'day') {
@@ -180,10 +203,17 @@ export default function EmployeeDashboard() {
       return refDate >= sevenDaysAgo;
     }
 
-    // month (last 30 days)
     if (timeFilter === 'month') {
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       return refDate >= thirtyDaysAgo;
+    }
+
+    if (timeFilter === 'custom' && customRange.start && customRange.end) {
+      const from = new Date(customRange.start);
+      from.setHours(0, 0, 0, 0);
+      const to = new Date(customRange.end);
+      to.setHours(23, 59, 59, 999);
+      return refDate >= from && refDate <= to;
     }
 
     return true;
@@ -214,7 +244,13 @@ export default function EmployeeDashboard() {
             Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'},{' '}
             <span className="text-gradient">{userProfile?.name?.split(' ')[0] || 'there'}</span> 👋
           </h1>
-          <p className="text-sm text-text-secondary mt-1">Here's your workspace overview {timeFilter === 'day' ? 'for today' : `for this ${timeFilter}`}.</p>
+          <p className="text-sm text-text-secondary mt-1">
+            Here's your workspace overview{' '}
+            {timeFilter === 'day' ? 'for today'
+              : timeFilter === 'custom' && customRange.start && customRange.end
+                ? `from ${new Date(customRange.start).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} – ${new Date(customRange.end).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                : `for this ${timeFilter}`}.
+          </p>
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
@@ -225,7 +261,7 @@ export default function EmployeeDashboard() {
               return (
                 <button
                   key={view}
-                  onClick={() => setTimeFilter(val)}
+                  onClick={() => { setTimeFilter(val); setShowCustomPicker(false); }}
                   className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${timeFilter === val
                     ? 'bg-orange text-white shadow-sm'
                     : 'text-text-secondary hover:text-text-primary hover:bg-surfaceHover'
@@ -235,6 +271,106 @@ export default function EmployeeDashboard() {
                 </button>
               );
             })}
+
+            {/* Custom date range button */}
+            <div className="relative" ref={customPickerRef}>
+              <button
+                onClick={() => { setTimeFilter('custom'); setShowCustomPicker(prev => !prev); }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                  timeFilter === 'custom'
+                    ? 'bg-orange text-white shadow-sm'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-surfaceHover'
+                }`}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                {timeFilter === 'custom' && customRange.start && customRange.end
+                  ? `${new Date(customRange.start).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} – ${new Date(customRange.end).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`
+                  : 'Custom'}
+              </button>
+
+              {/* Date range popover */}
+              {showCustomPicker && (
+                <div className="absolute right-0 top-full mt-2 z-50 bg-surface border border-border rounded-xl shadow-2xl p-4 w-72 animate-fade-in">
+                  <p className="text-xs font-bold text-text-primary mb-3 flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5 text-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Custom Date Range
+                  </p>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1">From</label>
+                      <input
+                        type="date"
+                        value={customRange.start}
+                        max={customRange.end || undefined}
+                        onChange={e => setCustomRange(prev => ({ ...prev, start: e.target.value }))}
+                        className="w-full bg-surfaceHover border border-border rounded-lg px-3 py-2 text-xs text-text-primary
+                                   focus:outline-none focus:border-orange/60 focus:ring-1 focus:ring-orange/30 transition-all
+                                   [color-scheme:dark]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1">To</label>
+                      <input
+                        type="date"
+                        value={customRange.end}
+                        min={customRange.start || undefined}
+                        onChange={e => setCustomRange(prev => ({ ...prev, end: e.target.value }))}
+                        className="w-full bg-surfaceHover border border-border rounded-lg px-3 py-2 text-xs text-text-primary
+                                   focus:outline-none focus:border-orange/60 focus:ring-1 focus:ring-orange/30 transition-all
+                                   [color-scheme:dark]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Quick presets */}
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-2">Quick Presets</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { label: 'Last 7d', days: 7 },
+                        { label: 'Last 30d', days: 30 },
+                        { label: 'Last 90d', days: 90 },
+                        { label: 'Last 6mo', days: 180 },
+                        { label: 'Last 1yr', days: 365 },
+                      ].map(preset => (
+                        <button
+                          key={preset.label}
+                          onClick={() => {
+                            const end = new Date();
+                            const start = new Date(end.getTime() - preset.days * 24 * 60 * 60 * 1000);
+                            setCustomRange({
+                              start: start.toISOString().split('T')[0],
+                              end: end.toISOString().split('T')[0],
+                            });
+                          }}
+                          className="px-2 py-1 rounded-md text-[10px] font-semibold bg-surfaceHover hover:bg-orange/10
+                                     hover:text-orange border border-border hover:border-orange/30 text-text-secondary
+                                     transition-all"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setShowCustomPicker(false)}
+                    disabled={!customRange.start || !customRange.end}
+                    className="mt-3 w-full py-2 rounded-lg text-xs font-bold bg-orange hover:bg-orange-hover text-white
+                               transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+                  >
+                    Apply Range
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <button
