@@ -168,24 +168,8 @@ export default function EmployeeDashboard() {
     }
   }, [timeFilter]);
 
-  const {
-    state,
-    filteredTasks: taskListTasks,
-    workPartners,
-    employeeList,
-    setStatusFilter,
-    setSortOrder,
-    togglePriority,
-    setWorkPartner,
-    setEmployee,
-    toggleFiltersOpen,
-    resetFilters,
-    isFilterActive,
-    taskCountByStatus,
-  } = useTaskFilters(tasks, allUsers, isAdmin);
-
-  // Filter tasks based on selected timeframe
-  const filteredTasks = tasks.filter(t => {
+  // ── Step 1: Filter tasks by the selected timeframe (Month / Week / Day / Custom)
+  const filteredByTime = tasks.filter(t => {
     const refDateValue = t.dueDate || t.startDate || t.createdAt;
     if (!refDateValue) return true;
 
@@ -219,12 +203,31 @@ export default function EmployeeDashboard() {
     return true;
   });
 
-  const total = filteredTasks.length;
-  const completed = filteredTasks.filter(t => t.status === 'completed').length;
-  const pending = filteredTasks.filter(t => t.status === 'pending').length;
-  const inProgress = filteredTasks.filter(t => t.status === 'in-progress').length;
+  // ── Step 2: Feed the time-filtered array into the task list filters
+  // This ensures the "All Tasks" section respects the Month/Week/Day/Custom toggle
+  const {
+    state,
+    filteredTasks: taskListTasks,
+    workPartners,
+    employeeList,
+    setStatusFilter,
+    setSortOrder,
+    togglePriority,
+    setWorkPartner,
+    setEmployee,
+    toggleFiltersOpen,
+    resetFilters,
+    isFilterActive,
+    taskCountByStatus,
+  } = useTaskFilters(filteredByTime, allUsers, isAdmin);
 
-  // Upcoming deadlines logic usually ignores the backward filter, but we'll use global tasks for it.
+  // ── Step 3: Stats derived from the same time-filtered array
+  const total = filteredByTime.length;
+  const completed = filteredByTime.filter(t => t.status === 'completed').length;
+  const pending = filteredByTime.filter(t => t.status === 'pending').length;
+  const inProgress = filteredByTime.filter(t => t.status === 'in-progress').length;
+
+  // Upcoming deadlines use the global tasks (not time-filtered) for accuracy
   const upcoming = getUpcomingTasks(7).length;
 
   if (loading) {
@@ -424,8 +427,8 @@ export default function EmployeeDashboard() {
         {/* Donut Chart */}
         <div className="card">
           <h3 className="section-title mb-4">Task Status</h3>
-          {filteredTasks.length > 0 ? (
-            <DonutChart tasks={filteredTasks} />
+          {filteredByTime.length > 0 ? (
+            <DonutChart tasks={filteredByTime} />
           ) : (
             <div className="h-48 flex items-center justify-center text-text-muted text-sm">No tasks {timeFilter === 'day' ? 'today' : `this ${timeFilter}`}</div>
           )}
@@ -434,8 +437,8 @@ export default function EmployeeDashboard() {
         {/* Bar Chart */}
         <div className="card">
           <h3 className="section-title mb-4">Workload</h3>
-          {filteredTasks.length > 0 ? (
-            <BarChart tasks={filteredTasks} timeRange={timeFilter} />
+          {filteredByTime.length > 0 ? (
+            <BarChart tasks={filteredByTime} timeRange={timeFilter} />
           ) : (
             <div className="h-48 flex items-center justify-center text-text-muted text-sm">No data</div>
           )}
@@ -444,8 +447,8 @@ export default function EmployeeDashboard() {
         {/* Line Chart */}
         <div className="card">
           <h3 className="section-title mb-4">Progress Trend</h3>
-          {filteredTasks.length > 0 ? (
-            <LineChart tasks={filteredTasks} timeRange={timeFilter} />
+          {filteredByTime.length > 0 ? (
+            <LineChart tasks={filteredByTime} timeRange={timeFilter} />
           ) : (
             <div className="h-48 flex items-center justify-center text-text-muted text-sm">No data</div>
           )}

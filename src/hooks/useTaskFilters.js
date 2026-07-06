@@ -119,6 +119,15 @@ export function useTaskFilters(tasks, allUsers, isAdmin) {
 
     // Step 5 - Sort
     processed.sort((a, b) => {
+      // In "All" view: completed tasks must always sink to the bottom
+      if (state.statusFilter === 'all') {
+        const aCompleted = a.status === 'completed';
+        const bCompleted = b.status === 'completed';
+        if (aCompleted !== bCompleted) {
+          return aCompleted ? 1 : -1;
+        }
+      }
+
       let cmp = 0;
       const dueA = dueDateMap.get(a.id);
       const dueB = dueDateMap.get(b.id);
@@ -131,14 +140,27 @@ export function useTaskFilters(tasks, allUsers, isAdmin) {
       switch (state.sortOrder) {
         case 'status_asc':
           if (state.statusFilter === 'all') {
+            // In "All" view: in-progress → pending → completed (completed sinks to bottom)
             const statA = STATUS_ORDER[a.status] ?? 99;
             const statB = STATUS_ORDER[b.status] ?? 99;
             if (statA !== statB) {
               cmp = statA - statB;
+            } else if (a.status === 'completed') {
+              // Within completed tasks: newest first (descending due date)
+              const aDueD = dueA !== null ? dueA : -Infinity;
+              const bDueD = dueB !== null ? dueB : -Infinity;
+              cmp = bDueD - aDueD;
             } else {
+              // Within active tasks: soonest due first (ascending due date)
               cmp = aDue - bDue;
             }
+          } else if (state.statusFilter === 'completed') {
+            // In "Completed" tab: newest first (descending due date)
+            const aDueD = dueA !== null ? dueA : -Infinity;
+            const bDueD = dueB !== null ? dueB : -Infinity;
+            cmp = bDueD - aDueD;
           } else {
+            // in-progress / pending tabs: soonest due first
             cmp = aDue - bDue;
           }
           break;
