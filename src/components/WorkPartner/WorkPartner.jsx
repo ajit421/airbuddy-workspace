@@ -87,8 +87,8 @@ const TaskDetailDrawer = ({ task, colleagues, onClose }) => (
           </div>
           <div className="bg-surfaceHover/30 p-3 rounded-xl border border-border/50 col-span-2 sm:col-span-1">
             <span className="block text-[10px] text-text-muted uppercase tracking-wider font-bold mb-1">Due Date</span>
-            <span className={`text-xs font-bold ${getDueDateColor(task.dueDate)}`}>
-              {formatDate(task.dueDate)} <span className="text-text-muted text-[10px] ml-1 font-normal">({getDueDateLabel(task.dueDate)})</span>
+            <span className={`text-xs font-bold ${getDueDateColor(task.dueDate, task.status)}`}>
+              {formatDate(task.dueDate)} <span className="text-text-muted text-[10px] ml-1 font-normal">({getDueDateLabel(task.dueDate, task.status)})</span>
             </span>
           </div>
           <div className="bg-surfaceHover/30 p-3 rounded-xl border border-border/50 col-span-2 sm:col-span-1">
@@ -175,7 +175,7 @@ const WorkPartnerCard = ({ task, currentUid, allUsers, onClick }) => {
 
         {/* Details (Date & Priority) */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-          <div className={`flex items-center gap-1.5 ${getDueDateColor(task.dueDate)} font-medium`}>
+          <div className={`flex items-center gap-1.5 ${getDueDateColor(task.dueDate, task.status)} font-medium`}>
             <svg className="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>

@@ -38,8 +38,8 @@ export const ProgressBar = ({ progress, className = '' }) => (
 export default function TaskCard({ task, onClick }) {
   const { userProfile } = useAuth();
   const { allUsers } = useTasks();
-  const dueDateColor = getDueDateColor(task.dueDate);
-  const dueDateLabel = getDueDateLabel(task.dueDate);
+  const dueDateColor = getDueDateColor(task.dueDate, task.status);
+  const dueDateLabel = getDueDateLabel(task.dueDate, task.status);
 
   return (
     <div
