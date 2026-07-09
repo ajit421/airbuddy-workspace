@@ -263,5 +263,41 @@ service cloud.firestore {
       // Delete: admins only
       allow delete: if isAdmin();
     }
+
+    // ── KPI Collections ────────────────────────────────────────────────────────
+    // All KPI collections follow the same admin-write / all-read pattern:
+    //   Read:          Any whitelisted authenticated user can view KPI data.
+    //   Create/Update: Admins only — admins manage all KPI entries via the UI.
+    //   Delete:        Admins only.
+
+    match /kpi_industries/{docId} {
+      allow read:           if isAuthenticated() && isEmailAllowed();
+      allow create, update: if isAdmin();
+      allow delete:         if isAdmin();
+    }
+
+    match /kpi_clients/{docId} {
+      allow read:           if isAuthenticated() && isEmailAllowed();
+      allow create, update: if isAdmin();
+      allow delete:         if isAdmin();
+    }
+
+    match /kpi_products/{docId} {
+      allow read:           if isAuthenticated() && isEmailAllowed();
+      allow create, update: if isAdmin();
+      allow delete:         if isAdmin();
+    }
+
+    match /kpi_sales/{docId} {
+      allow read:           if isAuthenticated() && isEmailAllowed();
+      allow create, update: if isAdmin();
+      allow delete:         if isAdmin();
+    }
+
+    match /kpi_patents/{docId} {
+      allow read:           if isAuthenticated() && isEmailAllowed();
+      allow create, update: if isAdmin();
+      allow delete:         if isAdmin();
+    }
   }
 }
