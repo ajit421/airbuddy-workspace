@@ -214,3 +214,31 @@ export const LineChart = ({ tasks, timeRange = 'month' }) => {
     </div>
   );
 };
+
+// ─── ProgressMeter ────────────────────────────────────────────────────────────
+/**
+ * A horizontal progress bar used throughout the KPI panels.
+ *
+ * Props:
+ *   value      {number}  0–100  — fill percentage (clamped internally).
+ *   color      {string}  hex    — fill color. Defaults to orange #F97316.
+ *   showValue  {boolean}        — render the numeric value label. Default true.
+ */
+export const ProgressMeter = ({ value = 0, color = '#F97316', showValue = true }) => {
+  const clamped = Math.max(0, Math.min(100, value));
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 bg-border rounded-full h-2 overflow-hidden">
+        <div
+          className="h-2 rounded-full transition-all duration-700"
+          style={{ width: `${clamped}%`, backgroundColor: color }}
+        />
+      </div>
+      {showValue && (
+        <span className="text-xs text-text-muted w-8 text-right flex-shrink-0">
+          {clamped}%
+        </span>
+      )}
+    </div>
+  );
+};
