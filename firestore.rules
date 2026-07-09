@@ -9,9 +9,13 @@ service cloud.firestore {
     }
 
     // Returns true only if the signed-in user's email exists in the allowed_emails
-    // whitelist collection (document ID == email address).
+    // whitelist collection AND the document has status 'approved' (or no status field).
+    // CR-4 fix: checking status allows admins to suspend a user by setting status:'suspended'
+    // without having to delete the document entirely.
     function isEmailAllowed() {
-      return exists(/databases/$(database)/documents/allowed_emails/$(request.auth.token.email));
+      let ref = /databases/$(database)/documents/allowed_emails/$(request.auth.token.email);
+      return exists(ref)
+        && get(ref).data.get('status', 'approved') == 'approved';
     }
 
     // Resolves secondary emails to their primary UID via user_email_map.
@@ -48,11 +52,14 @@ service cloud.firestore {
     }
 
     // ── Whitelist / Allowed Emails Collection ───────────────────────────────
-    // Document ID == email address. Existence = access granted.
-    // Read:  Any authenticated user (needed for the Firestore-native isEmailAllowed() gate).
+    // Document ID == email address. Existence + status == 'approved' = access granted.
+    // Read:  CR-5 fix: restricted to own email only. Each user can check only their own
+    //        whitelist document — prevents enumeration of the full employee list.
+    //        NOTE: isEmailAllowed() internally uses exists()/get() which are always
+    //        evaluated by the Rules engine regardless of this read rule — no circular dep.
     // Write: Admins only — only the admin can invite or revoke access.
     match /allowed_emails/{emailId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && emailId == request.auth.token.email;
       allow write: if isAdmin();
     }
 
@@ -86,10 +93,12 @@ service cloud.firestore {
     }
 
     // Email → Primary UID Lookup Map
-    // Read:   Any authenticated user can read (needed for AuthContext lookup on login)
+    // Read:   ME-9 + CR-5 fix: restricted to own email only. Each user can resolve only
+    //         their own secondary-email → primary-UID mapping on login. This prevents a
+    //         non-whitelisted Google account from reading anyone else's email mappings.
     // Write:  Admin only — prevents malicious email re-routing
     match /user_email_map/{emailId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && emailId == request.auth.token.email;
       allow write: if isAdmin();
     }
 
@@ -188,11 +197,25 @@ service cloud.firestore {
     }
 
     // Notifications Collection
+    // CR-6 fix: restricted notification creation to prevent phishing/spam attacks.
+    // A whitelisted user may notify others ONLY IF:
+    //   1. senderUid in the payload equals their own effective UID (no impersonation)
+    //   2. read field is false (notifications are always unread on creation)
+    //   3. type is one of the known application enum values
+    //   4. title and message are within reasonable length limits
     match /notifications/{userId}/items/{notificationId} {
-      // Any whitelisted authenticated user can CREATE a notification for anyone (needed for client-side cross-user notifications)
-      allow create: if isAuthenticated() && isEmailAllowed();
+      allow create: if isAuthenticated() && isEmailAllowed()
+        && request.resource.data.get('senderUid', '') == getEffectiveUid()
+        && request.resource.data.get('read', true) == false
+        && request.resource.data.get('type', '') in [
+             'task_assigned', 'task_updated', 'task_completed',
+             'announcement', 'partner_added', 'general'
+           ]
+        && request.resource.data.get('title', '').size() <= 200
+        && request.resource.data.get('message', '').size() <= 500;
       // Only the notification owner can read, update (mark read), or delete their own notifications
-      allow read, update, delete: if isAuthenticated() && isEmailAllowed() && (getEffectiveUid() == userId || request.auth.uid == userId);
+      allow read, update, delete: if isAuthenticated() && isEmailAllowed()
+        && (getEffectiveUid() == userId || request.auth.uid == userId);
     }
 
     // Leave Management Collection
