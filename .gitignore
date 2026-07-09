@@ -23,7 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 
-# env files
+# env files — NEVER commit (live API keys inside, see CR-1 in audit)
 .env
 .env.local
 .env.development.local
@@ -40,8 +40,10 @@ ui-debug.log
 # Mac
 .DS_Store
 
-# Firebase Admin SDK - NEVER commit this!
+# Firebase Admin SDK service account — NEVER commit this!
 serviceAccountKey.json
 *.serviceAccountKey.json
-migrateAttendance.cjs
+**/serviceAccountKey.json
 
+# Migration scripts (LO-10: moved to scripts/ — ignore scoped correctly)
+scripts/migrateAttendance.cjs

@@ -26,4 +26,35 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+  // CR-2 fix: block firebase-admin imports in client-side code.
+  // firebase-admin bypasses all Firestore security rules — it must only
+  // ever be used in server-side code (api/ or functions/).
+  {
+    files: ['src/**/*.{js,jsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'firebase-admin',
+              message:
+                "Do not import firebase-admin in client-side code (src/). " +
+                "Use the regular Firebase SDK (firebase/firestore etc.) instead. " +
+                "firebase-admin belongs in api/ or functions/ only.",
+            },
+          ],
+          patterns: [
+            {
+              group: ['firebase-admin/*'],
+              message:
+                "Do not import firebase-admin in client-side code (src/). " +
+                "firebase-admin belongs in api/ or functions/ only.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 ])
+
