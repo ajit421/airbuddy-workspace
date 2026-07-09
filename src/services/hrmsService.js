@@ -20,9 +20,26 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { z } from 'zod';
 
 // ─── Collection reference ────────────────────────────────────────────────────
 const USERS_COLLECTION = 'users';
+
+// ─── Zod schemas (LO-6 fix) ─────────────────────────────────────────────────
+// Validate data at service boundaries before writing to Firestore.
+// Unknown keys are stripped (z.object is strict-by-default on extra keys via .strip()).
+const EmployeeCreateSchema = z.object({
+  name:        z.string().min(1, 'Name is required'),
+  email:       z.email('Must be a valid email'),
+  role:        z.enum(['admin', 'employee']).default('employee'),
+  department:  z.string().optional(),
+  designation: z.string().optional(),
+  salaryBase:  z.number().nonnegative().optional(),
+  avatar:      z.string().optional(),
+});
+
+// Partial version for updates — all fields optional
+const EmployeeUpdateSchema = EmployeeCreateSchema.partial();
 
 // ─── getAllEmployees ─────────────────────────────────────────────────────────
 /**
@@ -36,7 +53,14 @@ const USERS_COLLECTION = 'users';
  */
 export async function getAllEmployees() {
   try {
-    const snapshot = await getDocs(collection(db, USERS_COLLECTION));
+    // ME-6 fix: add orderBy + limit to prevent unbounded full-collection scans.
+    // 500 is a practical upper bound for any small-to-medium organisation.
+    const q = query(
+      collection(db, USERS_COLLECTION),
+      orderBy('createdAt', 'desc'),
+      limit(500),
+    );
+    const snapshot = await getDocs(q);
     return snapshot.docs.map((docSnap) => ({
       id: docSnap.id,       // Firestore document ID (= uid in this project)
       ...docSnap.data(),    // Spread all existing + HRMS fields
@@ -49,23 +73,38 @@ export async function getAllEmployees() {
 
 // ─── addEmployee ─────────────────────────────────────────────────────────────
 /**
- * Creates a new document in the `users` collection.
- * Uses addDoc so Firestore auto-generates the document ID.
+ * Creates a new document in the `users` collection for an already-existing
+ * Firebase Auth account.
  *
+ * ME-2 fix: The previous implementation used `addDoc` which auto-generates a
+ * random Firestore ID — producing orphaned records that can never be linked to
+ * a Google OAuth login. Now uses `setDoc(doc(db, 'users', uid), ...)` so the
+ * Firestore document ID matches the Firebase Auth UID.
+ *
+ * ⚠️  IMPORTANT: `uid` MUST be a real Firebase Auth UID.
+ * The preferred self-onboarding flow is: user signs in with Google → AuthContext
+ * auto-creates their profile. Only use this function if you already have an Auth
+ * UID (e.g., created server-side via Admin SDK).
+ *
+ * @param {string} uid  - Firebase Auth UID (document ID in `users` collection).
  * @param {Object} data - Employee data:
  *   { name, email, role, department, designation, salaryBase? }
- * @returns {Promise<string>} The auto-generated Firestore document ID.
+ * @returns {Promise<void>}
  */
-export async function addEmployee(data) {
+export async function addEmployee(uid, data) {
+  if (!uid) throw new Error('[hrmsService] addEmployee: uid is required');
   try {
-    const docRef = await addDoc(collection(db, USERS_COLLECTION), {
-      ...data,
+    // LO-6 fix: validate data before writing to Firestore
+    const validated = EmployeeCreateSchema.parse(data);
+    const { setDoc } = await import('firebase/firestore');
+    await setDoc(doc(db, USERS_COLLECTION, uid), {
+      uid,
+      ...validated,
       // Ensure role always has a safe default
-      role: data.role || 'employee',
+      role: validated.role || 'employee',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    return docRef.id;
   } catch (err) {
     console.error('[hrmsService] addEmployee failed:', err);
     throw err;
@@ -83,9 +122,11 @@ export async function addEmployee(data) {
  */
 export async function updateEmployee(uid, data) {
   try {
+    // LO-6 fix: validate data before writing to Firestore
+    const validated = EmployeeUpdateSchema.parse(data);
     const userRef = doc(db, USERS_COLLECTION, uid);
     await updateDoc(userRef, {
-      ...data,
+      ...validated,
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
@@ -136,7 +177,15 @@ const attendancePath = (uid) => collection(db, 'attendance', uid, 'records');
  */
 export async function recordPunch(uid) {
   try {
-    const todayStr = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+    // HI-3 fix: toISOString() gives the UTC date which is wrong for UTC+ timezones
+    // (e.g. IST users punching in at 00:15 IST = 18:45 UTC previous day → wrong date stored).
+    // Reading local year/month/date is always timezone-correct.
+    const now = new Date();
+    const todayStr = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-'); // 'YYYY-MM-DD' in local timezone
     const col = attendancePath(uid);
 
     // Look for an open record for today (has punchIn, no punchOut)
@@ -241,8 +290,14 @@ export async function getAttendanceDateRange(uid, startDate, endDate) {
 
 // ─── getAllEmployeesAttendanceSummary ─────────────────────────────────────────
 /**
- * Admin-only: fetches attendance for every employee in the given date range
- * by running parallel queries (one per user).
+ * Admin-only: fetches attendance for every employee in the given date range.
+ *
+ * HI-2 note: This is an inherent N+1 pattern — Firestore sub-collections
+ * (attendance/{uid}/records) cannot be queried across users in a single request.
+ * The proper long-term fix is a Cloud Function that pre-aggregates attendance
+ * into a top-level `attendance_summary` collection on each punch event.
+ * Until then, we limit concurrency to BATCH_SIZE parallel queries to avoid
+ * quota exhaustion and rate limiting on large teams.
  *
  * @param {Array<{uid: string, name: string, email: string, avatar?: string}>} employees
  * @param {string} startDate - 'YYYY-MM-DD'
@@ -250,13 +305,21 @@ export async function getAttendanceDateRange(uid, startDate, endDate) {
  * @returns {Promise<Array<{employee, records}>>}
  */
 export async function getAllEmployeesAttendanceSummary(employees, startDate, endDate) {
+  const BATCH_SIZE = 5; // max parallel Firestore queries at once
+  const results = [];
+
   try {
-    const results = await Promise.all(
-      employees.map(async (emp) => {
-        const records = await getAttendanceDateRange(emp.uid || emp.id, startDate, endDate);
-        return { employee: emp, records };
-      })
-    );
+    // Process employees in batches to avoid overwhelming Firestore
+    for (let i = 0; i < employees.length; i += BATCH_SIZE) {
+      const batch = employees.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map(async (emp) => {
+          const records = await getAttendanceDateRange(emp.uid || emp.id, startDate, endDate);
+          return { employee: emp, records };
+        })
+      );
+      results.push(...batchResults);
+    }
     return results;
   } catch (err) {
     console.error('[hrmsService] getAllEmployeesAttendanceSummary failed:', err);
@@ -359,10 +422,16 @@ export async function getAllPendingLeaves() {
  */
 export async function getAllLeaves() {
   try {
-    const snap = await getDocs(collection(db, LEAVES_COLLECTION));
-    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    // Sort newest first
-    return docs.sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? ''));
+    // ME-6 fix: order by startDate desc + cap at 200 records.
+    // Calendar rendering only needs recent leaves; old historical data
+    // can be fetched separately if needed by a reporting feature.
+    const q = query(
+      collection(db, LEAVES_COLLECTION),
+      orderBy('startDate', 'desc'),
+      limit(200),
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch (err) {
     console.error('[hrmsService] getAllLeaves failed:', err);
     throw err;
