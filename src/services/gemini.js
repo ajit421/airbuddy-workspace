@@ -1,4 +1,5 @@
 import { formatDate } from '../utils/dateHelpers';
+import { auth } from './firebase'; // CR-3: used to get a fresh ID token per request
 
 const SYSTEM_PROMPT = `
 You are the AI Assistant for AirBuddy Aerospace WorkSpace, a workforce management platform.
@@ -39,12 +40,16 @@ export const sendMessage = async (history, currentTasks, newMessage) => {
     .replace('{CURRENT_DATE}', formatDate(new Date()));
 
   try {
-    // Determine the base URL. In development, we can point to local Vercel CLI server or just use relative path
-    // Assuming relative path works well in production and local Vite dev proxy
+    // CR-3: Obtain a fresh Firebase ID token to authenticate with the serverless function.
+    // getIdToken() returns a cached token if still valid, or silently refreshes it.
+    // This avoids storing the token in sessionStorage (HI-11 fix).
+    const idToken = await auth.currentUser?.getIdToken() ?? '';
+
     const response = await fetch('/api/gemini', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(idToken ? { 'Authorization': `Bearer ${idToken}` } : {}),
       },
       body: JSON.stringify({
         history,
