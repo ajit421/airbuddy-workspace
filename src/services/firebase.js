@@ -24,7 +24,7 @@ export const googleProvider = new GoogleAuthProvider();
 let messaging = null;
 try {
   messaging = getMessaging(app);
-} catch (_e) {
+} catch {
   console.warn('FCM not supported in this browser.');
 }
 export { messaging };
