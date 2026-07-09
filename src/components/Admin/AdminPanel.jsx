@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react';
-import {
-  collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc,
-  doc, serverTimestamp, getDocs
-} from 'firebase/firestore';
-import { db } from '../../services/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { formatDate } from '../../utils/dateHelpers';
 import { PriorityBadge, StatusBadge, ProgressBar } from '../shared/TaskCard';
 import { PRIORITY_OPTIONS, STATUS_OPTIONS, MODULE_OPTIONS } from '../../utils/permissions';
-import { notifyUsers, sendNotification } from '../../services/notificationService';
+import { sendNotification } from '../../services/notificationService';
 import { addTaskToGoogleCalendar } from '../../services/googleCalendarService';
+// HI-5 + NEW-1 fix: ALL Firestore access goes through the service layer
+import { createAdminTask, deleteTask, subscribeToAdminTasks } from '../../services/taskService';
+import { createAnnouncement, deleteAnnouncement, subscribeToAnnouncements } from '../../services/announcementService';
+import { subscribeToAllUsers } from '../../services/teamMembersService';
 
 // ─── Team Overview ───────────────────────────────────────────
 const TeamOverview = ({ users, allTasks }) => {
@@ -85,6 +84,7 @@ const AssignTask = ({ users }) => {
   });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
+  const [error, setError] = useState('');
 
   const set = (field, val) => setForm(p => ({ ...p, [field]: val }));
 
@@ -101,18 +101,11 @@ const AssignTask = ({ users }) => {
     e.preventDefault();
     if (!form.title || form.assignedTo.length === 0) return;
     setSaving(true);
+    setSuccess('');
+    setError('');
     try {
-      await addDoc(collection(db, 'tasks'), {
-        ...form,
-        taskId: '',
-        assignedBy: userProfile?.uid,
-        isAdminTask: true,
-        startDate: form.startDate ? new Date(form.startDate) : new Date(),
-        dueDate: form.dueDate ? new Date(form.dueDate) : new Date(),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        createdBy: userProfile?.uid,
-      });
+      // HI-5 fix: use taskService instead of direct Firestore addDoc
+      await createAdminTask(form, userProfile?.uid);
       setSuccess('Task assigned successfully!');
 
       // Sync task to Google Calendar (admin's calendar)
@@ -139,13 +132,15 @@ const AssignTask = ({ users }) => {
             '🆕 New Task Assigned',
             `"${form.title}" has been assigned to you.${eventLink ? ' Check your Google Calendar.' : ''}`,
             'task_assigned',
-            eventLink
+            eventLink,
+            userProfile?.uid   // CR-6: senderUid required by Firestore rule
           ))
       );
       setForm({ title: '', description: '', module: MODULE_OPTIONS[0], priority: 'medium', status: 'pending', progress: 0, startDate: '', dueDate: '', assignedTo: [], links: [], attachments: [] });
-      setTimeout(() => setSuccess(''), 3000);
+      setTimeout(() => setSuccess(''), 5000);
     } catch (err) {
       console.error(err);
+      setError(err.message || 'Failed to assign task. Please verify your permissions and network connection.');
     } finally {
       setSaving(false);
     }
@@ -154,6 +149,7 @@ const AssignTask = ({ users }) => {
   return (
     <form onSubmit={handleSubmit} className="space-y-5 max-w-2xl">
       {success && <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-400 text-sm">{success}</div>}
+      {error && <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">{error}</div>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="sm:col-span-2">
@@ -221,6 +217,7 @@ const AssignTask = ({ users }) => {
 const TaskMonitor = ({ allTasks }) => {
   const [filter, setFilter] = useState({ status: 'all', search: '' });
   const [deleting, setDeleting] = useState(null);
+  const [error, setError] = useState('');
 
   const filtered = allTasks.filter(t => {
     const s = filter.status === 'all' || t.status === filter.status;
@@ -231,12 +228,20 @@ const TaskMonitor = ({ allTasks }) => {
   const handleDelete = async (id) => {
     if (!confirm('Delete this task?')) return;
     setDeleting(id);
-    try { await deleteDoc(doc(db, 'tasks', id)); } catch (err) { console.error(err); }
+    setError('');
+    try {
+      // NEW-1 fix: use taskService.deleteTask instead of direct deleteDoc
+      await deleteTask(id);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || 'Failed to delete task.');
+    }
     setDeleting(null);
   };
 
   return (
     <div className="space-y-4">
+      {error && <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">{error}</div>}
       <div className="flex gap-3 flex-wrap">
         <input className="input-field flex-1 min-w-[180px]" placeholder="🔍 Search tasks..." value={filter.search} onChange={e => setFilter(p => ({ ...p, search: e.target.value }))} />
         <select className="select-field w-36" value={filter.status} onChange={e => setFilter(p => ({ ...p, status: e.target.value }))}>
@@ -286,15 +291,17 @@ const TaskMonitor = ({ allTasks }) => {
 };
 
 // ─── Announcements Manager ───────────────────────────────────
+// HI-5+HI-6: now uses announcementService; `users` prop passed from AdminPanel
 const AnnouncementsManager = ({ users }) => {
   const { userProfile } = useAuth();
   const [form, setForm] = useState({ title: '', message: '', priority: 'normal', meetingLink: '', targetAudience: 'all' });
   const [announcements, setAnnouncements] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    const q = query(collection(db, 'announcements'), orderBy('createdAt', 'desc'));
-    return onSnapshot(q, snap => setAnnouncements(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    // HI-5 fix: use service layer for real-time announcements listener
+    return subscribeToAnnouncements(setAnnouncements);
   }, []);
 
   const set = (f, v) => setForm(p => ({ ...p, [f]: v }));
@@ -303,39 +310,34 @@ const AnnouncementsManager = ({ users }) => {
     e.preventDefault();
     if (!form.title || !form.message) return;
     setSaving(true);
+    setError('');
     try {
-      await addDoc(collection(db, 'announcements'), {
-        ...form,
-        adminId: userProfile?.uid,
-        adminName: userProfile?.name,
-        adminAvatar: userProfile?.avatar,
-        isRead: [],
-        createdAt: serverTimestamp(),
-      });
-      // Notify all users about the new announcement
-      const usersSnap = await getDocs(collection(db, 'users'));
-      await Promise.all(usersSnap.docs.map(d => {
-        const uid = d.id;
-        if (uid === userProfile?.uid) return Promise.resolve(); // skip self
-        return sendNotification(
-          uid,
-          '📣 New Announcement',
-          `${userProfile?.name || 'Admin'}: "${form.title}"`,
-          'announcement'
-        );
-      }));
+      // HI-5 + HI-6 fix: use announcementService which accepts pre-loaded users
+      // — no getDocs(users) round-trip on every submit
+      await createAnnouncement(form, userProfile, users);
       setForm({ title: '', message: '', priority: 'normal', meetingLink: '', targetAudience: 'all' });
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+      setError(err.message || 'Failed to post announcement.');
+    }
     setSaving(false);
   };
 
   const handleDelete = async (id) => {
     if (!confirm('Delete this announcement?')) return;
-    await deleteDoc(doc(db, 'announcements', id));
+    setError('');
+    try {
+      // HI-5 fix: use announcementService.deleteAnnouncement
+      await deleteAnnouncement(id);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || 'Failed to delete announcement.');
+    }
   };
 
   return (
     <div className="space-y-6">
+      {error && <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">{error}</div>}
       <form onSubmit={handlePost} className="card space-y-4 max-w-2xl">
         <h3 className="font-bold text-text-primary">Create Announcement</h3>
         <input className="input-field" placeholder="Title *" value={form.title} onChange={e => set('title', e.target.value)} required />
@@ -400,13 +402,9 @@ export default function AdminPanel() {
   const [allTasks, setAllTasks] = useState([]);
 
   useEffect(() => {
-    const unsub1 = onSnapshot(collection(db, 'users'), snap => {
-      setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() })));
-    });
-    const q = query(collection(db, 'tasks'), orderBy('createdAt', 'desc'));
-    const unsub2 = onSnapshot(q, snap => {
-      setAllTasks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    // HI-5 + NEW-1 fix: ALL listeners through the service layer
+    const unsub1 = subscribeToAllUsers((users) => setUsers(users));
+    const unsub2 = subscribeToAdminTasks((tasks) => setAllTasks(tasks));
     return () => { unsub1(); unsub2(); };
   }, []);
 

@@ -1,6 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Calendar, momentLocalizer, Views } from 'react-big-calendar';
-import moment from 'moment';
+import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar';
+// ME-5 fix: switched from momentLocalizer (adds ~67 KB gzipped) to dateFnsLocalizer.
+// date-fns is already a production dep used elsewhere in the project.
+import { format, parse, startOfWeek, getDay } from 'date-fns';
+import enIN from 'date-fns/locale/en-IN';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { useTasks } from '../../context/TaskContext';
 import { useAuth } from '../../context/AuthContext';
@@ -10,7 +13,13 @@ import TaskDetailModal from './TaskDetailModal';
 import ListView from './ListView';
 import { getMyLeaves, getAllLeaves } from '../../services/hrmsService';
 
-const localizer = momentLocalizer(moment);
+const localizer = dateFnsLocalizer({
+  format,
+  parse,
+  startOfWeek: () => startOfWeek(new Date(), { weekStartsOn: 1 }), // Monday
+  getDay,
+  locales: { 'en-IN': enIN },
+});
 
 // ─── Leave status style map ────────────────────────────────────────────────────
 const LEAVE_STYLES = {
