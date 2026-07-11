@@ -550,7 +550,12 @@ export default function PerformanceDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [uid, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
+    // HI-1 note: `selectedUid` is intentionally excluded from deps. The load() function
+    // fetches ALL reviews for admin (not just the selected employee). The employee picker
+    // is a client-side filter — re-fetching Firestore on every picker change would be
+    // wasteful. We only re-fetch when uid or isAdmin actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, isAdmin]);
 
   useEffect(() => { load(); }, [load]);
 
