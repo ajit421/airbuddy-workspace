@@ -90,7 +90,7 @@ export const DonutChart = ({ tasks }) => {
 };
 
 // Bar Chart — Workload (tasks by day)
-export const BarChart = ({ tasks, timeRange = 'month' }) => {
+export const BarChart = ({ tasks }) => {
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   // Count tasks by day of week of their startDate

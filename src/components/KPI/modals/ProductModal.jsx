@@ -106,7 +106,7 @@ export default function ProductModal({ isOpen, onClose, onSaved, item }) {
             name="name"
             value={form.name}
             onChange={handleChange}
-            placeholder="e.g. AirBuddy App"
+            placeholder="e.g. Pravah, VyomX..."
             className={inputCls}
           />
         </Field>
@@ -116,7 +116,7 @@ export default function ProductModal({ isOpen, onClose, onSaved, item }) {
             name="type"
             value={form.type}
             onChange={handleChange}
-            placeholder="e.g. SaaS, Hardware, Service…"
+            placeholder="e.g. Ceiling fan, Drone, PCB motor..."
             className={inputCls}
           />
         </Field>

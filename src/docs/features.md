@@ -159,6 +159,43 @@ A Kanban board with four columns: **Applied → Interviewing → Hired → Rejec
 - **Bar chart** comparing goals assigned vs. goals completed across all periods
 - Admins can add new performance reviews via a modal with skill sliders (1–5 scale) and goals input
 
+## KPI Module
+
+The KPI (Key Performance Indicators) module tracks critical business metrics and operations across five categories.
+
+### KPI Dashboard (`/kpi`)
+
+The landing page displays aggregated stats for each area (total industries, clients, products, sales units, and patents) in a responsive grid. Click any stat card or navigation tile to drill down into the corresponding panel.
+
+### Industries Panel (`/kpi/industries`)
+
+- Displays vertical business sectors (e.g., Commercial Aviation, Defense, Launch Services) in a filterable list.
+- Tracks sector status (Active / Paused / Inactive) and growth rates.
+- Administrators can use the **Add Industry** and **Edit Industry** modals to create/update sector metrics.
+
+### Clients Panel (`/kpi/clients`)
+
+- Track Client Engagement portfolios and project timelines.
+- Displays client profile cards with contract values, active phases, and health indicators.
+- Administrators can add new clients or edit existing profiles to reflect updated contract values and delivery stages.
+
+### Products Panel (`/kpi/products`)
+
+- Manages the aerospace component catalog, detailing names, SKU codes, pricing, and manufacturing costs.
+- Tracks development states. Components can be flagged as "dev-completed" or in-development.
+- Provides interactive creation and modification dialogs for catalog items.
+
+### Sales Panel (`/kpi/sales`)
+
+- Tracks units sold, launch success rates, order volumes, and financial transaction histories.
+- Logs distribution records to monitor delivery pipelines.
+
+### Patents Panel (`/kpi/patents`)
+
+- Monitors company intellectual property.
+- Details inventor listings, filling dates, jurisdictions, registration numbers, and status (Filed / Pending / Granted).
+- Administrators can log new patent filings and modify status logs.
+
 ## Team Members
 
 The Team Members page (`/team`) shows all aerospace professionals in a responsive card grid. Each card displays:
