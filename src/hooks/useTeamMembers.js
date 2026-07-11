@@ -4,12 +4,13 @@
  *
  * Responsibilities:
  *  - Maintains a real-time list of all users via subscribeToAllUsers().
- *  - Merges synchronous task stats (from TaskContext) into each user object.
+ *  - Merges synchronous task stats (from TaskContext) into each user object
+ *    via useMemo — atomically, no double render (ME-7 fix).
  *  - Exposes refreshAttendance(uid) for lazy attendance fetching — called only
  *    when a profile card is opened, NOT for every member on mount.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTasks } from '../context/TaskContext';
 import {
   subscribeToAllUsers,
@@ -28,28 +29,22 @@ import {
 export function useTeamMembers() {
   const { tasks: allTasks } = useTasks();
 
-  const [members, setMembers]   = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [error,   setError]     = useState(null);
+  // ME-7 fix: raw users from Firestore stored separately so that task stat
+  // merging can happen in useMemo without a second setState call.
+  const [rawUsers, setRawUsers]         = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [error,   setError]             = useState(null);
+  // Per-user attendance summaries — populated lazily on card open
+  const [attendanceMap, setAttendanceMap] = useState({});
 
-  // ─── Real-time user listener + task-stats merge ──────────────────────────
+  // ─── Real-time user listener ──────────────────────────────────────────────
   useEffect(() => {
     setLoading(true);
     setError(null);
 
     const unsubscribe = subscribeToAllUsers(
       (users) => {
-        // Merge synchronous task stats into each user object.
-        // getUserTaskStats() is pure and works on the already-loaded allTasks
-        // array from TaskContext — zero extra Firestore reads.
-        const merged = users.map((user) => ({
-          ...user,
-          taskStats: getUserTaskStats(user.uid, allTasks),
-          // attendanceSummary starts null; populated lazily via refreshAttendance()
-          attendanceSummary: null,
-        }));
-
-        setMembers(merged);
+        setRawUsers(users);
         setLoading(false);
       },
       (firestoreError) => {
@@ -62,32 +57,29 @@ export function useTeamMembers() {
 
     // Cleanup: detach the Firestore listener when the component unmounts
     return () => unsubscribe();
-    // NOTE: allTasks is intentionally excluded from deps so the snapshot
-    // listener is only registered once. Task stats are re-merged below in a
-    // separate effect whenever allTasks changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── Re-merge task stats when TaskContext data updates ───────────────────
-  // This runs after the initial mount effect above, so `members` is already
-  // populated. We only run it when allTasks actually changes so we don't
-  // spam re-renders on unrelated state updates.
-  useEffect(() => {
-    if (members.length === 0) return;
+  // ─── ME-7 fix: merge task stats + attendance via useMemo ─────────────────
+  // Previously two sequential useEffect hooks caused two renders per task update:
+  //   1. Firestore snapshot → setMembers(with old task stats)   [render 1]
+  //   2. allTasks effect   → setMembers(with new task stats)    [render 2]
+  // Now: rawUsers (from Firestore) + allTasks (from TaskContext) + attendanceMap
+  // are merged here in a single synchronous useMemo — zero extra renders per
+  // task update. React computes this atomically within the same render cycle.
+  const members = useMemo(
+    () =>
+      rawUsers.map((user) => ({
+        ...user,
+        taskStats:         getUserTaskStats(user.uid, allTasks),
+        attendanceSummary: attendanceMap[user.uid] ?? null,
+      })),
+    [rawUsers, allTasks, attendanceMap]
+  );
 
-    setMembers((prev) =>
-      prev.map((member) => ({
-        ...member,
-        taskStats: getUserTaskStats(member.uid, allTasks),
-      }))
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allTasks]);
-
-  // ─── Lazy attendance fetcher ─────────────────────────────────────────────
+  // ─── Lazy attendance fetcher ──────────────────────────────────────────────
   /**
-   * Fetches attendance summary for ONE user and patches it into the members
-   * array. Call this when a profile card is opened — NOT on mount — to avoid
+   * Fetches attendance summary for ONE user and patches it into attendanceMap.
+   * Call this when a profile card is opened — NOT on mount — to avoid
    * issuing one Firestore read per team member on every page load.
    *
    * @param {string} uid - UID of the member whose card was opened.
@@ -95,11 +87,7 @@ export function useTeamMembers() {
   const refreshAttendance = useCallback(async (uid) => {
     try {
       const attendanceSummary = await getUserAttendanceSummary(uid);
-      setMembers((prev) =>
-        prev.map((member) =>
-          member.uid === uid ? { ...member, attendanceSummary } : member
-        )
-      );
+      setAttendanceMap((prev) => ({ ...prev, [uid]: attendanceSummary }));
     } catch (err) {
       console.error(`[useTeamMembers] refreshAttendance failed for uid "${uid}":`, err);
     }
