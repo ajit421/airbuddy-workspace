@@ -11,7 +11,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
+// HI-10 fix: rehype-raw removed — it allowed raw HTML in markdown which is an
+// XSS vector. react-markdown's default sanitization is applied instead.
 import rehypeSlug from 'rehype-slug';
 import { docsConfig } from '../docs/config';
 
@@ -156,7 +157,6 @@ export default function DocsPage() {
   const [activeId, setActiveId] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [copySuccess, setCopySuccess] = useState(false);
 
   const contentRef = useRef(null);
   const observerRef = useRef(null);
@@ -186,8 +186,12 @@ export default function DocsPage() {
   useEffect(() => {
     if (loading || !headings.length) return;
 
+    let isMounted = true;
+
     // Small delay to ensure the DOM has rendered the new content
     const timer = setTimeout(() => {
+      if (!isMounted) return;
+
       if (observerRef.current) {
         observerRef.current.disconnect();
       }
@@ -215,6 +219,7 @@ export default function DocsPage() {
     }, 100);
 
     return () => {
+      isMounted = false;
       clearTimeout(timer);
       if (observerRef.current) observerRef.current.disconnect();
     };
@@ -403,7 +408,7 @@ export default function DocsPage() {
             ) : (
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw, rehypeSlug]}
+                rehypePlugins={[rehypeSlug]} // HI-10 fix: rehypeRaw removed (XSS vector)
                 components={markdownComponents}
               >
                 {content}
