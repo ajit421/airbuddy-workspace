@@ -1,18 +1,16 @@
 /**
  * Google Calendar API Service
- * Manages syncing AirBuddy tasks with user's Google Calendar
+ * Manages syncing AirBuddy tasks with user's Google Calendar.
+ *
+ * LO-9 fix: Removed module-level mutable accessToken state.
+ * All functions now accept accessToken as a parameter, making the service
+ * stateless and following functional code patterns.
  */
 
 const CALENDAR_API_BASE = 'https://www.googleapis.com/calendar/v3';
 const CALENDAR_ID = 'primary';
 
-let accessToken = null;
-
-export const setGoogleAccessToken = (token) => {
-  accessToken = token;
-};
-
-const apiRequest = async (endpoint, method = 'GET', body = null) => {
+const apiRequest = async (accessToken, endpoint, method = 'GET', body = null) => {
   if (!accessToken) {
     console.warn('Google Calendar: No access token available');
     return null;
@@ -26,7 +24,7 @@ const apiRequest = async (endpoint, method = 'GET', body = null) => {
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   if (!res.ok) {
-    const err = await res.json();
+    const err = await res.json().catch(() => ({}));
     console.error('Google Calendar API error:', err);
     return null;
   }
@@ -56,25 +54,26 @@ export const taskToCalendarEvent = (task) => ({
   },
 });
 
-export const createCalendarEvent = async (task) => {
+export const createCalendarEvent = async (accessToken, task) => {
   const event = taskToCalendarEvent(task);
-  const result = await apiRequest(`/calendars/${CALENDAR_ID}/events`, 'POST', event);
+  const result = await apiRequest(accessToken, `/calendars/${CALENDAR_ID}/events`, 'POST', event);
   return result?.id || null;
 };
 
-export const updateCalendarEvent = async (eventId, task) => {
+export const updateCalendarEvent = async (accessToken, eventId, task) => {
   const event = taskToCalendarEvent(task);
-  return apiRequest(`/calendars/${CALENDAR_ID}/events/${eventId}`, 'PUT', event);
+  return apiRequest(accessToken, `/calendars/${CALENDAR_ID}/events/${eventId}`, 'PUT', event);
 };
 
-export const deleteCalendarEvent = async (eventId) => {
-  return apiRequest(`/calendars/${CALENDAR_ID}/events/${eventId}`, 'DELETE');
+export const deleteCalendarEvent = async (accessToken, eventId) => {
+  return apiRequest(accessToken, `/calendars/${CALENDAR_ID}/events/${eventId}`, 'DELETE');
 };
 
-export const listUpcomingEvents = async (days = 30) => {
+export const listUpcomingEvents = async (accessToken, days = 30) => {
   const now = new Date().toISOString();
   const future = new Date(Date.now() + days * 86400000).toISOString();
   const result = await apiRequest(
+    accessToken,
     `/calendars/${CALENDAR_ID}/events?timeMin=${now}&timeMax=${future}&singleEvents=true&orderBy=startTime`
   );
   return result?.items || [];
