@@ -26,9 +26,14 @@ function fmtTime(ts) {
   return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
+/**
+ * HI-4 fix: Parse YYYY-MM-DD as LOCAL midnight (not UTC midnight).
+ * Using `new Date('YYYY-MM-DD')` treats the string as UTC which causes an
+ * off-by-one date display for IST (UTC+5:30) and any UTC+ timezone.
+ */
 function fmtDate(dateStr) {
   if (!dateStr) return '—';
-  const d = new Date(dateStr);
+  const d = new Date(dateStr + 'T00:00:00'); // local midnight, not UTC
   if (isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
@@ -53,8 +58,25 @@ function calcTotalMinutes(punchIn, punchOut) {
   return diffMs > 0 ? Math.floor(diffMs / 60000) : 0;
 }
 
+/**
+ * HI-3 + HI-4 fix: returns a YYYY-MM-DD string using LOCAL date components.
+ * `toISOString()` always uses UTC — for IST (UTC+5:30) callers checking in
+ * after midnight IST but before 05:30 UTC would get yesterday's date,
+ * filing attendance under the wrong day.
+ */
+function localDateStr(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * HI-3 fix: isWeekend must use local date parsing too — otherwise days near
+ * midnight UTC flip to a different day-of-week than what the user sees.
+ */
 function isWeekend(dateStr) {
-  const d = new Date(dateStr);
+  const d = new Date(dateStr + 'T00:00:00');
   const day = d.getDay();
   return day === 0; // Only Sunday is a weekend; Saturday is a working day
 }
@@ -64,32 +86,33 @@ function buildLast30Days() {
   for (let i = 0; i < 30; i++) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    days.push(d.toISOString().slice(0, 10));
+    days.push(localDateStr(d)); // HI-3 fix: was toISOString().slice(0,10)
   }
   return days;
 }
 
 function enumerateDaysBetween(startDate, endDate) {
   const dates = [];
-  const curr = new Date(startDate);
-  const last = new Date(endDate);
+  // HI-3 fix: parse as local midnight so iteration stays in the user's timezone
+  const curr = new Date(startDate + 'T00:00:00');
+  const last = new Date(endDate + 'T00:00:00');
   while (curr <= last) {
-    dates.push(curr.toISOString().slice(0, 10));
+    dates.push(localDateStr(curr));
     curr.setDate(curr.getDate() + 1);
   }
   return dates;
 }
 
-/** Today's date as YYYY-MM-DD */
+/** Today's date as YYYY-MM-DD in the user's LOCAL timezone */
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateStr(); // HI-3 fix: was new Date().toISOString().slice(0, 10)
 }
 
-/** 30 days ago as YYYY-MM-DD */
+/** 30 days ago as YYYY-MM-DD in the user's LOCAL timezone */
 function thirtyDaysAgo() {
   const d = new Date();
   d.setDate(d.getDate() - 30);
-  return d.toISOString().slice(0, 10);
+  return localDateStr(d); // HI-3 fix: was d.toISOString().slice(0, 10)
 }
 
 // ─── Shared sub-components ────────────────────────────────────────────────────
@@ -534,14 +557,17 @@ export default function AttendanceManager() {
     setDrillDownTarget({ employee, records, approvedLeavesMap });
   };
 
-  // Initial load
+  // Initial load — runs when isAdmin changes (role switch) or when the applied
+  // date range changes externally. Both fetch functions are useCallback-memoised
+  // so they're stable references and won't cause infinite re-render loops.
+  // HI-1 fix: removed `eslint-disable-line` suppression and listed all deps.
   useEffect(() => {
     if (isAdmin) {
       fetchAdminData(appliedStart, appliedEnd);
     } else {
       fetchMyAttendance(appliedStart, appliedEnd);
     }
-  }, [isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isAdmin, fetchAdminData, fetchMyAttendance, appliedStart, appliedEnd]);
 
   const handleApply = () => {
     setAppliedStart(startDate);
