@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTasks } from '../../context/TaskContext';
 import { useAuth } from '../../context/AuthContext';
 import { DonutChart, BarChart, LineChart } from '../shared/Charts';
@@ -168,42 +168,54 @@ export default function EmployeeDashboard() {
     }
   }, [timeFilter]);
 
-  // ── Step 1: Filter tasks by the selected timeframe (Month / Week / Day / Custom)
-  const filteredByTime = tasks.filter(t => {
-    const refDateValue = t.dueDate || t.startDate || t.createdAt;
-    if (!refDateValue) return true;
+  // ME-4 fix: wrap filter + stats in useMemo — only re-computes when tasks,
+  // timeFilter, or customRange changes. Modal toggles and filter bar state
+  // changes no longer re-run these array iterations.
+  const { filteredByTime, total, completed, pending, inProgress } = useMemo(() => {
+    const filtered = tasks.filter(t => {
+      const refDateValue = t.dueDate || t.startDate || t.createdAt;
+      if (!refDateValue) return true;
 
-    const refDate = refDateValue.toDate ? refDateValue.toDate() : new Date(refDateValue);
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const refDate = refDateValue.toDate ? refDateValue.toDate() : new Date(refDateValue);
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    if (timeFilter === 'day') {
-      const taskDay = new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate());
-      return taskDay.getTime() === startOfToday.getTime();
-    }
+      if (timeFilter === 'day') {
+        const taskDay = new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate());
+        return taskDay.getTime() === startOfToday.getTime();
+      }
 
-    if (timeFilter === 'week') {
-      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return refDate >= sevenDaysAgo;
-    }
+      if (timeFilter === 'week') {
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        return refDate >= sevenDaysAgo;
+      }
 
-    if (timeFilter === 'month') {
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      return refDate >= thirtyDaysAgo;
-    }
+      if (timeFilter === 'month') {
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        return refDate >= thirtyDaysAgo;
+      }
 
-    if (timeFilter === 'custom' && customRange.start && customRange.end) {
-      const from = new Date(customRange.start);
-      from.setHours(0, 0, 0, 0);
-      const to = new Date(customRange.end);
-      to.setHours(23, 59, 59, 999);
-      return refDate >= from && refDate <= to;
-    }
+      if (timeFilter === 'custom' && customRange.start && customRange.end) {
+        const from = new Date(customRange.start);
+        from.setHours(0, 0, 0, 0);
+        const to = new Date(customRange.end);
+        to.setHours(23, 59, 59, 999);
+        return refDate >= from && refDate <= to;
+      }
 
-    return true;
-  });
+      return true;
+    });
 
-  // ── Step 2: Feed the time-filtered array into the task list filters
+    return {
+      filteredByTime: filtered,
+      total:      filtered.length,
+      completed:  filtered.filter(t => t.status === 'completed').length,
+      pending:    filtered.filter(t => t.status === 'pending').length,
+      inProgress: filtered.filter(t => t.status === 'in-progress').length,
+    };
+  }, [tasks, timeFilter, customRange]);
+
+  // ── Feed the time-filtered array into the task list filters
   // This ensures the "All Tasks" section respects the Month/Week/Day/Custom toggle
   const {
     state,
@@ -220,12 +232,6 @@ export default function EmployeeDashboard() {
     isFilterActive,
     taskCountByStatus,
   } = useTaskFilters(filteredByTime, allUsers, isAdmin);
-
-  // ── Step 3: Stats derived from the same time-filtered array
-  const total = filteredByTime.length;
-  const completed = filteredByTime.filter(t => t.status === 'completed').length;
-  const pending = filteredByTime.filter(t => t.status === 'pending').length;
-  const inProgress = filteredByTime.filter(t => t.status === 'in-progress').length;
 
   // Upcoming deadlines use the global tasks (not time-filtered) for accuracy
   const upcoming = getUpcomingTasks(7).length;
