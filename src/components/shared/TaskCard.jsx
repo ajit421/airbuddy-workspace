@@ -1,8 +1,4 @@
-import { useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../services/firebase';
 import { formatDate, getDueDateLabel, getDueDateColor } from '../../utils/dateHelpers';
-import { canEditTask } from '../../utils/permissions';
 import { useAuth } from '../../context/AuthContext';
 import { useTasks } from '../../context/TaskContext';
 

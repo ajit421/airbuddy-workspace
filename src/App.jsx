@@ -59,11 +59,26 @@ const AppRoutes = () => {
 
   return (
     <Routes>
-      <Route path="docs" element={<DocsPage />} />
-      <Route path="docs/:docId" element={<DocsPage />} />
       <Route
         path="/login"
         element={user ? <Navigate to="/" replace /> : <LoginPage />}
+      />
+      {/* HI-9 fix: docs routes require login, placed outside AppLayout to avoid double header/sidebar layout issues */}
+      <Route
+        path="docs"
+        element={
+          <ProtectedRoute>
+            <DocsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="docs/:docId"
+        element={
+          <ProtectedRoute>
+            <DocsPage />
+          </ProtectedRoute>
+        }
       />
       <Route
         element={
@@ -90,11 +105,22 @@ const AppRoutes = () => {
         />
 
         {/* HRMS Routes — Human Resource Management System module */}
-        <Route path="hrms/directory"   element={<EmployeeDirectory />} />
-        <Route path="hrms/attendance"  element={<AttendanceManager />} />
-        <Route path="hrms/leaves"      element={<LeaveManagement />} />
-        <Route path="hrms/recruitment" element={<RecruitmentBoard />} />
-        <Route path="hrms/performance" element={<PerformanceDashboard />} />
+        {/* ME-1 fix: Admin-only HRMS views wrapped in AdminRoute guard.
+            /hrms/leaves is intentionally left open to all employees — they
+            only see their own leave applications (Firestore rules enforce this). */}
+        <Route path="hrms/leaves" element={<LeaveManagement />} />
+        <Route
+          element={
+            <AdminRoute>
+              <Outlet />
+            </AdminRoute>
+          }
+        >
+          <Route path="hrms/directory"   element={<EmployeeDirectory />} />
+          <Route path="hrms/attendance"  element={<AttendanceManager />} />
+          <Route path="hrms/recruitment" element={<RecruitmentBoard />} />
+          <Route path="hrms/performance" element={<PerformanceDashboard />} />
+        </Route>
 
         {/* KPI Routes — wrapped in KpiProvider so listeners only run on KPI pages */}
         <Route element={<KpiProvider><Outlet /></KpiProvider>}>

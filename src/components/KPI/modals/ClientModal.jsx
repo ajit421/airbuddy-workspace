@@ -107,7 +107,7 @@ export default function ClientModal({ isOpen, onClose, onSaved, item, industries
             name="name"
             value={form.name}
             onChange={handleChange}
-            placeholder="e.g. Acme Corp"
+            placeholder="e.g. Voltas, V-Guard..."
             className={inputCls}
           />
         </Field>

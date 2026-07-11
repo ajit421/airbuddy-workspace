@@ -108,7 +108,7 @@ export default function IndustryModal({ isOpen, onClose, onSaved, item }) {
             name="name"
             value={form.name}
             onChange={handleChange}
-            placeholder="e.g. Aviation"
+            placeholder="e.g. Motors, Drone, PCB..."
             className={inputCls}
           />
         </Field>
