@@ -5,11 +5,9 @@ import {
   signOut as firebaseSignOut,
   GoogleAuthProvider,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../services/firebase';
 import { requestBrowserNotifPermission } from '../services/notificationService';
-
-const GTOKEN_KEY = 'goog_cal_token';
 
 const AuthContext = createContext(null);
 
@@ -18,17 +16,26 @@ export const AuthProvider = ({ children }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [effectiveUid, setEffectiveUid] = useState(null);
   const [loading, setLoading] = useState(true);
-  // Load from sessionStorage so token survives page refreshes within the session
-  const [googleAccessToken, setGoogleAccessToken] = useState(
-    () => sessionStorage.getItem(GTOKEN_KEY) || null
-  );
+  // HI-11 fix: Google OAuth token stored in memory only (no sessionStorage).
+  // sessionStorage is readable by XSS payloads; keeping the token in React state
+  // limits its exposure to the current JS execution context.
+  // The token is re-acquired on page refresh via refreshGoogleToken() if needed.
+  const [googleAccessToken, setGoogleAccessToken] = useState(null);
   
   const [isEmployeeView, setIsEmployeeView] = useState(false);
   const [authError, setAuthError] = useState(null);
 
   // ── Auth state listener ──────────────────────────────────────────────────────
   useEffect(() => {
+    let unsubProfile = null;
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Clean up previous profile real-time listener if any
+      if (unsubProfile) {
+        unsubProfile();
+        unsubProfile = null;
+      }
+
       if (firebaseUser) {
         try {
           // ── Whitelist / Invite-Only gate ─────────────────────────────────────
@@ -47,7 +54,22 @@ export const AuthProvider = ({ children }) => {
             setLoading(false);
             return;
           }
-          // ── Email is whitelisted — continue with normal flow ─────────────────
+
+          // NEW-2 fix: CR-4 was fixed in Firestore rules (status check) but the
+          // client-side gate only checked existence. A suspended user would pass
+          // this gate and see the app UI before hitting Firestore permission errors.
+          // Now we check the status field here too — matching what the rules enforce.
+          const emailDocStatus = allowedEmailSnap.data()?.status;
+          if (emailDocStatus === 'suspended') {
+            await firebaseSignOut(auth);
+            setAuthError('Your account has been suspended. Please contact the admin.');
+            setUser(null);
+            setEffectiveUid(null);
+            setUserProfile(null);
+            setLoading(false);
+            return;
+          }
+          // ── Email is whitelisted and active — continue with normal flow ───────
 
           setUser(firebaseUser);
           
@@ -77,10 +99,17 @@ export const AuthProvider = ({ children }) => {
               createdAt: serverTimestamp(),
             };
             await setDoc(profileRef, newProfile);
-            setUserProfile(newProfile);
-          } else {
-            setUserProfile(snap.data());
           }
+
+          // LO-3 fix: subscribe to user's own profile doc for real-time role/avatar updates.
+          unsubProfile = onSnapshot(profileRef, (profileSnap) => {
+            if (profileSnap.exists()) {
+              setUserProfile(profileSnap.data());
+            }
+          }, (err) => {
+            console.error('Error in user profile real-time listener:', err);
+          });
+
           requestBrowserNotifPermission();
         } catch (error) {
           console.error('Error setting up user profile:', error);
@@ -98,7 +127,10 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      if (unsubProfile) unsubProfile();
+    };
   }, []);
 
   // ── Sign-in with Google (Popup) ──────────────────────────────────────────────
@@ -109,7 +141,7 @@ export const AuthProvider = ({ children }) => {
       const credential = GoogleAuthProvider.credentialFromResult(result);
       if (credential?.accessToken) {
         setGoogleAccessToken(credential.accessToken);
-        sessionStorage.setItem(GTOKEN_KEY, credential.accessToken);
+        // HI-11 fix: no longer persisting to sessionStorage
       }
       return result;
     } catch (error) {
@@ -136,7 +168,7 @@ export const AuthProvider = ({ children }) => {
     try {
       await firebaseSignOut(auth);
       setGoogleAccessToken(null);
-      sessionStorage.removeItem(GTOKEN_KEY);
+      // HI-11 fix: no sessionStorage entry to clear
     } catch (error) {
       console.error('Sign out failed:', error);
       setAuthError('Failed to sign out properly.');
@@ -150,7 +182,7 @@ export const AuthProvider = ({ children }) => {
       const credential = GoogleAuthProvider.credentialFromResult(result);
       if (credential?.accessToken) {
         setGoogleAccessToken(credential.accessToken);
-        sessionStorage.setItem(GTOKEN_KEY, credential.accessToken);
+        // HI-11 fix: token stored in memory only
         return credential.accessToken;
       }
     } catch (err) {

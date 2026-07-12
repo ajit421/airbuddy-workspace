@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from './AuthContext';
@@ -7,16 +7,22 @@ const TaskContext = createContext(null);
 
 export const TaskProvider = ({ children }) => {
   const { user, isAdmin, effectiveUid } = useAuth();
-  const [tasks, setTasks] = useState([]);
   const [allTasks, setAllTasks] = useState([]);
   const [allUsers, setAllUsers] = useState({});
   const [loading, setLoading] = useState(true);
 
+  // ME-3 fix: separate state slices for each employee query (no shared mutable Map)
+  // Each slice is independently updated by its own onSnapshot callback.
+  // The merge happens in useMemo below — atomically, without clear() races.
+  const [assignedTasks, setAssignedTasks] = useState(null); // null = not yet received
+  const [partnerTasks,  setPartnerTasks]  = useState(null);
+
   useEffect(() => {
     if (!user || !effectiveUid) {
-      setTasks([]);
       setAllTasks([]);
       setAllUsers({});
+      setAssignedTasks(null);
+      setPartnerTasks(null);
       setLoading(false);
       return;
     }
@@ -38,35 +44,15 @@ export const TaskProvider = ({ children }) => {
       unsubTasks = onSnapshot(adminQuery, (snap) => {
         const taskList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         setAllTasks(taskList);
-        setTasks(taskList); // Admin sees all tasks in their personal dashboard & calendar too
         setLoading(false);
       }, (err) => {
         console.error('Task listener admin error:', err);
         setLoading(false);
       });
     } else {
-      // Employee view: tasks where assigned OR where they are a work partner.
-      // Firestore doesn't support OR queries across different fields, so we run
-      // two separate queries and merge + deduplicate the results client-side.
-      const mergedMap = new Map(); // taskId → task doc
-      let assignedSnap = null;
-      let partnerSnap  = null;
-
-      const tryMerge = () => {
-        if (assignedSnap === null || partnerSnap === null) return; // wait for both
-        mergedMap.clear();
-        [...assignedSnap.docs, ...partnerSnap.docs].forEach(d => {
-          mergedMap.set(d.id, { id: d.id, ...d.data() });
-        });
-        const taskList = Array.from(mergedMap.values());
-        taskList.sort((a, b) => {
-          const dateA = a.dueDate?.toDate ? a.dueDate.toDate() : new Date(a.dueDate);
-          const dateB = b.dueDate?.toDate ? b.dueDate.toDate() : new Date(b.dueDate);
-          return dateA - dateB;
-        });
-        setTasks(taskList);
-        setLoading(false);
-      };
+      // ME-3 fix: two separate query results stored in separate state slices.
+      // Each callback only writes to its own slice — no shared mutable Map,
+      // no clear() races. Merging is deferred to the useMemo below.
 
       // Query 1: tasks assigned to this user
       const assignedQuery = query(
@@ -74,8 +60,8 @@ export const TaskProvider = ({ children }) => {
         where('assignedTo', 'array-contains', effectiveUid)
       );
       const unsubAssigned = onSnapshot(assignedQuery, (snap) => {
-        assignedSnap = snap;
-        tryMerge();
+        setAssignedTasks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setLoading(false);
       }, (err) => {
         console.error('Task listener (assignedTo) error:', err);
         setLoading(false);
@@ -87,8 +73,8 @@ export const TaskProvider = ({ children }) => {
         where('workPartnerUids', 'array-contains', effectiveUid)
       );
       const unsubPartner = onSnapshot(partnerQuery, (snap) => {
-        partnerSnap = snap;
-        tryMerge();
+        setPartnerTasks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setLoading(false);
       }, (err) => {
         console.error('Task listener (workPartnerUids) error:', err);
         setLoading(false);
@@ -102,6 +88,30 @@ export const TaskProvider = ({ children }) => {
       unsubTasks();
     };
   }, [user, isAdmin, effectiveUid]);
+
+  // ME-3 fix: merge the two employee query slices via useMemo.
+  // This is atomic — React computes it in a single synchronous pass after
+  // both state slices have been updated, so the intermediate "half-clear"
+  // state that caused the race condition cannot occur here.
+  const tasks = useMemo(() => {
+    if (isAdmin) return allTasks; // admin path uses allTasks directly
+
+    // Wait until both snapshots have been received at least once
+    if (assignedTasks === null || partnerTasks === null) return [];
+
+    // Deduplicate by id (a task can appear in both queries)
+    const map = new Map();
+    [...assignedTasks, ...partnerTasks].forEach(t => map.set(t.id, t));
+    const merged = Array.from(map.values());
+
+    // Sort by due date ascending (soonest first)
+    merged.sort((a, b) => {
+      const dateA = a.dueDate?.toDate ? a.dueDate.toDate() : new Date(a.dueDate);
+      const dateB = b.dueDate?.toDate ? b.dueDate.toDate() : new Date(b.dueDate);
+      return dateA - dateB;
+    });
+    return merged;
+  }, [isAdmin, allTasks, assignedTasks, partnerTasks]);
 
   const getTasksByStatus = (status) => tasks.filter(t => t.status === status);
   const getUpcomingTasks = (days = 7) => {
@@ -124,3 +134,4 @@ export const useTasks = () => {
   if (!ctx) throw new Error('useTasks must be used within TaskProvider');
   return ctx;
 };
+
