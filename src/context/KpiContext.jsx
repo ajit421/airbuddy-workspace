@@ -22,10 +22,12 @@ import {
 // ─── Filing stage → progress percent mapping (never stored in Firestore) ──────
 export const FILING_STAGE_PROGRESS = {
   'Idea':            10,
-  'Drafting':        30,
-  'Internal Review': 50,
-  'Filed':           70,
-  'Under Review':    85,
+  'Drafting':        25,
+  'Internal Review': 40,
+  'Filed':           55,
+  'Published':       70,
+  'RQ Filed':        80,
+  'Under Examination': 90,
   'Granted':        100,
   'Rejected':         0,
 };
@@ -112,7 +114,14 @@ export const KpiProvider = ({ children }) => {
   );
 
   const totalPatentsFiled = useMemo(
-    () => patents.filter((p) => p.filingStage === 'Filed' || p.filingStage === 'Granted').length,
+    () => patents.filter((p) =>
+      p.filingStage === 'Filed' ||
+      p.filingStage === 'Published' ||
+      p.filingStage === 'RQ Filed' ||
+      p.filingStage === 'Under Examination' ||
+      p.filingStage === 'Granted' ||
+      p.filingStage === 'Rejected'
+    ).length,
     [patents]
   );
   const totalPatentsInFiling = useMemo(

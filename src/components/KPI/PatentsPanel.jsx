@@ -18,7 +18,9 @@ const stageClass = (stage) => {
     case 'Granted':
       return 'bg-green-500/15 text-green-400 border-green-500/25';
     case 'Filed':
-    case 'Under Review':
+    case 'Published':
+    case 'RQ Filed':
+    case 'Under Examination':
       return 'bg-blue-500/15 text-blue-400 border-blue-500/25';
     case 'Drafting':
     case 'Internal Review':
@@ -36,7 +38,9 @@ const stageColor = (stage) => {
   switch (stage) {
     case 'Granted':                 return '#22C55E';
     case 'Filed':
-    case 'Under Review':            return '#3B82F6';
+    case 'Published':
+    case 'RQ Filed':
+    case 'Under Examination':       return '#3B82F6';
     case 'Drafting':
     case 'Internal Review':         return '#F97316';
     case 'Rejected':                return '#EF4444';
@@ -156,6 +160,24 @@ export default function PatentsPanel() {
                     {patent.filingStage || 'Idea'}
                   </span>
                 </div>
+
+                {/* Application number & Field of Invention */}
+                {(patent.appNumber || patent.fieldOfInvention) && (
+                  <div className="flex flex-col gap-1 text-[11px] leading-relaxed text-text-muted bg-background/35 px-2.5 py-1.5 rounded-md border border-borderLight/30 my-0.5">
+                    {patent.appNumber && (
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium text-text-muted">App No:</span>
+                        <span className="font-mono text-text-primary select-all">{patent.appNumber}</span>
+                      </div>
+                    )}
+                    {patent.fieldOfInvention && (
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium text-text-muted">Field:</span>
+                        <span className="font-semibold text-text-secondary">{patent.fieldOfInvention}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Derived progress meter */}
                 <div>

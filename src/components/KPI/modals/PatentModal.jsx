@@ -35,12 +35,14 @@ export const FILING_STAGES = [
   'Drafting',
   'Internal Review',
   'Filed',
-  'Under Review',
+  'Published',
+  'RQ Filed',
+  'Under Examination',
   'Granted',
   'Rejected',
 ];
 
-const EMPTY_FORM = { title: '', filingStage: 'Idea' };
+const EMPTY_FORM = { title: '', filingStage: 'Idea', appNumber: '', fieldOfInvention: '' };
 
 export default function PatentModal({ isOpen, onClose, onSaved, item }) {
   const [form,   setForm]   = useState(EMPTY_FORM);
@@ -52,8 +54,10 @@ export default function PatentModal({ isOpen, onClose, onSaved, item }) {
   useEffect(() => {
     if (item) {
       setForm({
-        title:       item.title       || '',
-        filingStage: item.filingStage || 'Idea',
+        title:            item.title            || '',
+        filingStage:      item.filingStage      || 'Idea',
+        appNumber:        item.appNumber        || '',
+        fieldOfInvention: item.fieldOfInvention || '',
       });
     } else {
       setForm(EMPTY_FORM);
@@ -73,8 +77,10 @@ export default function PatentModal({ isOpen, onClose, onSaved, item }) {
     if (!form.title.trim()) return setError('Patent title is required.');
 
     const payload = {
-      title:       form.title.trim(),
-      filingStage: form.filingStage || 'Idea',
+      title:            form.title.trim(),
+      filingStage:      form.filingStage || 'Idea',
+      appNumber:        form.appNumber.trim(),
+      fieldOfInvention: form.fieldOfInvention.trim(),
     };
 
     setSaving(true);
@@ -107,7 +113,7 @@ export default function PatentModal({ isOpen, onClose, onSaved, item }) {
             name="title"
             value={form.title}
             onChange={handleChange}
-            placeholder="e.g. Autonomous Drone Navigation System"
+            placeholder="e.g. Non-magnetic PCB motor..."
             className={inputCls}
           />
         </Field>
@@ -118,6 +124,26 @@ export default function PatentModal({ isOpen, onClose, onSaved, item }) {
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
+        </Field>
+
+        <Field label="Application Number">
+          <input
+            name="appNumber"
+            value={form.appNumber}
+            onChange={handleChange}
+            placeholder="e.g. 202531082225"
+            className={inputCls}
+          />
+        </Field>
+
+        <Field label="Field of Invention">
+          <input
+            name="fieldOfInvention"
+            value={form.fieldOfInvention}
+            onChange={handleChange}
+            placeholder="e.g. Electrical or Mechanical"
+            className={inputCls}
+          />
         </Field>
 
         <div className="flex justify-end gap-3 pt-1">
