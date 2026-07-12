@@ -1,7 +1,8 @@
 /**
  * ClientsPanel.jsx
  * KPI sub-panel for /kpi/clients
- * Shows all clients with industry tag, progress meter and status badge.
+ * Shows clients with Current/Total toggle, industry tag, progress meter, status badge,
+ * and per-client sales/paid-pilot counts.
  * Admin can add, edit, and delete entries.
  */
 
@@ -12,29 +13,53 @@ import { deleteKpiClient } from '../../services/kpiService';
 import { ProgressMeter } from '../shared/Charts';
 import ClientModal from './modals/ClientModal';
 
+// ─── Status → badge classes ───────────────────────────────────────────────────
+const statusClass = (status) => {
+  const s = (status || '').toLowerCase();
+  if (s === 'inactive' || s === 'churned')
+    return 'bg-red-500/15 text-red-400 border-red-500/25';
+  if (s === 'on hold' || s === 'paused')
+    return 'bg-amber-500/15 text-amber-400 border-amber-500/25';
+  return 'bg-blue-500/15 text-blue-400 border-blue-500/25';
+};
+
 const Spinner = () => (
   <div className="flex items-center justify-center py-16">
     <div className="w-9 h-9 border-2 border-orange border-t-transparent rounded-full animate-spin" />
   </div>
 );
 
-const Empty = () => (
+const Empty = ({ filter }) => (
   <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
     <span className="text-4xl">💼</span>
-    <p className="font-semibold text-text-primary">No clients yet</p>
+    <p className="font-semibold text-text-primary">
+      {filter === 'current' ? 'No current clients' : 'No clients yet'}
+    </p>
     <p className="text-xs text-text-muted max-w-xs">
-      Admins can add clients and link them to industry verticals to track engagement.
+      {filter === 'current'
+        ? 'All clients are currently inactive or churned.'
+        : 'Admins can add clients and link them to industry verticals to track engagement.'}
     </p>
   </div>
 );
 
 export default function ClientsPanel() {
-  const { clients, industries, loading, getIndustryForClient } = useKpi();
+  const {
+    clients,
+    industries,
+    currentClients,
+    totalCurrentClients,
+    loading,
+    getIndustryForClient,
+    getSalesCountForClient,
+    getPaidPilotsCountForClient,
+  } = useKpi();
   const { isAdmin } = useAuth();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing,   setEditing]   = useState(null);
   const [deleting,  setDeleting]  = useState(null);
+  const [filter,    setFilter]    = useState('current'); // 'current' | 'total'
 
   const handleEdit = (client) => { setEditing(client); setModalOpen(true); };
   const handleAdd  = ()       => { setEditing(null);   setModalOpen(true); };
@@ -46,6 +71,8 @@ export default function ClientsPanel() {
     catch (err) { console.error('Delete client failed:', err); }
     finally { setDeleting(null); }
   };
+
+  const displayedClients = filter === 'current' ? currentClients : clients;
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -75,28 +102,66 @@ export default function ClientsPanel() {
             </svg>
           </div>
           <div>
+            <p className="text-2xl font-black text-text-primary">{totalCurrentClients}</p>
+            <p className="text-sm font-semibold text-text-primary">Current Clients</p>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon bg-blue-500/15 text-blue-400">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+          <div>
             <p className="text-2xl font-black text-text-primary">{clients.length}</p>
             <p className="text-sm font-semibold text-text-primary">Total Clients</p>
           </div>
         </div>
       </div>
 
+      {/* Current / Total toggle */}
+      <div className="flex items-center gap-1 mb-5 p-1 bg-surface rounded-lg border border-border self-start w-fit">
+        <button
+          onClick={() => setFilter('current')}
+          className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${
+            filter === 'current'
+              ? 'bg-orange text-white shadow-sm'
+              : 'text-text-muted hover:text-text-primary'
+          }`}
+        >
+          Current Clients
+        </button>
+        <button
+          onClick={() => setFilter('total')}
+          className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${
+            filter === 'total'
+              ? 'bg-orange text-white shadow-sm'
+              : 'text-text-muted hover:text-text-primary'
+          }`}
+        >
+          Total Clients
+        </button>
+      </div>
+
       {/* Content */}
       {loading ? (
         <Spinner />
-      ) : clients.length === 0 ? (
-        <Empty />
+      ) : displayedClients.length === 0 ? (
+        <Empty filter={filter} />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {clients.map((client) => {
-            const industry = getIndustryForClient(client.industryId);
+          {displayedClients.map((client) => {
+            const industry   = getIndustryForClient(client.industryId);
+            const salesCount = getSalesCountForClient(client.id);
+            const pilotsCount = getPaidPilotsCountForClient(client.id);
             return (
               <div key={client.id} className="card p-5 flex flex-col gap-3">
                 {/* Name + status */}
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="font-bold text-text-primary text-base leading-tight">{client.name}</h3>
                   {client.currentStatus && (
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full border inline-block flex-shrink-0 bg-blue-500/15 text-blue-400 border-blue-500/25">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border inline-block flex-shrink-0 ${statusClass(client.currentStatus)}`}>
                       {client.currentStatus}
                     </span>
                   )}
@@ -115,6 +180,22 @@ export default function ClientsPanel() {
                     <span className="text-xs text-text-muted font-medium">Engagement Progress</span>
                   </div>
                   <ProgressMeter value={client.progressPercent || 0} color="#3B82F6" />
+                </div>
+
+                {/* Sales / Pilots counts */}
+                <div className="flex items-center gap-3 text-xs text-text-muted border-t border-border pt-2">
+                  <span className="flex items-center gap-1">
+                    <svg className="w-3.5 h-3.5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                    </svg>
+                    <span className="font-semibold text-text-secondary">{salesCount}</span> product sale{salesCount !== 1 ? 's' : ''}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <svg className="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    <span className="font-semibold text-text-secondary">{pilotsCount}</span> paid pilot{pilotsCount !== 1 ? 's' : ''}
+                  </span>
                 </div>
 
                 {/* Admin actions */}

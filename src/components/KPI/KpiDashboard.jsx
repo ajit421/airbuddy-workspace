@@ -78,9 +78,9 @@ const panels = [
     sublabel: (ctx) => `${ctx.totalLaunched} launched`,
   },
   {
-    path: '/kpi/patents',
-    label: 'Patents',
-    description: 'Monitor patent filings and grants',
+    path: '/kpi/ip',
+    label: 'IP',
+    description: 'Track patents, trademarks, and software tools',
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -90,7 +90,7 @@ const panels = [
     color: 'text-yellow-400',
     iconBg: 'bg-yellow-500/15',
     getCount: (ctx) => ctx.patents.length,
-    sublabel: (ctx) => `${ctx.totalPatentsFiled} filed/granted`,
+    sublabel: (ctx) => `${ctx.totalIPPatents} patent${ctx.totalIPPatents !== 1 ? 's' : ''}, ${ctx.totalIPTrademarks} TM`,
   },
 ];
 

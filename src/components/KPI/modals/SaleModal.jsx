@@ -8,6 +8,11 @@
  *   onSaved   {function}     — called after a successful save
  *   item      {Object|null}  — null = create mode; object = edit mode
  *   products  {Array}        — list of product objects for the picker dropdown
+ *   clients   {Array}        — list of client objects for the client picker dropdown
+ *
+ * New fields (Section 5):
+ *   type     — "B2B Sale" | "Paid Pilot"
+ *   clientId — kpi_clients document ID (optional link to a client)
  */
 
 import { useState, useEffect } from 'react';
@@ -31,9 +36,18 @@ const inputCls = `w-full px-3 py-2 rounded-lg bg-background border border-border
   focus:outline-none focus:ring-2 focus:ring-orange/50 focus:border-orange
   transition-colors`;
 
-const EMPTY_FORM = { productId: '', unitsSold: '', salesProgressPercent: '', launched: false };
+export const SALE_TYPES = ['B2B Sale', 'Paid Pilot'];
 
-export default function SaleModal({ isOpen, onClose, onSaved, item, products = [] }) {
+const EMPTY_FORM = {
+  productId: '',
+  clientId: '',
+  type: '',
+  unitsSold: '',
+  salesProgressPercent: '',
+  launched: false,
+};
+
+export default function SaleModal({ isOpen, onClose, onSaved, item, products = [], clients = [] }) {
   const [form,   setForm]   = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
@@ -43,10 +57,12 @@ export default function SaleModal({ isOpen, onClose, onSaved, item, products = [
   useEffect(() => {
     if (item) {
       setForm({
-        productId:           item.productId           || '',
-        unitsSold:           item.unitsSold           != null ? String(item.unitsSold) : '',
+        productId:            item.productId            || '',
+        clientId:             item.clientId             || '',
+        type:                 item.type                 || '',
+        unitsSold:            item.unitsSold            != null ? String(item.unitsSold) : '',
         salesProgressPercent: item.salesProgressPercent != null ? String(item.salesProgressPercent) : '',
-        launched:            item.launched            ?? false,
+        launched:             item.launched             ?? false,
       });
     } else {
       setForm(EMPTY_FORM);
@@ -77,6 +93,8 @@ export default function SaleModal({ isOpen, onClose, onSaved, item, products = [
 
     const payload = {
       productId:            form.productId,
+      clientId:             form.clientId  || '',
+      type:                 form.type      || '',
       unitsSold:            form.unitsSold !== '' ? units : 0,
       salesProgressPercent: form.salesProgressPercent !== '' ? pct : 0,
       launched:             form.launched,
@@ -107,11 +125,29 @@ export default function SaleModal({ isOpen, onClose, onSaved, item, products = [
           </div>
         )}
 
+        <Field label="Sale Type">
+          <select name="type" value={form.type} onChange={handleChange} className={inputCls}>
+            <option value="">— Select type —</option>
+            {SALE_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </Field>
+
         <Field label="Product" required>
           <select name="productId" value={form.productId} onChange={handleChange} className={inputCls}>
             <option value="">— Select a product —</option>
             {products.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="Client">
+          <select name="clientId" value={form.clientId} onChange={handleChange} className={inputCls}>
+            <option value="">— No client linked —</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </Field>

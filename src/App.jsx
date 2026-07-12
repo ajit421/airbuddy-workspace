@@ -27,7 +27,7 @@ import IndustriesPanel    from './components/KPI/IndustriesPanel';
 import ClientsPanel       from './components/KPI/ClientsPanel';
 import ProductsPanel      from './components/KPI/ProductsPanel';
 import SalesPanel         from './components/KPI/SalesPanel';
-import PatentsPanel       from './components/KPI/PatentsPanel';
+import IPPanel            from './components/KPI/PatentsPanel';
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -129,7 +129,8 @@ const AppRoutes = () => {
           <Route path="kpi/clients"    element={<ClientsPanel />} />
           <Route path="kpi/products"   element={<ProductsPanel />} />
           <Route path="kpi/sales"      element={<SalesPanel />} />
-          <Route path="kpi/patents"    element={<PatentsPanel />} />
+          <Route path="kpi/ip"         element={<IPPanel />} />
+          <Route path="kpi/patents"    element={<Navigate to="/kpi/ip" replace />} />
         </Route>
       </Route>
       {/* Fallback */}

@@ -25,6 +25,7 @@ const KPI_INDUSTRIES = 'kpi_industries';
 const KPI_CLIENTS    = 'kpi_clients';
 const KPI_PRODUCTS   = 'kpi_products';
 const KPI_SALES      = 'kpi_sales';
+// kpi_patents is reused as a general IP collection (Patents, Trademarks, Software/Calculator)
 const KPI_PATENTS    = 'kpi_patents';
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -207,7 +208,11 @@ export function subscribeToKpiProducts(onData, onError) {
 
 /**
  * Add a new product document.
- * @param {Object} data  { name, type, devProgressPercent, devCompleted }
+ * @param {Object} data  {
+ *   name, type, devCompleted,
+ *   stage         — "Design" | "Testing" | "Iteration" | "Design Freeze",
+ *   industryIds   — string[] of kpi_industries document IDs
+ * }
  * @returns {Promise<string>} Auto-generated Firestore document ID.
  */
 export async function addKpiProduct(data) {
@@ -227,7 +232,7 @@ export async function addKpiProduct(data) {
 /**
  * Partially update an existing product document.
  * @param {string} id   Firestore document ID.
- * @param {Object} data Partial fields to merge.
+ * @param {Object} data Partial fields to merge (may include stage, industryIds).
  */
 export async function updateKpiProduct(id, data) {
   try {
@@ -281,7 +286,11 @@ export function subscribeToKpiSales(onData, onError) {
 
 /**
  * Add a new sales document.
- * @param {Object} data  { productId, unitsSold, salesProgressPercent, launched }
+ * @param {Object} data  {
+ *   productId, unitsSold, salesProgressPercent, launched,
+ *   type      — "B2B Sale" | "Paid Pilot",
+ *   clientId  — kpi_clients document ID (optional)
+ * }
  * @returns {Promise<string>} Auto-generated Firestore document ID.
  */
 export async function addKpiSale(data) {
@@ -301,7 +310,7 @@ export async function addKpiSale(data) {
 /**
  * Partially update an existing sales document.
  * @param {string} id   Firestore document ID.
- * @param {Object} data Partial fields to merge.
+ * @param {Object} data Partial fields to merge (may include type, clientId).
  */
 export async function updateKpiSale(id, data) {
   try {
@@ -329,11 +338,15 @@ export async function deleteKpiSale(id) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// PATENTS
+// PATENTS / IP
+// The kpi_patents collection is used as a general IP collection.
+// Documents now carry an `ipType` field: "Patent" | "Trademark" | "Software/Calculator"
+// Existing patent-only functions are preserved for backward compatibility.
+// New `addKpiIP` / `updateKpiIP` / `deleteKpiIP` functions are preferred going forward.
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Real-time listener for `kpi_patents`.
+ * Real-time listener for `kpi_patents` (general IP collection).
  * Sorts client-side by `title` (ascending).
  * @returns {function} Firestore unsubscribe function.
  */
@@ -342,7 +355,7 @@ export function subscribeToKpiPatents(onData, onError) {
     collection(db, KPI_PATENTS),
     (snap) => {
       const list = snapToArray(snap).sort((a, b) =>
-        (a.title || '').localeCompare(b.title || '')
+        (a.title || a.toolName || '').localeCompare(b.title || b.toolName || '')
       );
       onData(list);
     },
@@ -354,14 +367,15 @@ export function subscribeToKpiPatents(onData, onError) {
 }
 
 /**
- * Add a new patent document.
- * @param {Object} data  { title, filingStage }
+ * Add a new patent document (legacy — kept for backward compat).
+ * @param {Object} data  { title, filingStage, appNumber, fieldOfInvention }
  * @returns {Promise<string>} Auto-generated Firestore document ID.
  */
 export async function addKpiPatent(data) {
   try {
     const ref = await addDoc(collection(db, KPI_PATENTS), {
       ...data,
+      ipType: data.ipType || 'Patent',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -373,7 +387,7 @@ export async function addKpiPatent(data) {
 }
 
 /**
- * Partially update an existing patent document.
+ * Partially update an existing patent document (legacy — kept for backward compat).
  * @param {string} id   Firestore document ID.
  * @param {Object} data Partial fields to merge.
  */
@@ -390,7 +404,7 @@ export async function updateKpiPatent(id, data) {
 }
 
 /**
- * Delete a patent document.
+ * Delete a patent document (legacy — kept for backward compat).
  * @param {string} id Firestore document ID.
  */
 export async function deleteKpiPatent(id) {
@@ -398,6 +412,63 @@ export async function deleteKpiPatent(id) {
     await deleteDoc(doc(db, KPI_PATENTS, id));
   } catch (err) {
     console.error('[kpiService] deleteKpiPatent failed:', err);
+    throw err;
+  }
+}
+
+// ─── New IP functions (preferred going forward) ───────────────────────────────
+
+/**
+ * Add a new IP document (Patent, Trademark, or Software/Calculator).
+ * @param {Object} data  {
+ *   ipType — "Patent" | "Trademark" | "Software/Calculator",
+ *   title  — display title / name,
+ *   // Patent fields: filingStage, appNumber, fieldOfInvention
+ *   // Trademark fields: trademarkClass, filingStage
+ *   // Software fields: toolName, status, repoOrToolLink
+ * }
+ * @returns {Promise<string>} Auto-generated Firestore document ID.
+ */
+export async function addKpiIP(data) {
+  try {
+    const ref = await addDoc(collection(db, KPI_PATENTS), {
+      ...data,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return ref.id;
+  } catch (err) {
+    console.error('[kpiService] addKpiIP failed:', err);
+    throw err;
+  }
+}
+
+/**
+ * Partially update an existing IP document.
+ * @param {string} id   Firestore document ID.
+ * @param {Object} data Partial fields to merge (may include ipType).
+ */
+export async function updateKpiIP(id, data) {
+  try {
+    await updateDoc(doc(db, KPI_PATENTS, id), {
+      ...data,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    console.error('[kpiService] updateKpiIP failed:', err);
+    throw err;
+  }
+}
+
+/**
+ * Delete an IP document.
+ * @param {string} id Firestore document ID.
+ */
+export async function deleteKpiIP(id) {
+  try {
+    await deleteDoc(doc(db, KPI_PATENTS, id));
+  } catch (err) {
+    console.error('[kpiService] deleteKpiIP failed:', err);
     throw err;
   }
 }
