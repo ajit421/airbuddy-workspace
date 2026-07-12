@@ -1,7 +1,9 @@
 /**
  * SalesPanel.jsx
  * KPI sub-panel for /kpi/sales
- * Shows all sale entries with product name, units sold, progress meter and launched badge.
+ * Shows all sale entries with product name, sale type badge, linked client name,
+ * units sold, progress meter, and launched badge.
+ * Summary strip shows: Total Launched, Total Units Sold, B2B Sales, Paid Pilots.
  * Admin can add, edit, and delete entries.
  */
 
@@ -11,6 +13,15 @@ import { useAuth } from '../../context/AuthContext';
 import { deleteKpiSale } from '../../services/kpiService';
 import { ProgressMeter } from '../shared/Charts';
 import SaleModal from './modals/SaleModal';
+
+// ─── Sale type → badge classes ─────────────────────────────────────────────
+const typeClass = (type) => {
+  switch (type) {
+    case 'B2B Sale':    return 'bg-green-500/15 text-green-400 border-green-500/25';
+    case 'Paid Pilot':  return 'bg-blue-500/15 text-blue-400 border-blue-500/25';
+    default:            return 'bg-border text-text-muted border-borderLight';
+  }
+};
 
 const Spinner = () => (
   <div className="flex items-center justify-center py-16">
@@ -23,13 +34,24 @@ const Empty = () => (
     <span className="text-4xl">📈</span>
     <p className="font-semibold text-text-primary">No sales data yet</p>
     <p className="text-xs text-text-muted max-w-xs">
-      Admins can add sales entries linked to products to track units sold and launch status.
+      Admins can add sales entries linked to products and clients to track units sold and launch status.
     </p>
   </div>
 );
 
 export default function SalesPanel() {
-  const { sales, products, loading, getProductForSale, totalLaunched, totalUnitsSold } = useKpi();
+  const {
+    sales,
+    products,
+    clients,
+    loading,
+    getProductForSale,
+    getClientForSale,
+    totalLaunched,
+    totalUnitsSold,
+    totalB2BSales,
+    totalPaidPilots,
+  } = useKpi();
   const { isAdmin } = useAuth();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -53,7 +75,7 @@ export default function SalesPanel() {
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-black text-text-primary">Sales</h1>
-          <p className="text-sm text-text-muted mt-1">Track units sold and product launch status.</p>
+          <p className="text-sm text-text-muted mt-1">Track B2B product sales, paid pilots, and launch status.</p>
         </div>
         {isAdmin && (
           <button onClick={handleAdd} className="btn-primary px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 flex-shrink-0">
@@ -65,7 +87,7 @@ export default function SalesPanel() {
         )}
       </div>
 
-      {/* Summary strip */}
+      {/* Summary strip — 4 stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <div className="stat-card">
           <div className="stat-icon bg-green-500/15 text-green-400">
@@ -91,6 +113,30 @@ export default function SalesPanel() {
             <p className="text-sm font-semibold text-text-primary">Total Units Sold</p>
           </div>
         </div>
+        <div className="stat-card">
+          <div className="stat-icon bg-green-500/15 text-green-400">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-2xl font-black text-text-primary">{totalB2BSales}</p>
+            <p className="text-sm font-semibold text-text-primary">B2B Sales</p>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon bg-blue-500/15 text-blue-400">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-2xl font-black text-text-primary">{totalPaidPilots}</p>
+            <p className="text-sm font-semibold text-text-primary">Paid Pilots</p>
+          </div>
+        </div>
       </div>
 
       {/* Content */}
@@ -102,6 +148,7 @@ export default function SalesPanel() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {sales.map((sale) => {
             const product = getProductForSale(sale.productId);
+            const client  = sale.clientId ? getClientForSale(sale.clientId) : null;
             return (
               <div key={sale.id} className="card p-5 flex flex-col gap-3">
                 {/* Product name + launched badge */}
@@ -117,6 +164,24 @@ export default function SalesPanel() {
                     {sale.launched ? 'Launched' : 'Pending'}
                   </span>
                 </div>
+
+                {/* Sale type badge */}
+                {sale.type && (
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border inline-block self-start ${typeClass(sale.type)}`}>
+                    {sale.type}
+                  </span>
+                )}
+
+                {/* Linked client */}
+                {client && (
+                  <div className="flex items-center gap-1.5 text-xs text-text-muted">
+                    <svg className="w-3.5 h-3.5 text-orange flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    <span className="font-semibold text-text-secondary">{client.name}</span>
+                  </div>
+                )}
 
                 {/* Units sold */}
                 <p className="text-sm text-text-secondary">
@@ -165,6 +230,7 @@ export default function SalesPanel() {
         onSaved={() => {}}
         item={editing}
         products={products}
+        clients={clients}
       />
     </div>
   );

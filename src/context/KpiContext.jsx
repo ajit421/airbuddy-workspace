@@ -32,6 +32,17 @@ export const FILING_STAGE_PROGRESS = {
   'Rejected':         0,
 };
 
+// ─── Product development stage → progress percent mapping ────────────────────
+export const DEV_STAGE_PROGRESS = {
+  'Design':        25,
+  'Testing':       50,
+  'Iteration':     75,
+  'Design Freeze': 100,
+};
+
+// ─── "Current" client statuses (anything not explicitly inactive/churned) ─────
+const INACTIVE_STATUSES = new Set(['Inactive', 'Churned']);
+
 // ─── Context ─────────────────────────────────────────────────────────────────
 const KpiContext = createContext(null);
 
@@ -95,14 +106,37 @@ export const KpiProvider = ({ children }) => {
   const getProductForSale = (productId) =>
     products.find((p) => p.id === productId) ?? null;
 
+  /** Returns the client object for a given clientId, or null if not found. */
+  const getClientForSale = (clientId) =>
+    clients.find((c) => c.id === clientId) ?? null;
+
   /** Returns the progress percentage (0–100) for a given filing stage string. */
   const getPatentProgress = (filingStage) =>
     FILING_STAGE_PROGRESS[filingStage] ?? 0;
+
+  /** Returns all products whose industryIds array includes the given industry id. */
+  const getProductsForIndustry = (industryId) =>
+    products.filter((p) => (p.industryIds || []).includes(industryId));
+
+  /** Returns the count of sales entries linked to the given clientId. */
+  const getSalesCountForClient = (clientId) =>
+    sales.filter((s) => s.clientId === clientId).length;
+
+  /** Returns the count of sales entries where type === "Paid Pilot" for the given clientId. */
+  const getPaidPilotsCountForClient = (clientId) =>
+    sales.filter((s) => s.clientId === clientId && s.type === 'Paid Pilot').length;
 
   // ── Computed / derived values (memoised) ───────────────────────────────────
   const totalIndustries = useMemo(() => industries.length, [industries]);
   const totalClients    = useMemo(() => clients.length,    [clients]);
   const totalProducts   = useMemo(() => products.length,   [products]);
+
+  /** Clients whose status is not explicitly Inactive or Churned. */
+  const currentClients = useMemo(
+    () => clients.filter((c) => !INACTIVE_STATUSES.has(c.currentStatus)),
+    [clients]
+  );
+  const totalCurrentClients = useMemo(() => currentClients.length, [currentClients]);
 
   const totalLaunched  = useMemo(
     () => sales.filter((s) => s.launched === true).length,
@@ -111,6 +145,24 @@ export const KpiProvider = ({ children }) => {
   const totalUnitsSold = useMemo(
     () => sales.reduce((sum, s) => sum + (Number(s.unitsSold) || 0), 0),
     [sales]
+  );
+
+  /** Count of sale entries with type "B2B Sale". */
+  const totalB2BSales = useMemo(
+    () => sales.filter((s) => s.type === 'B2B Sale').length,
+    [sales]
+  );
+
+  /** Count of sale entries with type "Paid Pilot". */
+  const totalPaidPilots = useMemo(
+    () => sales.filter((s) => s.type === 'Paid Pilot').length,
+    [sales]
+  );
+
+  /** Count of products whose development stage is "Design Freeze" (fully finalized). */
+  const totalDesignFreezeProducts = useMemo(
+    () => products.filter((p) => p.stage === 'Design Freeze').length,
+    [products]
   );
 
   const totalPatentsFiled = useMemo(
@@ -133,6 +185,23 @@ export const KpiProvider = ({ children }) => {
     [patents]
   );
 
+  // ── IP type breakdown counts ───────────────────────────────────────────────
+  /** Count of IP entries with ipType "Patent" (or no ipType for legacy docs). */
+  const totalIPPatents = useMemo(
+    () => patents.filter((p) => !p.ipType || p.ipType === 'Patent').length,
+    [patents]
+  );
+  /** Count of IP entries with ipType "Trademark". */
+  const totalIPTrademarks = useMemo(
+    () => patents.filter((p) => p.ipType === 'Trademark').length,
+    [patents]
+  );
+  /** Count of IP entries with ipType "Software/Calculator". */
+  const totalIPSoftware = useMemo(
+    () => patents.filter((p) => p.ipType === 'Software/Calculator').length,
+    [patents]
+  );
+
   const value = {
     // Raw state
     industries,
@@ -146,16 +215,34 @@ export const KpiProvider = ({ children }) => {
     getClientsForIndustry,
     getIndustryForClient,
     getProductForSale,
+    getClientForSale,
     getPatentProgress,
+    getProductsForIndustry,
+    getSalesCountForClient,
+    getPaidPilotsCountForClient,
 
-    // Computed values
+    // Computed values — Industries / Clients
     totalIndustries,
     totalClients,
+    currentClients,
+    totalCurrentClients,
+
+    // Computed values — Products
     totalProducts,
+    totalDesignFreezeProducts,
+
+    // Computed values — Sales
     totalLaunched,
     totalUnitsSold,
+    totalB2BSales,
+    totalPaidPilots,
+
+    // Computed values — IP / Patents
     totalPatentsFiled,
     totalPatentsInFiling,
+    totalIPPatents,
+    totalIPTrademarks,
+    totalIPSoftware,
   };
 
   return <KpiContext.Provider value={value}>{children}</KpiContext.Provider>;

@@ -1,7 +1,8 @@
 /**
  * IndustriesPanel.jsx
  * KPI sub-panel for /kpi/industries
- * Shows all industries with growth meter and status badge.
+ * Shows all industries with growth meter, status badge, linked clients count,
+ * and product variants linked to each industry.
  * Admin can add, edit, and delete entries.
  */
 
@@ -41,7 +42,13 @@ const Empty = () => (
 
 // ─── Component ───────────────────────────────────────────────────────────────
 export default function IndustriesPanel() {
-  const { industries, clients, loading, getClientsForIndustry } = useKpi();
+  const {
+    industries,
+    clients,
+    loading,
+    getClientsForIndustry,
+    getProductsForIndustry,
+  } = useKpi();
   const { isAdmin } = useAuth();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -78,7 +85,7 @@ export default function IndustriesPanel() {
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-black text-text-primary">Industries</h1>
-          <p className="text-sm text-text-muted mt-1">Track industry verticals and growth metrics.</p>
+          <p className="text-sm text-text-muted mt-1">Track industry verticals, growth metrics, and linked products.</p>
         </div>
         {isAdmin && (
           <button onClick={handleAdd} className="btn-primary px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 flex-shrink-0">
@@ -126,7 +133,11 @@ export default function IndustriesPanel() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {industries.map((industry) => {
-            const linkedClients = getClientsForIndustry(industry.id);
+            const linkedClients  = getClientsForIndustry(industry.id);
+            const linkedProducts = getProductsForIndustry(industry.id);
+            // Show up to 3 product badges, then "+N more"
+            const visibleProducts = linkedProducts.slice(0, 3);
+            const extraCount      = linkedProducts.length - visibleProducts.length;
             return (
               <div key={industry.id} className="card p-5 flex flex-col gap-3">
                 {/* Card header */}
@@ -149,6 +160,30 @@ export default function IndustriesPanel() {
                 <p className="text-xs text-text-muted">
                   {linkedClients.length} client{linkedClients.length !== 1 ? 's' : ''} linked
                 </p>
+
+                {/* Product variants */}
+                <div>
+                  <p className="text-xs text-text-muted mb-1.5">
+                    {linkedProducts.length} product variant{linkedProducts.length !== 1 ? 's' : ''}
+                  </p>
+                  {linkedProducts.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {visibleProducts.map((p) => (
+                        <span
+                          key={p.id}
+                          className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-violet-500/15 text-violet-400 border-violet-500/25"
+                        >
+                          {p.name}
+                        </span>
+                      ))}
+                      {extraCount > 0 && (
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full border bg-border text-text-muted border-borderLight">
+                          +{extraCount} more
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* Admin actions */}
                 {isAdmin && (

@@ -31,7 +31,11 @@ const inputCls = `w-full px-3 py-2 rounded-lg bg-background border border-border
   focus:outline-none focus:ring-2 focus:ring-orange/50 focus:border-orange
   transition-colors`;
 
-const EMPTY_FORM = { name: '', industryId: '', currentStatus: '', progressPercent: '' };
+// Fixed status options — filter in KpiContext checks for exactly 'Inactive' / 'Churned'
+// to separate "current" from "total" clients. Keep these in sync with INACTIVE_STATUSES.
+const CLIENT_STATUSES = ['Active', 'Pilot', 'On Hold', 'Inactive', 'Churned'];
+
+const EMPTY_FORM = { name: '', industryId: '', currentStatus: 'Active', progressPercent: '' };
 
 export default function ClientModal({ isOpen, onClose, onSaved, item, industries = [] }) {
   const [form,   setForm]   = useState(EMPTY_FORM);
@@ -122,13 +126,12 @@ export default function ClientModal({ isOpen, onClose, onSaved, item, industries
         </Field>
 
         <Field label="Current Status">
-          <input
-            name="currentStatus"
-            value={form.currentStatus}
-            onChange={handleChange}
-            placeholder="e.g. Active, On Hold…"
-            className={inputCls}
-          />
+          <select name="currentStatus" value={form.currentStatus} onChange={handleChange} className={inputCls}>
+            <option value="">— Select status —</option>
+            {CLIENT_STATUSES.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
         </Field>
 
         <Field label="Progress %">

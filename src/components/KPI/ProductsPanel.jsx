@@ -1,16 +1,44 @@
 /**
  * ProductsPanel.jsx
  * KPI sub-panel for /kpi/products
- * Shows all products with type badge, dev progress meter and completion state.
+ * Shows all products with development stage badge, auto-derived progress meter,
+ * type badge, and completion state.
  * Admin can add, edit, and delete entries.
  */
 
 import { useState } from 'react';
-import { useKpi } from '../../context/KpiContext';
+import { useKpi, DEV_STAGE_PROGRESS } from '../../context/KpiContext';
 import { useAuth } from '../../context/AuthContext';
 import { deleteKpiProduct } from '../../services/kpiService';
 import { ProgressMeter } from '../shared/Charts';
 import ProductModal from './modals/ProductModal';
+
+// ─── Dev stage → badge classes ─────────────────────────────────────────────
+const stageClass = (stage) => {
+  switch (stage) {
+    case 'Design Freeze':
+      return 'bg-green-500/15 text-green-400 border-green-500/25';
+    case 'Iteration':
+      return 'bg-orange/15 text-orange border-orange/30';
+    case 'Testing':
+      return 'bg-blue-500/15 text-blue-400 border-blue-500/25';
+    case 'Design':
+      return 'bg-amber-500/15 text-amber-400 border-amber-500/25';
+    default:
+      return 'bg-border text-text-muted border-borderLight';
+  }
+};
+
+// ─── Dev stage → progress bar fill color ───────────────────────────────────
+const stageColor = (stage) => {
+  switch (stage) {
+    case 'Design Freeze': return '#22C55E';
+    case 'Iteration':     return '#F97316';
+    case 'Testing':       return '#3B82F6';
+    case 'Design':        return '#F59E0B';
+    default:              return '#8B5CF6';
+  }
+};
 
 const Spinner = () => (
   <div className="flex items-center justify-center py-16">
@@ -23,13 +51,13 @@ const Empty = () => (
     <span className="text-4xl">📦</span>
     <p className="font-semibold text-text-primary">No products yet</p>
     <p className="text-xs text-text-muted max-w-xs">
-      Admins can add products to track development progress and completion status.
+      Admins can add products to track development stage and completion status.
     </p>
   </div>
 );
 
 export default function ProductsPanel() {
-  const { products, loading } = useKpi();
+  const { products, loading, totalDesignFreezeProducts } = useKpi();
   const { isAdmin } = useAuth();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -93,6 +121,18 @@ export default function ProductsPanel() {
             <p className="text-sm font-semibold text-text-primary">Dev Completed</p>
           </div>
         </div>
+        <div className="stat-card">
+          <div className="stat-icon bg-green-500/15 text-green-400">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-2xl font-black text-text-primary">{totalDesignFreezeProducts}</p>
+            <p className="text-sm font-semibold text-text-primary">Design Freeze</p>
+          </div>
+        </div>
       </div>
 
       {/* Content */}
@@ -102,54 +142,70 @@ export default function ProductsPanel() {
         <Empty />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {products.map((product) => (
-            <div key={product.id} className="card p-5 flex flex-col gap-3">
-              {/* Name + completion icon */}
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="font-bold text-text-primary text-base leading-tight">{product.name}</h3>
-                <span className="text-lg flex-shrink-0" title={product.devCompleted ? 'Dev Completed' : 'In Progress'}>
-                  {product.devCompleted ? '✅' : '⏳'}
-                </span>
-              </div>
-
-              {/* Type badge */}
-              {product.type && (
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full border inline-block self-start bg-violet-500/15 text-violet-400 border-violet-500/25">
-                  {product.type}
-                </span>
-              )}
-
-              {/* Dev progress meter */}
-              <div>
-                <div className="flex justify-between items-center mb-1.5">
-                  <span className="text-xs text-text-muted font-medium">Dev Progress</span>
+          {products.map((product) => {
+            const progress = DEV_STAGE_PROGRESS[product.stage] ?? (product.devProgressPercent || 0);
+            const color    = stageColor(product.stage);
+            return (
+              <div key={product.id} className="card p-5 flex flex-col gap-3">
+                {/* Name + completion icon */}
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="font-bold text-text-primary text-base leading-tight">{product.name}</h3>
+                  <span className="text-lg flex-shrink-0" title={product.devCompleted ? 'Dev Completed' : 'In Progress'}>
+                    {product.devCompleted ? '✅' : '⏳'}
+                  </span>
                 </div>
-                <ProgressMeter value={product.devProgressPercent || 0} color="#8B5CF6" />
-              </div>
 
-              {/* Admin actions */}
-              {isAdmin && (
-                <div className="flex items-center gap-2 pt-1 border-t border-border">
-                  <button onClick={() => handleEdit(product)}
-                    className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold">
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                    Edit
-                  </button>
-                  <button onClick={() => handleDelete(product.id)} disabled={deleting === product.id}
-                    className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-400 hover:text-red-300 hover:bg-red-500/10 disabled:opacity-50">
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                    {deleting === product.id ? 'Deleting…' : 'Delete'}
-                  </button>
+                {/* Stage badge */}
+                {product.stage ? (
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border inline-block self-start ${stageClass(product.stage)}`}>
+                    {product.stage}
+                  </span>
+                ) : (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full border inline-block self-start bg-border text-text-muted border-borderLight">
+                    No Stage Set
+                  </span>
+                )}
+
+                {/* Type badge */}
+                {product.type && (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full border inline-block self-start bg-violet-500/15 text-violet-400 border-violet-500/25">
+                    {product.type}
+                  </span>
+                )}
+
+                {/* Dev progress meter */}
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="text-xs text-text-muted font-medium">Dev Progress</span>
+                    <span className="text-xs font-bold text-text-secondary">{progress}%</span>
+                  </div>
+                  <ProgressMeter value={progress} color={color} />
                 </div>
-              )}
-            </div>
-          ))}
+
+                {/* Admin actions */}
+                {isAdmin && (
+                  <div className="flex items-center gap-2 pt-1 border-t border-border">
+                    <button onClick={() => handleEdit(product)}
+                      className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      Edit
+                    </button>
+                    <button onClick={() => handleDelete(product.id)} disabled={deleting === product.id}
+                      className="btn-ghost flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-400 hover:text-red-300 hover:bg-red-500/10 disabled:opacity-50">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      {deleting === product.id ? 'Deleting…' : 'Delete'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
