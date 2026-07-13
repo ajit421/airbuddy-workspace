@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTasks } from '../../context/TaskContext';
 import { useAuth } from '../../context/AuthContext';
+import { useViewMode } from '../../context/ViewModeContext';
 import { ProgressBar } from '../shared/TaskCard';
 import { formatDate, getDueDateLabel, getDueDateColor } from '../../utils/dateHelpers';
 import TaskTimeline from './TaskTimeline';
@@ -236,6 +237,7 @@ const WorkPartnerCard = ({ task, currentUid, allUsers, onClick }) => {
 export default function WorkPartner() {
   const { tasks, loading, allUsers } = useTasks();
   const { user, isAdmin, effectiveUid } = useAuth();
+  const { viewMode } = useViewMode();
   const [selectedTask, setSelectedTask] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
 
@@ -314,6 +316,76 @@ export default function WorkPartner() {
                ? "When you and a colleague are assigned to the same task, they'll appear here." 
                : `You have no ${filterStatus} tasks right now. Try changing to a different filter.`}
           </p>
+        </div>
+      ) : viewMode === 'table' ? (
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full text-sm">
+            <thead className="bg-background">
+              <tr>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Title</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden md:table-cell">Module</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden sm:table-cell">Priority</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden md:table-cell">Due Date</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden lg:table-cell">Progress</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden lg:table-cell">Team</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-borderLight">
+              {sharedTasks.map(task => {
+                const allParticipantUids = [
+                  ...(Array.isArray(task.assignedTo) ? task.assignedTo : (task.assignedTo ? [task.assignedTo] : [])),
+                  ...(Array.isArray(task.workPartners) ? task.workPartners.map(p => p.uid) : [])
+                ].filter((uid, index, arr) => arr.indexOf(uid) === index);
+                const teammates = allParticipantUids
+                  .filter(uid => uid !== effectiveUid)
+                  .map(uid => ({ uid, ...(allUsers[uid] || {}) }));
+                return (
+                  <tr key={task.id} onClick={() => setSelectedTask(task)}
+                    className="hover:bg-surfaceHover cursor-pointer transition-colors">
+                    <td className="px-4 py-3">
+                      <span className="font-semibold text-text-primary line-clamp-1">{task.title}</span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-text-muted hidden md:table-cell">{task.module || '—'}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${statusColors[task.status] || ''}`}>
+                        {task.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 hidden sm:table-cell">
+                      {task.priority ? (
+                        <span className={`capitalize text-xs font-bold ${priorityColors[task.priority]}`}>{task.priority}</span>
+                      ) : <span className="text-text-muted">—</span>}
+                    </td>
+                    <td className={`px-4 py-3 text-xs font-medium hidden md:table-cell ${getDueDateColor(task.dueDate, task.status)}`}>
+                      {formatDate(task.dueDate)}
+                    </td>
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      <div className="flex items-center gap-2">
+                        <div className="progress-bar w-20"><div className="progress-fill bg-gradient-to-r from-orange to-orange-hover" style={{ width: `${task.progress || 0}%` }} /></div>
+                        <span className="text-xs text-text-muted">{task.progress || 0}%</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      <div className="flex -space-x-1.5">
+                        {teammates.slice(0, 3).map((t, i) => (
+                          <div key={t.uid} className="w-6 h-6 rounded-full bg-gradient-to-br from-orange/90 to-rose-500/90 flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-surface" style={{ zIndex: 10 - i }}>
+                            {t.name ? t.name.charAt(0).toUpperCase() : '?'}
+                          </div>
+                        ))}
+                        {teammates.length > 3 && (
+                          <div className="w-6 h-6 rounded-full bg-surface border border-border flex items-center justify-center text-[10px] font-bold text-text-muted ring-2 ring-surface">
+                            +{teammates.length - 3}
+                          </div>
+                        )}
+                        {teammates.length === 0 && <span className="text-xs text-text-muted italic">Self</span>}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

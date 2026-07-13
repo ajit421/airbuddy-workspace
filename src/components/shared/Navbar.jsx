@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useViewMode } from '../../context/ViewModeContext';
 import { useNotifications } from '../../hooks/useNotifications';
 import { formatDate } from '../../utils/dateHelpers';
 import RoleBadge from './RoleBadge';
@@ -19,6 +20,7 @@ const MenuIcon = () => (
 
 export default function Navbar({ onMenuToggle }) {
   const { userProfile, signOut, isAdmin } = useAuth();
+  const { viewMode, toggleViewMode } = useViewMode();
   const { notifications, unreadCount, markAsRead, markAllRead } = useNotifications();
   const [notifOpen, setNotifOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -84,6 +86,33 @@ export default function Navbar({ onMenuToggle }) {
           </svg>
           Docs
         </Link>
+
+        {/* View Mode Toggle — Card ↔ Table */}
+        <button
+          id="view-mode-toggle"
+          onClick={toggleViewMode}
+          title={viewMode === 'card' ? 'Switch to Table view' : 'Switch to Card view'}
+          className={`hidden sm:flex items-center justify-center w-8 h-8 rounded-lg transition-all border ${viewMode === 'table'
+            ? 'bg-orange/10 text-orange border-orange/30'
+            : 'btn-ghost border-transparent'
+            }`}
+        >
+          {viewMode === 'card' ? (
+            /* LayoutGrid icon — Lucide style, matches Table icon's stroke style */
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <rect x="3" y="3" width="7" height="7" rx="1" strokeLinecap="round" strokeLinejoin="round" />
+              <rect x="14" y="3" width="7" height="7" rx="1" strokeLinecap="round" strokeLinejoin="round" />
+              <rect x="14" y="14" width="7" height="7" rx="1" strokeLinecap="round" strokeLinejoin="round" />
+              <rect x="3" y="14" width="7" height="7" rx="1" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          ) : (
+            /* Table icon */
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <rect x="3" y="4" width="18" height="16" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M9 4v16" />
+            </svg>
+          )}
+        </button>
         {/* Notifications Bell */}
         <div className="relative" ref={notifRef}>
           <button

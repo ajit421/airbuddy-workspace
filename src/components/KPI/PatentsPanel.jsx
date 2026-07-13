@@ -11,6 +11,7 @@
 import { useState } from 'react';
 import { useKpi } from '../../context/KpiContext';
 import { useAuth } from '../../context/AuthContext';
+import { useViewMode } from '../../context/ViewModeContext';
 import { deleteKpiIP } from '../../services/kpiService';
 import { ProgressMeter } from '../shared/Charts';
 import PatentModal from './modals/PatentModal';
@@ -112,6 +113,7 @@ export default function IPPanel() {
     totalIPSoftware,
   } = useKpi();
   const { isAdmin } = useAuth();
+  const { viewMode } = useViewMode();
 
   const [modalOpen,   setModalOpen]   = useState(false);
   const [editing,     setEditing]     = useState(null);
@@ -229,6 +231,88 @@ export default function IPPanel() {
         <Spinner />
       ) : filteredEntries.length === 0 ? (
         <Empty filter={activeFilter} />
+      ) : viewMode === 'table' ? (
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full text-sm">
+            <thead className="bg-background">
+              <tr>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Title</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden md:table-cell">IP Type</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Stage / Status</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden lg:table-cell">Detail</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden sm:table-cell">Progress</th>
+                {isAdmin && <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Actions</th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-borderLight">
+              {filteredEntries.map((entry) => {
+                const ipType = entry.ipType || 'Patent';
+                const stageOrStatus = ipType === 'Software/Calculator'
+                  ? (entry.status || 'In Dev')
+                  : (entry.filingStage || (ipType === 'Trademark' ? 'Filed' : 'Idea'));
+                const prog = ipType === 'Patent' ? getPatentProgress(entry.filingStage) : 0;
+                return (
+                  <tr key={entry.id} className="hover:bg-surfaceHover transition-colors">
+                    <td className="px-4 py-3 font-semibold text-text-primary max-w-[200px]">
+                      <span className="line-clamp-1">{entry.title || entry.toolName || 'Untitled'}</span>
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${ipTypeClass(ipType)}`}>
+                        {ipType === 'Software/Calculator' ? 'Software' : ipType}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
+                        ipType === 'Software/Calculator' ? softwareStatusClass(stageOrStatus) : stageClass(stageOrStatus)
+                      }`}>
+                        {stageOrStatus}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-text-muted hidden lg:table-cell">
+                      {ipType === 'Patent' && entry.appNumber && <span className="font-mono text-text-secondary">{entry.appNumber}</span>}
+                      {ipType === 'Trademark' && entry.trademarkClass && <span>Class: {entry.trademarkClass}</span>}
+                      {ipType === 'Software/Calculator' && entry.repoOrToolLink && (
+                        <a href={entry.repoOrToolLink} target="_blank" rel="noopener noreferrer"
+                          className="text-orange hover:text-orange-hover truncate inline-block max-w-[160px]" onClick={e => e.stopPropagation()}>
+                          {entry.repoOrToolLink}
+                        </a>
+                      )}
+                      {!entry.appNumber && !entry.trademarkClass && !entry.repoOrToolLink && '—'}
+                    </td>
+                    <td className="px-4 py-3 hidden sm:table-cell">
+                      {ipType === 'Patent' ? (
+                        <div className="flex items-center gap-2">
+                          <div className="progress-bar w-20"><div className="progress-fill" style={{ width: `${prog}%`, backgroundColor: stageColor(entry.filingStage) }} /></div>
+                          <span className="text-xs text-text-muted">{prog}%</span>
+                        </div>
+                      ) : <span className="text-text-muted">—</span>}
+                    </td>
+                    {isAdmin && (
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={(e) => { e.stopPropagation(); handleEdit(entry); }}
+                            className="btn-ghost flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            Edit
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleDelete(entry.id); }} disabled={deleting === entry.id}
+                            className="btn-ghost flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-red-400 hover:text-red-300 hover:bg-red-500/10 disabled:opacity-50">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            {deleting === entry.id ? '…' : 'Del'}
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredEntries.map((entry) => {
