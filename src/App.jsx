@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ViewModeProvider } from './context/ViewModeContext';
 import { TaskProvider } from './context/TaskContext';
 import AppLayout from './pages/AppLayout';
 import LoginPage from './pages/LoginPage';
@@ -143,7 +144,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <ViewModeProvider>
+          <AppRoutes />
+        </ViewModeProvider>
       </AuthProvider>
     </BrowserRouter>
   );
