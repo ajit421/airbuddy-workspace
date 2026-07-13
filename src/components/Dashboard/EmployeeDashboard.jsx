@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTasks } from '../../context/TaskContext';
 import { useAuth } from '../../context/AuthContext';
+import { useViewMode } from '../../context/ViewModeContext';
 import { DonutChart, BarChart, LineChart } from '../shared/Charts';
 import TaskCard from '../shared/TaskCard';
+import { PriorityBadge, StatusBadge } from '../shared/TaskCard';
 import TaskDetailModal from '../Calendar/TaskDetailModal';
 import SelfTaskModal from './SelfTaskModal';
-import { getDueDateLabel, getDueDateColor } from '../../utils/dateHelpers';
+import { getDueDateLabel, getDueDateColor, formatDate } from '../../utils/dateHelpers';
 import TaskFilterBar from './TaskFilterBar';
 import { useTaskFilters } from '../../hooks/useTaskFilters';
 // HRMS Dashboard Widget — attendance punch service
@@ -136,6 +138,7 @@ function QuickPunchWidget({ uid }) {
 export default function EmployeeDashboard() {
   const { tasks, loading, getUpcomingTasks, allUsers } = useTasks();
   const { userProfile, isAdmin } = useAuth();
+  const { viewMode } = useViewMode();
   const [selectedTask, setSelectedTask] = useState(null);
   const [isSelfTaskModalOpen, setIsSelfTaskModalOpen] = useState(false);
 
@@ -547,6 +550,46 @@ export default function EmployeeDashboard() {
             <p className="text-sm text-text-muted mt-1">
               {state.statusFilter === 'all' ? 'No tasks assigned yet.' : `Switch to another tab to see other tasks.`}
             </p>
+          </div>
+        ) : viewMode === 'table' ? (
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-background">
+                <tr>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Title</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden md:table-cell">Module</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden sm:table-cell">Priority</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Status</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden md:table-cell">Due Date</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden lg:table-cell">Progress</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-borderLight">
+                {taskListTasks.map(task => (
+                  <tr key={task.id} onClick={() => setSelectedTask(task)}
+                    className="hover:bg-surfaceHover cursor-pointer transition-colors">
+                    <td className="px-4 py-3">
+                      <span className="font-semibold text-text-primary line-clamp-1">{task.title}</span>
+                      {task.isAdminTask === false && (
+                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">Self</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-text-muted hidden md:table-cell">{task.module || '—'}</td>
+                    <td className="px-4 py-3 hidden sm:table-cell"><PriorityBadge priority={task.priority} /></td>
+                    <td className="px-4 py-3"><StatusBadge status={task.status} /></td>
+                    <td className={`px-4 py-3 text-xs font-medium hidden md:table-cell ${getDueDateColor(task.dueDate, task.status)}`}>
+                      {formatDate(task.dueDate)}
+                    </td>
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      <div className="flex items-center gap-2">
+                        <div className="progress-bar w-20"><div className="progress-fill bg-gradient-to-r from-orange to-orange-hover" style={{ width: `${task.progress || 0}%` }} /></div>
+                        <span className="text-xs text-text-muted">{task.progress || 0}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
