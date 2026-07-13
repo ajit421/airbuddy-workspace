@@ -323,7 +323,7 @@ export default function WorkPartner() {
             <thead className="bg-background">
               <tr>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Title</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden md:table-cell">Module</th>
+                {/* <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden md:table-cell">Module</th> */}
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Status</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden sm:table-cell">Priority</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden md:table-cell">Due Date</th>
@@ -346,7 +346,7 @@ export default function WorkPartner() {
                     <td className="px-4 py-3">
                       <span className="font-semibold text-text-primary line-clamp-1">{task.title}</span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-text-muted hidden md:table-cell">{task.module || '—'}</td>
+                    {/* <td className="px-4 py-3 text-xs text-text-muted hidden md:table-cell">{task.module || '—'}</td> */}
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${statusColors[task.status] || ''}`}>
                         {task.status}
