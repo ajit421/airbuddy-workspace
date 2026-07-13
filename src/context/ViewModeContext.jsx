@@ -6,10 +6,13 @@
  *   onSnapshot listener — no extra Firestore listener needed).
  * - On toggle: updates local state immediately (optimistic) and persists to
  *   Firestore via updateDoc on the user's own profile doc.
- * - Re-syncs whenever userProfile.viewMode changes (cross-device support).
+ * - Re-syncs whenever userProfile.viewMode changes (cross-device support),
+ *   but ignores stale snapshots that haven't caught up to our own pending
+ *   write yet — this prevents the "flips back for 2s then corrects itself"
+ *   flicker bug.
  */
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from './AuthContext';
@@ -24,13 +27,30 @@ export const ViewModeProvider = ({ children }) => {
     () => userProfile?.viewMode ?? 'card'
   );
 
+  // Tracks a value we just wrote locally that Firestore hasn't echoed back
+  // yet. While this is set, incoming userProfile updates that don't match
+  // it are treated as stale and ignored — prevents the revert-then-correct
+  // flicker.
+  const pendingRef = useRef(null);
+
   // Re-sync whenever the Firestore profile doc changes (handles cross-device)
   useEffect(() => {
-    if (userProfile?.viewMode && userProfile.viewMode !== viewMode) {
-      setViewModeState(userProfile.viewMode);
+    const remoteMode = userProfile?.viewMode ?? 'card';
+
+    // If we have a pending local write, only accept the update once
+    // Firestore actually reflects it. Anything else is a stale snapshot
+    // (e.g. from a listener that hasn't caught up yet).
+    if (pendingRef.current) {
+      if (remoteMode === pendingRef.current) {
+        pendingRef.current = null; // confirmed — safe to clear
+        setViewModeState(remoteMode);
+      }
+      return; // ignore stale value in the meantime
     }
-    // Intentionally not including viewMode in deps — we only want to pull from
-    // Firestore, not push back on every local toggle.
+
+    if (remoteMode !== viewMode) {
+      setViewModeState(remoteMode);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile?.viewMode]);
 
@@ -40,13 +60,21 @@ export const ViewModeProvider = ({ children }) => {
    */
   const setViewMode = async (newMode) => {
     if (newMode === viewMode) return;
-    setViewModeState(newMode);
+
+    pendingRef.current = newMode; // mark: ignore stale snapshots until this lands
+    setViewModeState(newMode);    // instant, no flicker
+
     if (effectiveUid) {
       try {
         await updateDoc(doc(db, 'users', effectiveUid), { viewMode: newMode });
       } catch (err) {
         console.error('[ViewModeContext] Failed to persist viewMode:', err);
+        pendingRef.current = null;
+        // revert on failure so UI doesn't lie about persisted state
+        setViewModeState(userProfile?.viewMode ?? 'card');
       }
+    } else {
+      pendingRef.current = null;
     }
   };
 

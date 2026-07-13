@@ -82,7 +82,7 @@ service cloud.firestore {
       allow update: if isAuthenticated() && isEmailAllowed() && (
         isAdmin()
         || (
-          request.auth.uid == userId
+          getEffectiveUid() == userId
           && !request.resource.data.diff(resource.data)
               .affectedKeys()
               .hasAny(['role', 'uid', 'email', 'salaryBase', 'department', 'designation', 'fcmToken'])
