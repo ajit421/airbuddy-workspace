@@ -88,9 +88,9 @@ function QuickPunchWidget({ uid }) {
 
   // Derive button appearance from state
   const btnConfig = {
-    unknown: { label: 'Check In',        cls: 'bg-green-500 hover:bg-green-600 text-white', emoji: '🟢' },
-    in:      { label: 'Check Out',       cls: 'bg-orange   hover:bg-orange-hover text-white', emoji: '🟠' },
-    done:    { label: 'Shift Completed', cls: 'bg-surface  text-text-muted cursor-not-allowed border border-border', emoji: '✅' },
+    unknown: { label: 'Check In',        cls: 'bg-green-500 hover:bg-green-600 text-white' },
+    in:      { label: 'Check Out',       cls: 'bg-orange   hover:bg-orange-hover text-white' },
+    done:    { label: 'Shift Completed', cls: 'bg-surface  text-text-muted cursor-not-allowed border border-border' },
   };
   const btn = btnConfig[punchStatus] ?? btnConfig.unknown;
 
@@ -557,7 +557,7 @@ export default function EmployeeDashboard() {
               <thead className="bg-background">
                 <tr>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Title</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden md:table-cell">Module</th>
+                  {/* <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden md:table-cell">Module</th> */}
                   <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden sm:table-cell">Priority</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide">Status</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wide hidden md:table-cell">Due Date</th>
@@ -571,10 +571,10 @@ export default function EmployeeDashboard() {
                     <td className="px-4 py-3">
                       <span className="font-semibold text-text-primary line-clamp-1">{task.title}</span>
                       {task.isAdminTask === false && (
-                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">Self</span>
+                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">Self-Assigned</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-xs text-text-muted hidden md:table-cell">{task.module || '—'}</td>
+                    {/* <td className="px-4 py-3 text-xs text-text-muted hidden md:table-cell">{task.module || '—'}</td> */}
                     <td className="px-4 py-3 hidden sm:table-cell"><PriorityBadge priority={task.priority} /></td>
                     <td className="px-4 py-3"><StatusBadge status={task.status} /></td>
                     <td className={`px-4 py-3 text-xs font-medium hidden md:table-cell ${getDueDateColor(task.dueDate, task.status)}`}>
