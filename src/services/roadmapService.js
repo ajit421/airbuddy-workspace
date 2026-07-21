@@ -1,7 +1,9 @@
+﻿import {
+  collection, doc, addDoc, updateDoc, deleteDoc,
+  query, where, onSnapshot, serverTimestamp, getDoc,
+} from 'firebase/firestore';
+import { db } from './firebase';
 import { z } from 'zod';
-// Phase 6+7: Full Firestore implementation
-// import { collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, query, where, orderBy } from 'firebase/firestore';
-// import { db } from './firebase';
 
 /**
  * roadmapService.js
@@ -12,17 +14,14 @@ import { z } from 'zod';
  *  - Zod validation at every write boundary.
  *  - serverTimestamp() for createdAt / updatedAt — never new Date().
  *  - subscribeToX(onData, onError) pattern returning unsubscribe fn.
- *  - Client-side sort; no orderBy() unless index is confirmed.
- *  - Error prefix: '[roadmapService] functionName:' in console.error
+ *  - Client-side sort by order; no orderBy() to avoid composite index per query.
+ *  - Error prefix: [roadmapService] functionName: in console.error
  */
 
 const ROADMAP_NODES_COL = 'roadmapNodes';
 
-// ─── Zod Schema ─────────────────────────────────────────────────────────────
-// Kept in sync with Phase 3 schema document (phase3_firestore_schema.md).
-// All fields, types, defaults, and enums must match exactly.
+// Zod Schema - kept in sync with phase3_firestore_schema.md
 export const RoadmapNodeSchema = z.object({
-  // ── Core content ──────────────────────────────────────────────────────────
   title:               z.string().min(1, 'Title is required'),
   description:         z.string().optional().default(''),
   status:              z.enum(['pending', 'in-progress', 'completed', 'blocked', 'archived']),
@@ -30,144 +29,283 @@ export const RoadmapNodeSchema = z.object({
   startDate:           z.string().or(z.date()).optional().nullable(),
   dueDate:             z.string().or(z.date()).optional().nullable(),
   assignedTo:          z.array(z.string()).optional().default([]),
-
-  // ── Audit ─────────────────────────────────────────────────────────────────
-  createdBy:           z.string().min(1, 'createdBy is required'),   // effectiveUid
-  updatedBy:           z.string().min(1, 'updatedBy is required'),   // effectiveUid
-
-  // ── Hierarchy (computed on create, never updated directly) ────────────────
+  createdBy:           z.string().min(1, 'createdBy is required'),
+  updatedBy:           z.string().min(1, 'updatedBy is required'),
   parentId:            z.string().nullable().default(null),
-  path:                z.string().default(''),         // "parentId/nodeId" materialized path
+  path:                z.string().default(''),
   ancestorIds:         z.array(z.string()).default([]),
   depth:               z.number().int().min(0).default(0),
   order:               z.number().int().min(0).default(0),
-
-  // ── Progress rollup (maintained by Cloud Function, Phase 8) ──────────────
   progress:            z.number().min(0).max(100).default(0),
   childCount:          z.number().int().min(0).default(0),
   childCompletedCount: z.number().int().min(0).default(0),
-
-  // ── Optional metadata ─────────────────────────────────────────────────────
-  dependencies:        z.array(z.string()).optional().default([]),  // sibling nodeIds
+  dependencies:        z.array(z.string()).optional().default([]),
   tags:                z.array(z.string()).optional().default([]),
   isArchived:          z.boolean().default(false),
 });
 
-// ─── Helper ─────────────────────────────────────────────────────────────────
-/** Map a Firestore QuerySnapshot to plain-JS array with id injected. */
+// Helpers
 const snapToArray = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-// ─── CRUD ────────────────────────────────────────────────────────────────────
-
-/**
- * Create a new roadmap node.
- * Computes path, ancestorIds, depth from parentNode automatically.
- *
- * @param {object} form       - Form data (validated by RoadmapNodeSchema)
- * @param {string} adminUid   - UID of the creating admin
- * @param {object|null} parentNode - Parent node document (null for root nodes)
- * @returns {Promise<string>} - Firestore document ID of the new node
- */
-export async function createNode(form, adminUid, parentNode = null) {
-  // Phase 7 implementation
-  throw new Error('[roadmapService] createNode: Phase 7 not yet implemented');
-}
+const sortByOrder = (nodes) => [...nodes].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
 /**
- * Update an existing roadmap node (structural fields — admin only).
+ * Compute hierarchy fields for a new child node from its parent.
+ * Called internally by createNode; also exported for testing (Phase 6).
  *
- * @param {string} nodeId   - Firestore document ID
- * @param {object} data     - Partial fields to update
- * @param {string} editorUid - UID of the editing admin
- * @returns {Promise<void>}
+ * @param {string}      newNodeId  - The newly generated Firestore doc ID
+ * @param {object|null} parentNode - Full parent node data (null for root)
+ * @returns {{ parentId, path, ancestorIds, depth }}
  */
-export async function updateNode(nodeId, data, editorUid) {
-  // Phase 7 implementation
-  throw new Error('[roadmapService] updateNode: Phase 7 not yet implemented');
+export function computeHierarchy(newNodeId, parentNode) {
+  if (!parentNode) {
+    return { parentId: null, path: newNodeId, ancestorIds: [], depth: 0 };
+  }
+  return {
+    parentId:    parentNode.id,
+    path:        `${parentNode.path}/${newNodeId}`,
+    ancestorIds: [...(parentNode.ancestorIds ?? []), parentNode.id],
+    depth:       (parentNode.depth ?? 0) + 1,
+  };
 }
 
-/**
- * Archive (soft-delete) a roadmap node by setting status = 'archived'.
- * Does NOT delete the document or its subcollections.
- *
- * @param {string} nodeId   - Firestore document ID
- * @param {string} adminUid - UID of the archiving admin
- * @returns {Promise<void>}
- */
-export async function archiveNode(nodeId, adminUid) {
-  // Phase 7 implementation
-  throw new Error('[roadmapService] archiveNode: Phase 7 not yet implemented');
-}
-
-/**
- * Hard-delete a roadmap node.
- * BLOCKED if the node has children (childCount > 0).
- *
- * @param {string} nodeId - Firestore document ID
- * @returns {Promise<void>}
- */
-export async function deleteNode(nodeId) {
-  // Phase 7 implementation
-  throw new Error('[roadmapService] deleteNode: Phase 7 not yet implemented');
-}
-
-// ─── Real-time Subscriptions ─────────────────────────────────────────────────
+// Real-time Subscriptions
 
 /**
  * Subscribe to direct children of a parent node.
- * Pass parentId = null to get root-level nodes.
+ * parentId = null returns root-level nodes.
  *
- * @param {string|null} parentId   - Parent node ID, or null for root nodes
- * @param {function} onData        - Callback with sorted children array
- * @param {function} [onError]     - Optional error callback
- * @returns {function} Firestore unsubscribe function
+ * @param {string|null} parentId
+ * @param {function}    onData   - Called with sorted children array
+ * @param {function}    [onError]
+ * @returns {function} unsubscribe
  */
 export function subscribeToChildren(parentId, onData, onError) {
-  // Phase 6 implementation — returns a no-op until then
-  console.warn('[roadmapService] subscribeToChildren: Phase 6 not yet implemented');
-  onData([]);
-  return () => {};
+  const q = query(
+    collection(db, ROADMAP_NODES_COL),
+    where('parentId',   '==', parentId),
+    where('isArchived', '==', false),
+  );
+  return onSnapshot(
+    q,
+    (snap) => onData(sortByOrder(snapToArray(snap))),
+    (err) => {
+      console.error('[roadmapService] subscribeToChildren:', err);
+      if (onError) onError(err);
+    }
+  );
 }
 
 /**
- * Subscribe to all descendants of an ancestor node (uses ancestorIds array-contains).
+ * Subscribe to ALL descendants of an ancestor node (full subtree).
+ * Uses ancestorIds array-contains — one query for the full subtree.
  *
- * @param {string} ancestorId  - Ancestor node ID
- * @param {function} onData    - Callback with all descendant nodes
- * @param {function} [onError] - Optional error callback
- * @returns {function} Firestore unsubscribe function
+ * @param {string}   ancestorId
+ * @param {function} onData   - Called with flat sorted descendant array
+ * @param {function} [onError]
+ * @returns {function} unsubscribe
  */
 export function subscribeToSubtree(ancestorId, onData, onError) {
-  // Phase 6 implementation
-  console.warn('[roadmapService] subscribeToSubtree: Phase 6 not yet implemented');
-  onData([]);
-  return () => {};
+  const q = query(
+    collection(db, ROADMAP_NODES_COL),
+    where('ancestorIds', 'array-contains', ancestorId),
+    where('isArchived',  '==', false),
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const sorted = snapToArray(snap).sort((a, b) => {
+        if ((a.depth ?? 0) !== (b.depth ?? 0)) return (a.depth ?? 0) - (b.depth ?? 0);
+        return (a.order ?? 0) - (b.order ?? 0);
+      });
+      onData(sorted);
+    },
+    (err) => {
+      console.error('[roadmapService] subscribeToSubtree:', err);
+      if (onError) onError(err);
+    }
+  );
 }
 
 /**
  * Subscribe to a single roadmap node document.
  *
- * @param {string} nodeId      - Firestore document ID
- * @param {function} onData    - Callback with node data
- * @param {function} [onError] - Optional error callback
- * @returns {function} Firestore unsubscribe function
+ * @param {string}   nodeId
+ * @param {function} onData   - Called with node object or null if not found
+ * @param {function} [onError]
+ * @returns {function} unsubscribe
  */
 export function subscribeToNode(nodeId, onData, onError) {
-  // Phase 6 implementation
-  console.warn('[roadmapService] subscribeToNode: Phase 6 not yet implemented');
-  return () => {};
+  return onSnapshot(
+    doc(db, ROADMAP_NODES_COL, nodeId),
+    (snap) => onData(snap.exists() ? { id: snap.id, ...snap.data() } : null),
+    (err) => {
+      console.error('[roadmapService] subscribeToNode:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+// CRUD
+
+/**
+ * Create a new roadmap node.
+ * Uses a two-step write: addDoc to get the ID, then updateDoc to set path.
+ * Increments parent childCount client-side (Phase 8 CF will also maintain this).
+ *
+ * @param {object}      form       - Form data (RoadmapNodeSchema fields)
+ * @param {string}      adminUid   - effectiveUid of creating admin
+ * @param {object|null} parentNode - Full parent node doc (null for root)
+ * @returns {Promise<string>} New document ID
+ */
+export async function createNode(form, adminUid, parentNode = null) {
+  try {
+    const colRef = collection(db, ROADMAP_NODES_COL);
+
+    // Step 1: addDoc to generate the ID
+    const docRef = await addDoc(colRef, {
+      title:               form.title ?? '',
+      description:         form.description ?? '',
+      status:              form.status ?? 'pending',
+      priority:            form.priority ?? 'medium',
+      startDate:           form.startDate ? new Date(form.startDate) : null,
+      dueDate:             form.dueDate   ? new Date(form.dueDate)   : null,
+      assignedTo:          form.assignedTo ?? [],
+      order:               form.order ?? 0,
+      dependencies:        form.dependencies ?? [],
+      tags:                form.tags ?? [],
+      isArchived:          false,
+      progress:            0,
+      childCount:          0,
+      childCompletedCount: 0,
+      createdBy:           adminUid,
+      updatedBy:           adminUid,
+      createdAt:           serverTimestamp(),
+      updatedAt:           serverTimestamp(),
+      // hierarchy placeholders — overwritten in step 2
+      parentId:    parentNode ? parentNode.id : null,
+      path:        '',
+      ancestorIds: [],
+      depth:       0,
+    });
+
+    // Step 2: write correct hierarchy fields now that we have the ID
+    const h = computeHierarchy(docRef.id, parentNode);
+    await updateDoc(docRef, {
+      path:        h.path,
+      ancestorIds: h.ancestorIds,
+      depth:       h.depth,
+      updatedAt:   serverTimestamp(),
+    });
+
+    // Step 3: increment parent childCount (best-effort; Phase 8 CF owns this authoritatively)
+    if (parentNode) {
+      await updateDoc(doc(db, ROADMAP_NODES_COL, parentNode.id), {
+        childCount: (parentNode.childCount ?? 0) + 1,
+        updatedAt:  serverTimestamp(),
+      });
+    }
+
+    return docRef.id;
+  } catch (err) {
+    console.error('[roadmapService] createNode:', err);
+    throw err;
+  }
 }
 
 /**
- * Get roadmap nodes formatted as calendar events.
- * Applies dedup rule: leaf node + single matching task date = one entry.
- * Only depth 0/1 nodes synced to Google Calendar.
+ * Update structural fields of a roadmap node (admin only).
+ * Strips rollup fields that must never be written client-side.
  *
- * @param {string}  uid     - Current user UID
- * @param {boolean} isAdmin - Whether current user is admin
- * @returns {Promise<Array>} Calendar event array
+ * @param {string} nodeId    - Firestore doc ID
+ * @param {object} data      - Partial update data
+ * @param {string} editorUid - effectiveUid of editor
+ * @returns {Promise<void>}
+ */
+export async function updateNode(nodeId, data, editorUid) {
+  if (!nodeId) throw new Error('[roadmapService] updateNode: nodeId is required');
+  // Strip fields owned by Cloud Functions or immutable after create
+  const { progress, childCount, childCompletedCount, path, ancestorIds, depth, createdAt, createdBy, id, ...safeData } = data;
+  try {
+    await updateDoc(doc(db, ROADMAP_NODES_COL, nodeId), {
+      ...safeData,
+      updatedBy: editorUid,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    console.error('[roadmapService] updateNode:', err);
+    throw err;
+  }
+}
+
+/**
+ * Soft-delete a roadmap node (set isArchived = true).
+ * Excluded from all default queries. Subcollections preserved.
+ *
+ * @param {string} nodeId   - Firestore doc ID
+ * @param {string} adminUid - effectiveUid of archiving admin
+ * @returns {Promise<void>}
+ */
+export async function archiveNode(nodeId, adminUid) {
+  if (!nodeId) throw new Error('[roadmapService] archiveNode: nodeId is required');
+  try {
+    await updateDoc(doc(db, ROADMAP_NODES_COL, nodeId), {
+      isArchived: true,
+      updatedBy:  adminUid,
+      updatedAt:  serverTimestamp(),
+    });
+  } catch (err) {
+    console.error('[roadmapService] archiveNode:', err);
+    throw err;
+  }
+}
+
+/**
+ * Hard-delete a roadmap node document.
+ * BLOCKED if childCount > 0 (reads the live doc to get latest value).
+ * Subcollection cleanup must be done by Cloud Function (Phase 8).
+ *
+ * @param {string} nodeId - Firestore doc ID
+ * @returns {Promise<void>}
+ */
+export async function deleteNode(nodeId) {
+  if (!nodeId) throw new Error('[roadmapService] deleteNode: nodeId is required');
+  try {
+    const snap = await getDoc(doc(db, ROADMAP_NODES_COL, nodeId));
+    if (!snap.exists()) throw new Error('[roadmapService] deleteNode: node not found');
+
+    const data = snap.data();
+    if ((data.childCount ?? 0) > 0) {
+      throw new Error(
+        `[roadmapService] deleteNode: cannot delete node with ${data.childCount} children. Archive it instead.`
+      );
+    }
+
+    // Decrement parent childCount before deletion
+    if (data.parentId) {
+      const pSnap = await getDoc(doc(db, ROADMAP_NODES_COL, data.parentId));
+      if (pSnap.exists()) {
+        await updateDoc(doc(db, ROADMAP_NODES_COL, data.parentId), {
+          childCount: Math.max(0, (pSnap.data().childCount ?? 1) - 1),
+          updatedAt:  serverTimestamp(),
+        });
+      }
+    }
+
+    await deleteDoc(doc(db, ROADMAP_NODES_COL, nodeId));
+  } catch (err) {
+    console.error('[roadmapService] deleteNode:', err);
+    throw err;
+  }
+}
+
+/**
+ * Return roadmap nodes as calendar events for CalendarView.jsx (Phase 15).
+ *
+ * @param {string}  uid     - effectiveUid of current user
+ * @param {boolean} isAdmin - Whether user is admin
+ * @returns {Promise<Array>} Calendar event objects
  */
 export async function getRoadmapCalendarEvents(uid, isAdmin) {
-  // Phase 7+15 implementation
+  // Phase 15 implementation: dedup logic, depth filter, Google Calendar push
   return [];
 }

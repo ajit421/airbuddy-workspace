@@ -1,12 +1,14 @@
 ﻿import { createContext, useContext, useEffect, useState } from 'react';
-// import { subscribeToChildren } from '../services/roadmapService'; // Phase 6
+import { subscribeToChildren } from '../services/roadmapService';
 
 /**
  * RoadmapContext.jsx
  * Scoped provider — mounted ONLY on /roadmap routes via App.jsx.
  * Mirrors KpiContext.jsx pattern exactly.
  *
- * Phase 6+ implementation will wire real Firestore subscriptions.
+ * Holds the real-time root-level nodes subscription.
+ * Child-level subscriptions are managed per-node by useRoadmapTree.js
+ * to avoid subscribing to the entire tree on mount.
  */
 const RoadmapContext = createContext(null);
 
@@ -16,10 +18,19 @@ export const RoadmapProvider = ({ children }) => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Phase 6: Replace stub with real subscription
-    // const unsub = subscribeToChildren(null, setRootNodes, (err) => setError(err));
-    setLoading(false);
-    // return unsub;
+    setLoading(true);
+    const unsub = subscribeToChildren(
+      null,
+      (nodes) => {
+        setRootNodes(nodes);
+        setLoading(false);
+      },
+      (err) => {
+        setError(err);
+        setLoading(false);
+      }
+    );
+    return unsub;
   }, []);
 
   return (
