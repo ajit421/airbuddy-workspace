@@ -4,6 +4,13 @@ const { GoogleGenAI } = require('@google/genai');
 
 admin.initializeApp();
 
+// ─── Phase 8: Roadmap Progress Rollup Triggers ───────────────────────────────
+const roadmapTriggers = require('./roadmapTriggers');
+exports.onRoadmapTaskWrite          = roadmapTriggers.onRoadmapTaskWrite;
+exports.onRoadmapNodeProgressChange = roadmapTriggers.onRoadmapNodeProgressChange;
+// ─────────────────────────────────────────────────────────────────────────────
+
+
 // Initialize the Google Gen AI client with the API key from environment variables
 // This depends on having the secret set in Firebase secrets or env vars
 const ai = new GoogleGenAI({
