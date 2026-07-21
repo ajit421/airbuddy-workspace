@@ -1,4 +1,4 @@
-﻿import {
+import {
   collection, doc, addDoc, updateDoc, deleteDoc,
   query, where, onSnapshot, serverTimestamp,
 } from 'firebase/firestore';
@@ -88,18 +88,27 @@ export function subscribeToRoadmapTasks(nodeId, onData, onError) {
  */
 export async function createRoadmapTask(nodeId, form, adminUid) {
   if (!nodeId) throw new Error('[roadmapTaskService] createRoadmapTask: nodeId is required');
+
+  // ── Zod validation at write boundary ──────────────────────────────────────
+  const CreateTaskSchema = z.object({
+    title:          z.string().min(1, 'Task title is required'),
+    description:    z.string().optional().default(''),
+    status:         z.enum(['pending', 'in-progress', 'completed']).default('pending'),
+    priority:       z.enum(['low', 'medium', 'high']).default('medium'),
+    progress:       z.number().min(0).max(100).default(0),
+    assignedTo:     z.array(z.string()).optional().default([]),
+    dueDate:        z.string().or(z.date()).optional().nullable(),
+    completionNote: z.string().optional().default(''),
+  });
+
+  const validated = CreateTaskSchema.parse(form);  // throws ZodError if invalid
+
   try {
     const taskRef = await addDoc(
       collection(db, ROADMAP_NODES_COL, nodeId, TASKS_SUBCOL),
       {
-        title:          form.title ?? '',
-        description:    form.description ?? '',
-        status:         form.status ?? 'pending',
-        priority:       form.priority ?? 'medium',
-        progress:       form.progress ?? 0,
-        assignedTo:     form.assignedTo ?? [],
-        dueDate:        form.dueDate ? new Date(form.dueDate) : null,
-        completionNote: form.completionNote ?? '',
+        ...validated,
+        dueDate:    validated.dueDate ? new Date(validated.dueDate) : null,
         // Audit + denormalized
         assignedBy: adminUid,
         createdBy:  adminUid,
@@ -115,6 +124,7 @@ export async function createRoadmapTask(nodeId, form, adminUid) {
     throw err;
   }
 }
+
 
 /**
  * Update a roadmap task.

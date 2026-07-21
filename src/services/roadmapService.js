@@ -1,4 +1,4 @@
-﻿import {
+import {
   collection, doc, addDoc, updateDoc, deleteDoc,
   query, where, onSnapshot, serverTimestamp, getDoc,
 } from 'firebase/firestore';
@@ -158,21 +158,33 @@ export function subscribeToNode(nodeId, onData, onError) {
  * @returns {Promise<string>} New document ID
  */
 export async function createNode(form, adminUid, parentNode = null) {
+  // ── Zod validation at write boundary ────────────────────────────────────
+  // Validate the user-supplied fields before any Firestore write.
+  // Hierarchy fields (path, ancestorIds, depth, parentId) and rollup fields
+  // (progress, childCount) are computed internally — not validated here.
+  const CreateNodeSchema = z.object({
+    title:        z.string().min(1, 'Title is required'),
+    description:  z.string().optional().default(''),
+    status:       z.enum(['pending', 'in-progress', 'completed', 'blocked', 'archived']).default('pending'),
+    priority:     z.enum(['low', 'medium', 'high', 'critical']).default('medium'),
+    startDate:    z.string().or(z.date()).optional().nullable(),
+    dueDate:      z.string().or(z.date()).optional().nullable(),
+    assignedTo:   z.array(z.string()).optional().default([]),
+    order:        z.number().int().min(0).optional().default(0),
+    dependencies: z.array(z.string()).optional().default([]),
+    tags:         z.array(z.string()).optional().default([]),
+  });
+
+  const validated = CreateNodeSchema.parse(form);  // throws ZodError if invalid
+
   try {
     const colRef = collection(db, ROADMAP_NODES_COL);
 
     // Step 1: addDoc to generate the ID
     const docRef = await addDoc(colRef, {
-      title:               form.title ?? '',
-      description:         form.description ?? '',
-      status:              form.status ?? 'pending',
-      priority:            form.priority ?? 'medium',
-      startDate:           form.startDate ? new Date(form.startDate) : null,
-      dueDate:             form.dueDate   ? new Date(form.dueDate)   : null,
-      assignedTo:          form.assignedTo ?? [],
-      order:               form.order ?? 0,
-      dependencies:        form.dependencies ?? [],
-      tags:                form.tags ?? [],
+      ...validated,
+      startDate:           validated.startDate ? new Date(validated.startDate) : null,
+      dueDate:             validated.dueDate   ? new Date(validated.dueDate)   : null,
       isArchived:          false,
       progress:            0,
       childCount:          0,
@@ -211,6 +223,7 @@ export async function createNode(form, adminUid, parentNode = null) {
     throw err;
   }
 }
+
 
 /**
  * Update structural fields of a roadmap node (admin only).
