@@ -1,0 +1,72 @@
+﻿{
+  "indexes": [
+    {
+      "_comment": "Index 1 — Direct children query (parentId + isArchived + order)",
+      "collectionGroup": "roadmapNodes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "parentId",   "order": "ASCENDING" },
+        { "fieldPath": "isArchived", "order": "ASCENDING" },
+        { "fieldPath": "order",      "order": "ASCENDING" }
+      ]
+    },
+    {
+      "_comment": "Index 2 — Subtree query via ancestorIds array-contains",
+      "collectionGroup": "roadmapNodes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ancestorIds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "isArchived",  "order": "ASCENDING" }
+      ]
+    },
+    {
+      "_comment": "Index 3 — Assignee node lookup with status + dueDate sort",
+      "collectionGroup": "roadmapNodes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assignedTo", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "status",     "order": "ASCENDING" },
+        { "fieldPath": "dueDate",    "order": "ASCENDING" }
+      ]
+    },
+    {
+      "_comment": "Index 4 — Delayed/overdue nodes (KPI analytics Phase 16)",
+      "collectionGroup": "roadmapNodes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isArchived", "order": "ASCENDING" },
+        { "fieldPath": "status",     "order": "ASCENDING" },
+        { "fieldPath": "dueDate",    "order": "ASCENDING" }
+      ]
+    },
+    {
+      "_comment": "Index 5 — Tasks subcollection: assignee collectionGroup query (Phase 16)",
+      "collectionGroup": "tasks",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "assignedTo", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "status",     "order": "ASCENDING" }
+      ]
+    },
+    {
+      "_comment": "Index 6 — History subcollection: recent activity collectionGroup (Phase 16+17)",
+      "collectionGroup": "history",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "nodeId",    "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "_comment": "Index 7 — Tasks subcollection: nodeId + dueDate for calendar dedup (Phase 15)",
+      "collectionGroup": "tasks",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "nodeId",  "order": "ASCENDING" },
+        { "fieldPath": "dueDate", "order": "ASCENDING" },
+        { "fieldPath": "status",  "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
