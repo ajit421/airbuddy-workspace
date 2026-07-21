@@ -148,13 +148,13 @@ Hard
 Define exact role-based access rules before any Firestore Rules are written.
 
 ### Tasks
-- [ ] Define admin permissions matrix (full CRUD on roadmap structure)
-- [ ] Define employee permissions matrix (read all, update only assigned task progress/status)
-- [ ] Define comment-posting permission (open to all signed-in users)
-- [ ] Define history subcollection access (server-write-only, read-only for clients)
-- [ ] Define attachment access rules
-- [ ] Define `collectionGroup` query rule requirements for analytics (Phase 16)
-- [ ] Cross-check new rules against existing Firestore rules for conflicts
+- [x] Define admin permissions matrix (full CRUD on roadmap structure)
+- [x] Define employee permissions matrix (read all, update only assigned task progress/status)
+- [x] Define comment-posting permission (open to all signed-in users)
+- [x] Define history subcollection access (server-write-only, read-only for clients)
+- [x] Define attachment access rules
+- [x] Define `collectionGroup` query rule requirements for analytics (Phase 16)
+- [x] Cross-check new rules against existing Firestore rules for conflicts
 
 ### Deliverables
 - Permission matrix document
@@ -178,12 +178,12 @@ Medium
 - Overly restrictive rules blocking legitimate employee updates
 
 ### Validation Checklist
-- [ ] Feature completed
-- [ ] Existing code not broken
-- [ ] Tested
-- [ ] Responsive
-- [ ] Firestore rules verified
-- [ ] Ready for next phase
+- [x] Feature completed
+- [x] Existing code not broken
+- [x] Tested
+- [x] Responsive
+- [x] Firestore rules verified
+- [x] Ready for next phase
 
 ---
 
@@ -193,12 +193,12 @@ Medium
 Add roadmap routes into the existing router without disturbing current routes.
 
 ### Tasks
-- [ ] Add `/roadmap` route inside existing `ProtectedRoute` wrapper
-- [ ] Add `/roadmap/:nodeId` deep-link route
-- [ ] Wrap roadmap routes in new scoped `RoadmapProvider`
-- [ ] Add Sidebar navigation entry (top of nav list)
-- [ ] Verify no route path collisions with existing HRMS/KPI/admin routes
-- [ ] Verify admin-only sub-actions still route through existing `AdminRoute` guard pattern
+- [x] Add `/roadmap` route inside existing `ProtectedRoute` wrapper
+- [x] Add `/roadmap/:nodeId` deep-link route
+- [x] Wrap roadmap routes in new scoped `RoadmapProvider`
+- [x] Add Sidebar navigation entry (top of nav list)
+- [x] Verify no route path collisions with existing HRMS/KPI/admin routes
+- [x] Verify admin-only sub-actions still route through existing `AdminRoute` guard pattern
 
 ### Deliverables
 - Updated `App.jsx` (additive changes only)
@@ -221,12 +221,12 @@ Easy
 - Route path collision with existing routes
 
 ### Validation Checklist
-- [ ] Feature completed
-- [ ] Existing code not broken
-- [ ] Tested
-- [ ] Responsive
-- [ ] Firestore rules verified
-- [ ] Ready for next phase
+- [x] Feature completed
+- [x] Existing code not broken
+- [x] Tested
+- [x] Responsive
+- [x] Firestore rules verified
+- [x] Ready for next phase
 
 ---
 
@@ -236,11 +236,11 @@ Easy
 Create the actual Firestore collections and seed structure defined in Phase 3.
 
 ### Tasks
-- [ ] Create `roadmapNodes` collection with schema fields from Phase 3
-- [ ] Implement subcollection structure (`tasks`, `comments`, `history`, `attachments`)
-- [ ] Deploy composite indexes defined in Phase 3
-- [ ] Seed a small test tree (3–4 levels) in a staging/emulator environment
-- [ ] Verify materialized `path` and `ancestorIds` compute correctly on nested inserts
+- [x] Create `roadmapNodes` collection with schema fields from Phase 3
+- [x] Implement subcollection structure (`tasks`, `comments`, `history`, `attachments`)
+- [x] Deploy composite indexes defined in Phase 3
+- [x] Seed a small test tree (3–4 levels) in a staging/emulator environment
+- [x] Verify materialized `path` and `ancestorIds` compute correctly on nested inserts
 
 ### Deliverables
 - Live Firestore collections (staging)
@@ -263,12 +263,12 @@ Medium
 - Incorrect path/ancestor computation corrupting hierarchy from the start
 
 ### Validation Checklist
-- [ ] Feature completed
-- [ ] Existing code not broken
-- [ ] Tested
-- [ ] Responsive
-- [ ] Firestore rules verified
-- [ ] Ready for next phase
+- [x] Feature completed
+- [x] Existing code not broken
+- [x] Tested
+- [x] Responsive
+- [x] Firestore rules verified
+- [x] Ready for next phase
 
 ---
 
@@ -278,11 +278,11 @@ Medium
 Build the service-layer functions the UI will call, following existing `taskService.js` conventions.
 
 ### Tasks
-- [ ] Implement `roadmapService.js` (create/update/archive node, Zod validation)
-- [ ] Implement `roadmapTaskService.js` (create/update task, progress/status updates)
-- [ ] Implement `subscribeToChildren()` and `subscribeToSubtree()` realtime functions
-- [ ] Implement `getRoadmapCalendarEvents()` dedup logic (used in Phase 15)
-- [ ] Write unit tests for all new service functions (matching existing `taskService.test.js` style)
+- [x] Implement `roadmapService.js` (create/update/archive node, Zod validation)
+- [x] Implement `roadmapTaskService.js` (create/update task, progress/status updates)
+- [x] Implement `subscribeToChildren()` and `subscribeToSubtree()` realtime functions
+- [x] Implement `getRoadmapCalendarEvents()` dedup logic (used in Phase 15)
+- [x] Write unit tests for all new service functions (matching existing `taskService.test.js` style)
 
 ### Deliverables
 - `roadmapService.js`, `roadmapTaskService.js`
@@ -305,12 +305,12 @@ Medium
 - Schema validation gaps allowing malformed nodes into Firestore
 
 ### Validation Checklist
-- [ ] Feature completed
-- [ ] Existing code not broken
-- [ ] Tested
-- [ ] Responsive
-- [ ] Firestore rules verified
-- [ ] Ready for next phase
+- [x] Feature completed
+- [x] Existing code not broken
+- [x] Tested
+- [x] Responsive
+- [x] Firestore rules verified
+- [x] Ready for next phase
 
 ---
 
@@ -320,12 +320,12 @@ Medium
 Implement server-side automatic progress rollup from leaf tasks up through unlimited ancestor depth.
 
 ### Tasks
-- [ ] Implement `onRoadmapTaskWrite` trigger (recompute leaf node progress)
-- [ ] Implement `onRoadmapNodeProgressChange` trigger (batched ancestor propagation via `ancestorIds`)
-- [ ] Implement infinite-loop guard (skip write if progress value unchanged)
-- [ ] Implement transaction-based `recomputeNodeProgress()` for race-safety
-- [ ] Test cascade correctness at 6+ levels of nesting in emulator
-- [ ] Test concurrent task updates from multiple simulated users
+- [x] Implement `onRoadmapTaskWrite` trigger (recompute leaf node progress)
+- [x] Implement `onRoadmapNodeProgressChange` trigger (batched ancestor propagation via `ancestorIds`)
+- [x] Implement infinite-loop guard (skip write if progress value unchanged)
+- [x] Implement transaction-based `recomputeNodeProgress()` for race-safety
+- [x] Test cascade correctness at 6+ levels of nesting in emulator
+- [x] Test concurrent task updates from multiple simulated users
 
 ### Deliverables
 - `functions/roadmapTriggers.js`
@@ -350,12 +350,12 @@ Very Hard
 - Firestore cost spike from unbounded cascade writes
 
 ### Validation Checklist
-- [ ] Feature completed
-- [ ] Existing code not broken
-- [ ] Tested
-- [ ] Responsive
-- [ ] Firestore rules verified
-- [ ] Ready for next phase
+- [x] Feature completed
+- [x] Existing code not broken
+- [x] Tested
+- [x] Responsive
+- [x] Firestore rules verified
+- [x] Ready for next phase
 
 ---
 
@@ -365,12 +365,12 @@ Very Hard
 Deploy and verify the permission model defined in Phase 4.
 
 ### Tasks
-- [ ] Write Firestore Rules for `roadmapNodes` (admin-only structural writes)
-- [ ] Write Firestore Rules for `tasks` subcollection (field-restricted employee updates)
-- [ ] Write Firestore Rules for `history` (server-write-only, `allow write: if false`)
-- [ ] Write `collectionGroup` rule for `tasks` (required for analytics queries)
-- [ ] Run existing rules test suite to confirm no regression on current rules
-- [ ] Run new rules tests against the permission matrix from Phase 4
+- [x] Write Firestore Rules for `roadmapNodes` (admin-only structural writes)
+- [x] Write Firestore Rules for `tasks` subcollection (field-restricted employee updates)
+- [x] Write Firestore Rules for `history` (server-write-only, `allow write: if false`)
+- [x] Write `collectionGroup` rule for `tasks` (required for analytics queries)
+- [x] Run existing rules test suite to confirm no regression on current rules
+- [x] Run new rules tests against the permission matrix from Phase 4
 
 ### Deliverables
 - Updated `firestore.rules` (additive block)
@@ -393,12 +393,12 @@ Hard
 - Breaking existing HRMS/KPI/task rules with a misplaced match block
 
 ### Validation Checklist
-- [ ] Feature completed
-- [ ] Existing code not broken
-- [ ] Tested
-- [ ] Responsive
-- [ ] Firestore rules verified
-- [ ] Ready for next phase
+- [x] Feature completed
+- [x] Existing code not broken
+- [x] Tested
+- [x] Responsive
+- [x] Firestore rules verified
+- [x] Ready for next phase
 
 ---
 

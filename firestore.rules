@@ -322,5 +322,157 @@ service cloud.firestore {
       allow create, update: if isAdmin();
       allow delete:         if isAdmin();
     }
+    // ── Phase 9: Roadmap Security Rules ─────────────────────────────────────
+    //
+    // Permission model source: Phase 4 planning doc.
+    // All roadmap rules are ADDITIVE — no existing rule block is modified.
+    // Reuses existing helpers: isAuthenticated(), isEmailAllowed(),
+    //   isAdmin(), getEffectiveUid().
+    //
+    // Helper functions specific to roadmap:
+    //   isRoadmapTaskAssignee(taskData) — true if effectiveUid is in task.assignedTo
+
+    function isRoadmapTaskAssignee(taskData) {
+      let uid      = getEffectiveUid();
+      let assigned = taskData.get('assignedTo', []);
+      return assigned is list && uid in assigned;
+    }
+
+    // ── roadmapNodes ─────────────────────────────────────────────────────────
+    // Phase 4 §2–3:
+    //   Read:   All whitelisted authenticated users can read all nodes
+    //           (company-wide transparency — no filtering by assignedTo)
+    //   Create: Admin only
+    //   Update: Admin only — employees NEVER write directly to a node's structural
+    //           or rollup fields; progress rollup is Cloud Function–owned (Phase 8)
+    //   Delete: Admin only
+    match /roadmapNodes/{nodeId} {
+      allow read:   if isAuthenticated() && isEmailAllowed();
+      allow create: if isAuthenticated() && isEmailAllowed() && isAdmin();
+      allow update: if isAuthenticated() && isEmailAllowed() && isAdmin();
+      allow delete: if isAuthenticated() && isEmailAllowed() && isAdmin();
+
+      // ── tasks subcollection ───────────────────────────────────────────────
+      // Phase 4 §4:
+      //   Read:   Admin sees all. Assigned employee reads own tasks only.
+      //   Create: Admin only — tasks are assigned, not self-created
+      //   Update: Admin can change all fields.
+      //           Assigned employee may only change:
+      //             status | progress | completionNote | updatedBy | updatedAt
+      //   Delete: Admin only
+      match /tasks/{taskId} {
+        allow read: if isAuthenticated() && isEmailAllowed() && (
+          isAdmin() ||
+          isRoadmapTaskAssignee(resource.data)
+        );
+
+        allow create: if isAuthenticated() && isEmailAllowed() && isAdmin();
+
+        allow update: if isAuthenticated() && isEmailAllowed() && (
+          isAdmin() ||
+          (
+            isRoadmapTaskAssignee(resource.data) &&
+            request.resource.data.diff(resource.data)
+              .affectedKeys()
+              .hasOnly(['status', 'progress', 'completionNote', 'updatedBy', 'updatedAt'])
+          )
+        );
+
+        allow delete: if isAuthenticated() && isEmailAllowed() && isAdmin();
+      }
+
+      // ── comments subcollection ────────────────────────────────────────────
+      // Phase 4 §5:
+      //   Read:          All whitelisted users (company-wide transparency)
+      //   Create:        All whitelisted users — authorUid must equal effectiveUid
+      //   Update/Delete: Own comment only (or admin)
+      //   Constraints:   authorUid == effectiveUid (no impersonation)
+      //                  text ≤ 2000 chars
+      match /comments/{commentId} {
+        allow read: if isAuthenticated() && isEmailAllowed();
+
+        allow create: if isAuthenticated() && isEmailAllowed()
+          && request.resource.data.get('authorUid', '') == getEffectiveUid()
+          && request.resource.data.get('text', '').size() <= 2000;
+
+        allow update: if isAuthenticated() && isEmailAllowed() && (
+          isAdmin() ||
+          resource.data.get('authorUid', '') == getEffectiveUid()
+        );
+
+        allow delete: if isAuthenticated() && isEmailAllowed() && (
+          isAdmin() ||
+          resource.data.get('authorUid', '') == getEffectiveUid()
+        );
+      }
+
+      // ── history subcollection ─────────────────────────────────────────────
+      // Phase 4 §6:
+      //   Read:  All whitelisted users (audit trail transparency)
+      //   Write: BLOCKED for all clients — Cloud Functions write via Admin SDK
+      //          which bypasses these rules entirely. `allow write: if false`
+      //          ensures no client (including admin) can tamper with history.
+      match /history/{historyId} {
+        allow read:  if isAuthenticated() && isEmailAllowed();
+        allow write: if false;
+      }
+
+      // ── attachments subcollection ─────────────────────────────────────────
+      // Phase 4 §7:
+      //   Read:   All whitelisted users
+      //   Create: All whitelisted users — uploadedBy must equal effectiveUid
+      //           fileSize must be ≤ 10 MB (10,485,760 bytes)
+      //   Update: Own attachment only (or admin)
+      //   Delete: Own attachment only (uploadedBy == effectiveUid) or admin
+      match /attachments/{attachmentId} {
+        allow read: if isAuthenticated() && isEmailAllowed();
+
+        allow create: if isAuthenticated() && isEmailAllowed()
+          && request.resource.data.get('uploadedBy', '') == getEffectiveUid()
+          && request.resource.data.get('fileSize', 0) <= 10485760;
+
+        allow update: if isAuthenticated() && isEmailAllowed() && (
+          isAdmin() ||
+          resource.data.get('uploadedBy', '') == getEffectiveUid()
+        );
+
+        allow delete: if isAuthenticated() && isEmailAllowed() && (
+          isAdmin() ||
+          resource.data.get('uploadedBy', '') == getEffectiveUid()
+        );
+      }
+    }
+
+    // ── collectionGroup: tasks ────────────────────────────────────────────────
+    // Phase 4 §8: Required for analytics queries (Phase 16) that use
+    // collectionGroup('tasks') to span all tasks subcollections.
+    //
+    // Read: Admin sees all; employee sees only tasks where they are in assignedTo.
+    //       This guard prevents the collectionGroup path from exposing tasks that
+    //       the employee cannot see via the direct path rule above.
+    //
+    // NOTE: This rule COEXISTS with the root-level /tasks/{taskId} rule.
+    //       Firestore evaluates each match path independently — no conflict.
+    match /{path=**}/tasks/{taskId} {
+      allow read: if isAuthenticated() && isEmailAllowed() && (
+        isAdmin() ||
+        (
+          'assignedTo' in resource.data &&
+          getEffectiveUid() in resource.data.assignedTo
+        )
+      );
+    }
+
+    // ── collectionGroup: history ──────────────────────────────────────────────
+    // Phase 4 §8: Allows analytics/audit views to query across all history
+    // subcollections. Clients can only read — write is blocked for all clients.
+    match /{path=**}/history/{historyId} {
+      allow read:  if isAuthenticated() && isEmailAllowed();
+      allow write: if false;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // End Phase 9 roadmap rules
+    // ─────────────────────────────────────────────────────────────────────────
   }
 }

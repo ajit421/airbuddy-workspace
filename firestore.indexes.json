@@ -1,4 +1,4 @@
-﻿{
+{
   "indexes": [
     {
       "_comment": "Index 1 — Direct children query (parentId + isArchived + order)",
