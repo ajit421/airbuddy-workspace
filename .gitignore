@@ -47,3 +47,6 @@ serviceAccountKey.json
 
 # Migration scripts (LO-10: moved to scripts/ — ignore scoped correctly)
 scripts/migrateAttendance.cjs
+
+airbuddy-workspace-firebase-adminsdk-fbsvc-6e16bf3b13.json
+
