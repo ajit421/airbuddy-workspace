@@ -30,6 +30,10 @@ import ProductsPanel      from './components/KPI/ProductsPanel';
 import SalesPanel         from './components/KPI/SalesPanel';
 import IPPanel            from './components/KPI/PatentsPanel';
 
+// Company Roadmap Module imports
+import { RoadmapProvider } from './context/RoadmapContext';
+import CompanyRoadmap      from './components/Roadmap/CompanyRoadmap';
+
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
   if (loading) return (
@@ -132,6 +136,13 @@ const AppRoutes = () => {
           <Route path="kpi/sales"      element={<SalesPanel />} />
           <Route path="kpi/ip"         element={<IPPanel />} />
           <Route path="kpi/patents"    element={<Navigate to="/kpi/ip" replace />} />
+        </Route>
+
+        {/* Company Roadmap Routes — wrapped in RoadmapProvider (scoped listeners) */}
+        {/* Phase 10: CompanyRoadmap.jsx will be fully implemented */}
+        <Route element={<RoadmapProvider><Outlet /></RoadmapProvider>}>
+          <Route path="roadmap"         element={<CompanyRoadmap />} />
+          <Route path="roadmap/:nodeId" element={<CompanyRoadmap />} />
         </Route>
       </Route>
       {/* Fallback */}

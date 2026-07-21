@@ -57,14 +57,14 @@ Easy
 Define the module structure, file layout, and component responsibilities for the Company Roadmap feature before writing schema or code.
 
 ### Tasks
-- [ ] Define new folder structure under `src/components/Roadmap/`
-- [ ] Define new context: `RoadmapContext.jsx` (scoped provider, mounted only on roadmap routes)
-- [ ] Define new hooks: `useRoadmapTree.js`, `useRoadmapNode.js`
-- [ ] Define new services: `roadmapService.js`, `roadmapTaskService.js`
-- [ ] Map which existing components will be reused vs. which are net-new
-- [ ] Define new route additions (`/roadmap`, `/roadmap/:nodeId`) as additive-only changes
-- [ ] Define Sidebar navigation entry placement
-- [ ] Confirm permission reuse strategy (reuse `canEditTask`/`canUpdateProgress`/`canViewTask`, add `canEditRoadmapStructure`)
+- [x] Define new folder structure under `src/components/Roadmap/`
+- [x] Define new context: `RoadmapContext.jsx` (scoped provider, mounted only on roadmap routes)
+- [x] Define new hooks: `useRoadmapTree.js`, `useRoadmapNode.js`
+- [x] Define new services: `roadmapService.js`, `roadmapTaskService.js`
+- [x] Map which existing components will be reused vs. which are net-new
+- [x] Define new route additions (`/roadmap`, `/roadmap/:nodeId`) as additive-only changes
+- [x] Define Sidebar navigation entry placement
+- [x] Confirm permission reuse strategy (reuse `canEditTask`/`canUpdateProgress`/`canViewTask`, add `canEditRoadmapStructure`)
 
 ### Deliverables
 - Module architecture document (file tree + responsibilities)
@@ -86,12 +86,12 @@ Medium
 - Over-engineering the module structure before schema is known
 
 ### Validation Checklist
-- [ ] Feature completed
-- [ ] Existing code not broken
-- [ ] Tested
-- [ ] Responsive
-- [ ] Firestore rules verified
-- [ ] Ready for next phase
+- [x] Feature completed
+- [x] Existing code not broken
+- [x] Tested
+- [x] Responsive
+- [x] Firestore rules verified
+- [x] Ready for next phase
 
 ---
 
