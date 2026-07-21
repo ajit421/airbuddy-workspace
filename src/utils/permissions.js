@@ -66,3 +66,20 @@ export const MODULE_OPTIONS = [
   'Testing',
   'Other',
 ];
+
+// ── Roadmap Permissions ─────────────────────────────────────────────────────
+
+/**
+ * Only admins can create, edit, or delete roadmap node structure.
+ * Employees may only update progress on tasks assigned to them.
+ *
+ * Intentionally checks `userProfile.role` directly (not `isAdmin` from
+ * AuthContext) to remain consistent with all other permission helpers.
+ *
+ * @param {object|null} userProfile - User profile object from Firestore
+ * @returns {boolean}
+ */
+export const canEditRoadmapStructure = (userProfile) => {
+  if (!userProfile) return false;
+  return userProfile.role === 'admin';
+};
