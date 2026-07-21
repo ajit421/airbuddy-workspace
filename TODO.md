@@ -408,12 +408,12 @@ Hard
 Build the main expandable/collapsible nested tree UI.
 
 ### Tasks
-- [ ] Build `CompanyRoadmap.jsx` top-level page
-- [ ] Build `RoadmapTree.jsx` recursive expand/collapse renderer
-- [ ] Build `RoadmapNodeCard.jsx` (reusing `TaskCard.jsx` visual language)
-- [ ] Implement lazy-fetch-on-expand behavior (no eager subtree loading)
-- [ ] Wire listener lifecycle to expand/collapse state (auto-unsubscribe on collapse)
-- [ ] Test unlimited nesting depth visually in a dev environment
+- [x] Build `CompanyRoadmap.jsx` top-level page
+- [x] Build `RoadmapTree.jsx` recursive expand/collapse renderer
+- [x] Build `RoadmapNodeCard.jsx` (reusing `TaskCard.jsx` visual language)
+- [x] Implement lazy-fetch-on-expand behavior (no eager subtree loading)
+- [x] Wire listener lifecycle to expand/collapse state (auto-unsubscribe on collapse)
+- [x] Test unlimited nesting depth visually in a dev environment
 
 ### Deliverables
 - `CompanyRoadmap.jsx`, `RoadmapTree.jsx`, `RoadmapNodeCard.jsx`
@@ -435,12 +435,12 @@ Hard
 - Performance degradation at deep nesting without proper listener cleanup
 
 ### Validation Checklist
-- [ ] Feature completed
-- [ ] Existing code not broken
-- [ ] Tested
-- [ ] Responsive
-- [ ] Firestore rules verified
-- [ ] Ready for next phase
+- [x] Feature completed
+- [x] Existing code not broken
+- [x] Tested
+- [x] Responsive
+- [x] Firestore rules verified
+- [x] Ready for next phase
 
 ---
 
@@ -450,11 +450,11 @@ Hard
 Build create/edit/detail interfaces for individual roadmap nodes.
 
 ### Tasks
-- [ ] Build `RoadmapNodeModal.jsx` (create/edit, reusing `shared/Modal.jsx`)
-- [ ] Build `RoadmapNodeDetail.jsx` side panel (description, dependencies, related tasks)
-- [ ] Build `RoadmapBreadcrumb.jsx` using materialized `path`
-- [ ] Implement delete-blocked-if-children-exist UI state (disabled button + tooltip)
-- [ ] Implement admin-only vs. employee-only control visibility (hide, not just disable)
+- [x] Build `RoadmapNodeModal.jsx` (create/edit, reusing `shared/Modal.jsx`)
+- [x] Build `RoadmapNodeDetail.jsx` side panel (description, dependencies, related tasks)
+- [x] Build `RoadmapBreadcrumb.jsx` using materialized `path`
+- [x] Implement delete-blocked-if-children-exist UI state (disabled button + tooltip)
+- [x] Implement admin-only vs. employee-only control visibility (hide, not just disable)
 
 ### Deliverables
 - `RoadmapNodeModal.jsx`, `RoadmapNodeDetail.jsx`, `RoadmapBreadcrumb.jsx`
@@ -476,12 +476,12 @@ Medium
 - Employees able to see admin-only controls due to incomplete UI guard
 
 ### Validation Checklist
-- [ ] Feature completed
-- [ ] Existing code not broken
-- [ ] Tested
-- [ ] Responsive
-- [ ] Firestore rules verified
-- [ ] Ready for next phase
+- [x] Feature completed
+- [x] Existing code not broken
+- [x] Tested
+- [x] Responsive
+- [x] Firestore rules verified
+- [x] Ready for next phase
 
 ---
 
