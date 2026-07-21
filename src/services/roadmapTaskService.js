@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 // Phase 6+7: Full Firestore implementation
 // import { collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 // import { db } from './firebase';
@@ -16,14 +16,27 @@
  */
 
 // ─── Zod Schema ─────────────────────────────────────────────────────────────
+// Kept in sync with Phase 3 schema document (phase3_firestore_schema.md).
 export const RoadmapTaskSchema = z.object({
-  title:       z.string().min(1, 'Task title is required'),
-  description: z.string().optional(),
-  status:      z.enum(['pending', 'in-progress', 'completed']),
-  priority:    z.enum(['low', 'medium', 'high']),
-  progress:    z.number().min(0).max(100).default(0),
-  assignedTo:  z.array(z.string()).optional().default([]),
-  dueDate:     z.string().or(z.date()).optional().nullable(),
+  // ── Core content ──────────────────────────────────────────────────────────
+  title:          z.string().min(1, 'Task title is required'),
+  description:    z.string().optional().default(''),
+  status:         z.enum(['pending', 'in-progress', 'completed']),
+  priority:       z.enum(['low', 'medium', 'high']),
+  progress:       z.number().min(0).max(100).default(0),
+  assignedTo:     z.array(z.string()).optional().default([]),
+  dueDate:        z.string().or(z.date()).optional().nullable(),
+
+  // ── Employee-updatable fields ─────────────────────────────────────────────
+  completionNote: z.string().optional().default(''),
+
+  // ── Audit ─────────────────────────────────────────────────────────────────
+  assignedBy:     z.string().min(1, 'assignedBy is required'),  // admin effectiveUid
+  createdBy:      z.string().min(1, 'createdBy is required'),   // effectiveUid
+  updatedBy:      z.string().min(1, 'updatedBy is required'),   // effectiveUid
+
+  // ── Denormalized for collectionGroup queries (Phase 16) ───────────────────
+  nodeId:         z.string().min(1, 'nodeId is required'),
 });
 
 // ─── CRUD ────────────────────────────────────────────────────────────────────

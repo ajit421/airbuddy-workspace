@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 // Phase 6+7: Full Firestore implementation
 // import { collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, query, where, orderBy } from 'firebase/firestore';
 // import { db } from './firebase';
@@ -19,22 +19,38 @@
 const ROADMAP_NODES_COL = 'roadmapNodes';
 
 // ─── Zod Schema ─────────────────────────────────────────────────────────────
+// Kept in sync with Phase 3 schema document (phase3_firestore_schema.md).
+// All fields, types, defaults, and enums must match exactly.
 export const RoadmapNodeSchema = z.object({
+  // ── Core content ──────────────────────────────────────────────────────────
   title:               z.string().min(1, 'Title is required'),
-  description:         z.string().optional(),
-  status:              z.enum(['pending', 'in-progress', 'completed', 'blocked']),
+  description:         z.string().optional().default(''),
+  status:              z.enum(['pending', 'in-progress', 'completed', 'blocked', 'archived']),
   priority:            z.enum(['low', 'medium', 'high', 'critical']),
   startDate:           z.string().or(z.date()).optional().nullable(),
   dueDate:             z.string().or(z.date()).optional().nullable(),
   assignedTo:          z.array(z.string()).optional().default([]),
+
+  // ── Audit ─────────────────────────────────────────────────────────────────
+  createdBy:           z.string().min(1, 'createdBy is required'),   // effectiveUid
+  updatedBy:           z.string().min(1, 'updatedBy is required'),   // effectiveUid
+
+  // ── Hierarchy (computed on create, never updated directly) ────────────────
   parentId:            z.string().nullable().default(null),
-  path:                z.string().default(''),         // materialized e.g. "nodeA/nodeB"
+  path:                z.string().default(''),         // "parentId/nodeId" materialized path
   ancestorIds:         z.array(z.string()).default([]),
   depth:               z.number().int().min(0).default(0),
   order:               z.number().int().min(0).default(0),
+
+  // ── Progress rollup (maintained by Cloud Function, Phase 8) ──────────────
   progress:            z.number().min(0).max(100).default(0),
   childCount:          z.number().int().min(0).default(0),
   childCompletedCount: z.number().int().min(0).default(0),
+
+  // ── Optional metadata ─────────────────────────────────────────────────────
+  dependencies:        z.array(z.string()).optional().default([]),  // sibling nodeIds
+  tags:                z.array(z.string()).optional().default([]),
+  isArchived:          z.boolean().default(false),
 });
 
 // ─── Helper ─────────────────────────────────────────────────────────────────

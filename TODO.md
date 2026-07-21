@@ -101,15 +101,15 @@ Medium
 Design a Firestore schema that supports unlimited nested hierarchy, cheap subtree queries, and low-cost progress rollups.
 
 ### Tasks
-- [ ] Design `roadmapNodes` collection schema (title, status, priority, dates, progress, etc.)
-- [ ] Design hierarchy strategy: `parentId`, materialized `path`, denormalized `ancestorIds`, `depth`, `order`
-- [ ] Design `roadmapNodes/{id}/tasks` subcollection schema
-- [ ] Design `roadmapNodes/{id}/comments`, `/history`, `/attachments` subcollections
-- [ ] Define denormalized rollup fields (`childCount`, `childCompletedCount`)
-- [ ] Define required composite indexes (`path`, `parentId+order`, `assignedTo+status`)
-- [ ] Define calendar-event derivation data shape (used later in Phase 15)
-- [ ] Define notification collection reuse plan (no new notification collection)
-- [ ] Document delete-behavior policy: block delete if node has children
+- [x] Design `roadmapNodes` collection schema (title, status, priority, dates, progress, etc.)
+- [x] Design hierarchy strategy: `parentId`, materialized `path`, denormalized `ancestorIds`, `depth`, `order`
+- [x] Design `roadmapNodes/{id}/tasks` subcollection schema
+- [x] Design `roadmapNodes/{id}/comments`, `/history`, `/attachments` subcollections
+- [x] Define denormalized rollup fields (`childCount`, `childCompletedCount`)
+- [x] Define required composite indexes (`path`, `parentId+order`, `assignedTo+status`)
+- [x] Define calendar-event derivation data shape (used later in Phase 15)
+- [x] Define notification collection reuse plan (no new notification collection)
+- [x] Document delete-behavior policy: block delete if node has children
 
 ### Deliverables
 - Firestore schema document
@@ -133,12 +133,12 @@ Hard
 - Missing composite index causes runtime query failures
 
 ### Validation Checklist
-- [ ] Feature completed
-- [ ] Existing code not broken
-- [ ] Tested
-- [ ] Responsive
-- [ ] Firestore rules verified
-- [ ] Ready for next phase
+- [x] Feature completed
+- [x] Existing code not broken
+- [x] Tested
+- [x] Responsive
+- [x] Firestore rules verified
+- [x] Ready for next phase
 
 ---
 
