@@ -1,11 +1,12 @@
 ﻿import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { canEditRoadmapStructure, canUpdateProgress } from '../utils/permissions';
-// import { subscribeToNode, updateNode, deleteNode } from '../services/roadmapService'; // Phase 6+7
+import { subscribeToNode, updateNode, deleteNode } from '../services/roadmapService';
 
 /**
  * useRoadmapNode.js
- * Subscribes to a single roadmapNode document and exposes mutation helpers.
+ * Subscribes to a single roadmap node document and exposes mutation helpers.
+ * Permission helpers are derived from userProfile (consistent with permissions.js).
  *
  * @param {string} nodeId - Firestore document ID of the roadmap node
  * @returns {{ node, loading, updateNode, deleteNode, canEdit, canProgress }}
@@ -16,23 +17,43 @@ export function useRoadmapNode(nodeId) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!nodeId) { setLoading(false); return; }
-    // Phase 6+7: Replace stub with real Firestore onSnapshot
-    // const unsub = subscribeToNode(nodeId, (data) => { setNode(data); setLoading(false); });
-    setLoading(false);
-    // return unsub;
+    if (!nodeId) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const unsub = subscribeToNode(
+      nodeId,
+      (data) => {
+        setNode(data);
+        setLoading(false);
+      },
+      (err) => {
+        console.error('[useRoadmapNode] subscribeToNode error:', err);
+        setLoading(false);
+      }
+    );
+    return unsub;
   }, [nodeId]);
 
-  const canEdit = canEditRoadmapStructure(userProfile);
+  const canEdit     = canEditRoadmapStructure(userProfile);
   const canProgress = node ? canUpdateProgress(node, userProfile) : false;
 
   const handleUpdate = async (data) => {
-    // Phase 7: await updateNode(nodeId, data, userProfile?.uid);
+    if (!userProfile?.uid) throw new Error('Not authenticated');
+    return updateNode(nodeId, data, userProfile.uid);
   };
 
   const handleDelete = async () => {
-    // Phase 7: await deleteNode(nodeId);  — blocked if node has children
+    return deleteNode(nodeId);
   };
 
-  return { node, loading, updateNode: handleUpdate, deleteNode: handleDelete, canEdit, canProgress };
+  return {
+    node,
+    loading,
+    updateNode:   handleUpdate,
+    deleteNode:   handleDelete,
+    canEdit,
+    canProgress,
+  };
 }

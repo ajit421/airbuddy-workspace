@@ -1,7 +1,9 @@
+﻿import {
+  collection, doc, addDoc, updateDoc, deleteDoc,
+  query, where, onSnapshot, serverTimestamp,
+} from 'firebase/firestore';
+import { db } from './firebase';
 import { z } from 'zod';
-// Phase 6+7: Full Firestore implementation
-// import { collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
-// import { db } from './firebase';
 
 /**
  * roadmapTaskService.js
@@ -12,13 +14,14 @@ import { z } from 'zod';
  *  - Zod validation at every write boundary.
  *  - serverTimestamp() for createdAt / updatedAt.
  *  - subscribeToX(onData, onError) returns unsubscribe fn.
- *  - Error prefix: '[roadmapTaskService] functionName:' in console.error
+ *  - Error prefix: [roadmapTaskService] functionName: in console.error
  */
 
-// ─── Zod Schema ─────────────────────────────────────────────────────────────
-// Kept in sync with Phase 3 schema document (phase3_firestore_schema.md).
+const ROADMAP_NODES_COL = 'roadmapNodes';
+const TASKS_SUBCOL      = 'tasks';
+
+// Zod Schema - kept in sync with phase3_firestore_schema.md
 export const RoadmapTaskSchema = z.object({
-  // ── Core content ──────────────────────────────────────────────────────────
   title:          z.string().min(1, 'Task title is required'),
   description:    z.string().optional().default(''),
   status:         z.enum(['pending', 'in-progress', 'completed']),
@@ -26,75 +29,143 @@ export const RoadmapTaskSchema = z.object({
   progress:       z.number().min(0).max(100).default(0),
   assignedTo:     z.array(z.string()).optional().default([]),
   dueDate:        z.string().or(z.date()).optional().nullable(),
-
-  // ── Employee-updatable fields ─────────────────────────────────────────────
   completionNote: z.string().optional().default(''),
-
-  // ── Audit ─────────────────────────────────────────────────────────────────
-  assignedBy:     z.string().min(1, 'assignedBy is required'),  // admin effectiveUid
-  createdBy:      z.string().min(1, 'createdBy is required'),   // effectiveUid
-  updatedBy:      z.string().min(1, 'updatedBy is required'),   // effectiveUid
-
-  // ── Denormalized for collectionGroup queries (Phase 16) ───────────────────
+  assignedBy:     z.string().min(1, 'assignedBy is required'),
+  createdBy:      z.string().min(1, 'createdBy is required'),
+  updatedBy:      z.string().min(1, 'updatedBy is required'),
   nodeId:         z.string().min(1, 'nodeId is required'),
 });
 
-// ─── CRUD ────────────────────────────────────────────────────────────────────
+// Helper
+const snapToArray = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+// Real-time Subscriptions
+
+/**
+ * Subscribe to all tasks under a roadmap node.
+ * Results sorted by createdAt ascending (client-side).
+ *
+ * @param {string}   nodeId
+ * @param {function} onData   - Called with task array
+ * @param {function} [onError]
+ * @returns {function} unsubscribe
+ */
+export function subscribeToRoadmapTasks(nodeId, onData, onError) {
+  if (!nodeId) {
+    onData([]);
+    return () => {};
+  }
+  const q = query(
+    collection(db, ROADMAP_NODES_COL, nodeId, TASKS_SUBCOL)
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const tasks = snapToArray(snap).sort((a, b) => {
+        const ta = a.createdAt?.toMillis?.() ?? 0;
+        const tb = b.createdAt?.toMillis?.() ?? 0;
+        return ta - tb;
+      });
+      onData(tasks);
+    },
+    (err) => {
+      console.error('[roadmapTaskService] subscribeToRoadmapTasks:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+// CRUD
 
 /**
  * Create a new task under a roadmap node.
+ * nodeId is denormalized into the task document for collectionGroup queries.
  *
  * @param {string} nodeId   - Parent roadmap node ID
- * @param {object} form     - Task form data (validated by RoadmapTaskSchema)
- * @param {string} adminUid - UID of the assigning admin
- * @returns {Promise<string>} Firestore document ID of the new task
+ * @param {object} form     - Task form data
+ * @param {string} adminUid - effectiveUid of assigning admin
+ * @returns {Promise<string>} New task document ID
  */
 export async function createRoadmapTask(nodeId, form, adminUid) {
-  // Phase 7 implementation
-  throw new Error('[roadmapTaskService] createRoadmapTask: Phase 7 not yet implemented');
+  if (!nodeId) throw new Error('[roadmapTaskService] createRoadmapTask: nodeId is required');
+  try {
+    const taskRef = await addDoc(
+      collection(db, ROADMAP_NODES_COL, nodeId, TASKS_SUBCOL),
+      {
+        title:          form.title ?? '',
+        description:    form.description ?? '',
+        status:         form.status ?? 'pending',
+        priority:       form.priority ?? 'medium',
+        progress:       form.progress ?? 0,
+        assignedTo:     form.assignedTo ?? [],
+        dueDate:        form.dueDate ? new Date(form.dueDate) : null,
+        completionNote: form.completionNote ?? '',
+        // Audit + denormalized
+        assignedBy: adminUid,
+        createdBy:  adminUid,
+        updatedBy:  adminUid,
+        nodeId:     nodeId,     // denormalized for collectionGroup queries (Phase 16)
+        createdAt:  serverTimestamp(),
+        updatedAt:  serverTimestamp(),
+      }
+    );
+    return taskRef.id;
+  } catch (err) {
+    console.error('[roadmapTaskService] createRoadmapTask:', err);
+    throw err;
+  }
 }
 
 /**
- * Update an existing roadmap task.
- * Employees may only update: status, progress, dueDate, completionNote.
- * Admins may update any field.
+ * Update a roadmap task.
+ * Admin: any field.
+ * Assigned employee: only status, progress, completionNote, updatedBy, updatedAt.
+ * Field restriction is enforced in Firestore Rules (Phase 9) — this function
+ * itself does not re-check; callers must pass only allowed fields for employees.
  *
  * @param {string} nodeId  - Parent roadmap node ID
  * @param {string} taskId  - Task document ID
  * @param {object} data    - Partial fields to update
- * @param {string} uid     - UID of the editing user
+ * @param {string} uid     - effectiveUid of the editing user
  * @returns {Promise<void>}
  */
 export async function updateRoadmapTask(nodeId, taskId, data, uid) {
-  // Phase 7 implementation
-  throw new Error('[roadmapTaskService] updateRoadmapTask: Phase 7 not yet implemented');
+  if (!nodeId) throw new Error('[roadmapTaskService] updateRoadmapTask: nodeId is required');
+  if (!taskId) throw new Error('[roadmapTaskService] updateRoadmapTask: taskId is required');
+
+  // Strip immutable fields
+  const { createdAt, createdBy, nodeId: _nodeId, id, ...safeData } = data;
+
+  try {
+    await updateDoc(
+      doc(db, ROADMAP_NODES_COL, nodeId, TASKS_SUBCOL, taskId),
+      {
+        ...safeData,
+        updatedBy: uid,
+        updatedAt: serverTimestamp(),
+      }
+    );
+  } catch (err) {
+    console.error('[roadmapTaskService] updateRoadmapTask:', err);
+    throw err;
+  }
 }
 
 /**
  * Delete a roadmap task.
+ * Admin only (enforced by Firestore Rules in Phase 9).
  *
- * @param {string} nodeId  - Parent roadmap node ID
- * @param {string} taskId  - Task document ID
+ * @param {string} nodeId - Parent roadmap node ID
+ * @param {string} taskId - Task document ID
  * @returns {Promise<void>}
  */
 export async function deleteRoadmapTask(nodeId, taskId) {
-  // Phase 7 implementation
-  throw new Error('[roadmapTaskService] deleteRoadmapTask: Phase 7 not yet implemented');
-}
-
-// ─── Real-time Subscriptions ─────────────────────────────────────────────────
-
-/**
- * Subscribe to all tasks under a roadmap node.
- *
- * @param {string} nodeId      - Parent roadmap node ID
- * @param {function} onData    - Callback with tasks array
- * @param {function} [onError] - Optional error callback
- * @returns {function} Firestore unsubscribe function
- */
-export function subscribeToRoadmapTasks(nodeId, onData, onError) {
-  // Phase 6 implementation
-  console.warn('[roadmapTaskService] subscribeToRoadmapTasks: Phase 6 not yet implemented');
-  onData([]);
-  return () => {};
+  if (!nodeId) throw new Error('[roadmapTaskService] deleteRoadmapTask: nodeId is required');
+  if (!taskId) throw new Error('[roadmapTaskService] deleteRoadmapTask: taskId is required');
+  try {
+    await deleteDoc(doc(db, ROADMAP_NODES_COL, nodeId, TASKS_SUBCOL, taskId));
+  } catch (err) {
+    console.error('[roadmapTaskService] deleteRoadmapTask:', err);
+    throw err;
+  }
 }
