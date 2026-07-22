@@ -12,6 +12,8 @@ import { formatDate, toDate } from '../../utils/dateHelpers';
 import TaskDetailModal from './TaskDetailModal';
 import ListView from './ListView';
 import { getMyLeaves, getAllLeaves } from '../../services/hrmsService';
+import { useRoadmapCalendarEvents } from '../../hooks/useRoadmapCalendarEvents';
+import { addMilestoneToGoogleCalendar } from '../../services/googleCalendarService';
 
 const localizer = dateFnsLocalizer({
   format,
@@ -20,6 +22,16 @@ const localizer = dateFnsLocalizer({
   getDay,
   locales: { 'en-IN': enIN },
 });
+
+// ─── Roadmap milestone style ───────────────────────────────────────────────────
+const ROADMAP_STYLE = {
+  backgroundColor: 'rgba(20, 184, 166, 0.2)',   // teal-500 at 20%
+  borderLeft: '3px solid #14b8a6',              // teal-500
+  color: '#E6EDF3',
+  borderRadius: '6px',
+  fontSize: '12px',
+  fontWeight: 500,
+};
 
 // ─── Leave status style map ────────────────────────────────────────────────────
 const LEAVE_STYLES = {
@@ -131,15 +143,143 @@ function LeaveInfoPanel({ leave, onClose }) {
   );
 }
 
+// ─── Roadmap Event Info Panel (lightweight, like LeaveInfoPanel) ───────────────
+function RoadmapEventPanel({ node, onClose, onSyncGCal, syncing }) {
+  if (!node) return null;
+
+  const STATUS_COLORS = {
+    completed:   'bg-green-500/10 text-green-400 border-green-500/30',
+    'in-progress': 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+    pending:     'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
+    blocked:     'bg-red-500/10 text-red-400 border-red-500/30',
+    archived:    'bg-surfaceHover text-text-muted border-border',
+  };
+  const statusCls = STATUS_COLORS[node.status] || STATUS_COLORS.pending;
+  const dueDateStr = node.dueDate
+    ? formatDate(node.dueDate?.toDate ? node.dueDate.toDate() : new Date(node.dueDate))
+    : '—';
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-surface border border-border rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl animate-fade-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-teal-400 flex-shrink-0" />
+            <h3 className="text-base font-bold text-text-primary">Roadmap Milestone</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-background transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="space-y-4">
+          {/* Title */}
+          <div>
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-1">Title</p>
+            <p className="text-sm font-semibold text-text-primary">{node.title}</p>
+            {node.description && (
+              <p className="text-xs text-text-secondary mt-1 line-clamp-2">{node.description}</p>
+            )}
+          </div>
+
+          {/* Status + Priority */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border capitalize ${statusCls}`}>
+              {node.status}
+            </span>
+            {node.priority && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-surfaceHover border border-border text-text-secondary capitalize">
+                {node.priority}
+              </span>
+            )}
+          </div>
+
+          {/* Progress */}
+          {typeof node.progress === 'number' && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Progress</p>
+                <span className="text-xs text-text-secondary">{node.progress}%</span>
+              </div>
+              <div className="w-full h-1.5 bg-border rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-teal-500 rounded-full transition-all"
+                  style={{ width: `${node.progress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Due date */}
+          <div>
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-1">Due Date</p>
+            <p className="text-sm text-text-primary">{dueDateStr}</p>
+          </div>
+
+          {/* Depth badge */}
+          {typeof node.depth === 'number' && (
+            <p className="text-xs text-text-muted">
+              Depth: {node.depth === 0 ? 'Root milestone' : node.depth === 1 ? 'Top-level milestone' : `Level ${node.depth}`}
+            </p>
+          )}
+        </div>
+
+        {/* Google Calendar sync — only for depth 0/1 */}
+        {node.syncEligible && (
+          <div className="mt-5 pt-4 border-t border-border">
+            <button
+              onClick={onSyncGCal}
+              disabled={syncing}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-teal-500/10 border border-teal-500/30 text-teal-400 hover:bg-teal-500/20 transition-colors text-sm font-medium disabled:opacity-50"
+            >
+              {syncing ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-teal-400/40 border-t-teal-400 rounded-full animate-spin" />
+                  Syncing…
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 18H5V9h14v13zM7 11h5v5H7z" />
+                  </svg>
+                  Add to Google Calendar
+                </>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function CalendarView() {
   const { tasks, loading, allUsers } = useTasks();
-  const { isAdmin, effectiveUid } = useAuth();
+  const { isAdmin, effectiveUid, accessToken } = useAuth();
   const [view, setView] = useState(Views.MONTH);
   const [date, setDate] = useState(new Date());
-  const [selectedTask, setSelectedTask] = useState(null);
+  const [selectedTask,  setSelectedTask]  = useState(null);
   const [selectedLeave, setSelectedLeave] = useState(null);
+  const [selectedNode,  setSelectedNode]  = useState(null);  // Phase 15: roadmap event
+  const [gcalSyncing,   setGcalSyncing]   = useState(false); // Phase 15: sync spinner
   const [showList, setShowList] = useState(false);
+
+  // Phase 15: roadmap calendar events
+  const { roadmapEvents, dedupTaskIds, roadmapLoading } = useRoadmapCalendarEvents();
 
   // ── Leave data ────────────────────────────────────────────────────────────────
   const [leaves, setLeaves] = useState([]);
@@ -161,30 +301,32 @@ export default function CalendarView() {
       .finally(() => setLeavesLoading(false));
   }, [effectiveUid, isAdmin]);
 
-  // ── Convert tasks + leaves to calendar events ─────────────────────────────────
+  // ── Convert tasks + leaves + roadmap nodes to calendar events ─────────────────
   const events = useMemo(() => {
-    // Task events
-    const taskEvents = tasks.map((task) => {
-      const start = toDate(task.startDate) || new Date();
-      const end = toDate(task.dueDate) || start;
+    // Task events — filtered to remove deduped roadmap-leaf entries
+    const taskEvents = tasks
+      .filter((task) => !dedupTaskIds.has(task.id))
+      .map((task) => {
+        const start = toDate(task.startDate) || new Date();
+        const end = toDate(task.dueDate) || start;
 
-      let title = task.title;
-      if (isAdmin && task.assignedTo?.length > 0) {
-        const names = task.assignedTo
-          .map((uid) => allUsers[uid]?.name?.split(' ')[0] || 'Unknown')
-          .join(', ');
-        title = `${task.title} (${names})`;
-      }
+        let title = task.title;
+        if (isAdmin && task.assignedTo?.length > 0) {
+          const names = task.assignedTo
+            .map((uid) => allUsers[uid]?.name?.split(' ')[0] || 'Unknown')
+            .join(', ');
+          title = `${task.title} (${names})`;
+        }
 
-      return {
-        id: task.id,
-        title,
-        start,
-        end,
-        resource: task,
-        allDay: true,
-      };
-    });
+        return {
+          id: task.id,
+          title,
+          start,
+          end,
+          resource: task,
+          allDay: true,
+        };
+      });
 
     // Leave events — leave dates are stored as YYYY-MM-DD strings
     const leaveEvents = leaves.map((leave) => {
@@ -202,8 +344,9 @@ export default function CalendarView() {
       };
     });
 
-    return [...taskEvents, ...leaveEvents];
-  }, [tasks, leaves, isAdmin, allUsers]);
+    // Phase 15: roadmap milestone events (teal)
+    return [...taskEvents, ...leaveEvents, ...roadmapEvents];
+  }, [tasks, leaves, isAdmin, allUsers, dedupTaskIds, roadmapEvents]);
 
   // ── Dynamic calendar height ───────────────────────────────────────────────────
   const calendarHeight = useMemo(() => {
@@ -220,6 +363,9 @@ export default function CalendarView() {
 
   // ── Event style ───────────────────────────────────────────────────────────────
   const eventStyleGetter = (event) => {
+    if (event.resource?._type === 'roadmap') {
+      return { style: ROADMAP_STYLE };
+    }
     if (event.resource?._type === 'leave') {
       const status = event.resource.status || 'pending';
       return { style: LEAVE_STYLES[status] || LEAVE_STYLES.pending };
@@ -240,10 +386,29 @@ export default function CalendarView() {
 
   // ── Event click handler ───────────────────────────────────────────────────────
   const handleSelectEvent = (event) => {
-    if (event.resource?._type === 'leave') {
+    if (event.resource?._type === 'roadmap') {
+      setSelectedNode(event.resource);
+    } else if (event.resource?._type === 'leave') {
       setSelectedLeave(event.resource);
     } else {
       setSelectedTask(event.resource);
+    }
+  };
+
+  // ── Google Calendar sync for roadmap milestone ────────────────────────────────
+  const handleSyncMilestone = async () => {
+    if (!selectedNode || !accessToken) return;
+    setGcalSyncing(true);
+    try {
+      const result = await addMilestoneToGoogleCalendar(accessToken, selectedNode);
+      if (result) {
+        alert(`Milestone "${selectedNode.title}" added to Google Calendar!`);
+        setSelectedNode(null);
+      } else {
+        alert('Could not sync to Google Calendar. Make sure you are signed in with Google.');
+      }
+    } finally {
+      setGcalSyncing(false);
     }
   };
 
@@ -332,6 +497,15 @@ export default function CalendarView() {
             <span>Rejected</span>
           </div>
         </div>
+
+        {/* Roadmap legend (Phase 15) */}
+        <div className="flex items-center gap-1.5">
+          <span className="font-semibold text-text-secondary">Roadmap:</span>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'rgba(20,184,166,0.3)', borderLeft: '2px solid #14b8a6' }} />
+            <span>Milestone</span>
+          </div>
+        </div>
       </div>
 
       {/* Leaves loading/error notice (non-blocking) */}
@@ -377,6 +551,16 @@ export default function CalendarView() {
       {/* Leave Info Panel */}
       {selectedLeave && (
         <LeaveInfoPanel leave={selectedLeave} onClose={() => setSelectedLeave(null)} />
+      )}
+
+      {/* Roadmap Milestone Panel (Phase 15) */}
+      {selectedNode && (
+        <RoadmapEventPanel
+          node={selectedNode}
+          onClose={() => setSelectedNode(null)}
+          onSyncGCal={handleSyncMilestone}
+          syncing={gcalSyncing}
+        />
       )}
     </div>
   );

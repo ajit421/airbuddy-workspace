@@ -107,3 +107,96 @@ export const addTaskToGoogleCalendar = async (accessToken, task, userName = '') 
         return null;
     }
 };
+
+/**
+ * Create a Google Calendar event for a roadmap milestone node.
+ * Only called for depth-0 and depth-1 nodes (syncEligible flag enforced at call site).
+ *
+ * @param {string} accessToken  - Google OAuth access token
+ * @param {object} node         - Roadmap node object with title, description, dueDate, startDate, status, priority, progress
+ * @returns {Promise<object|null>}  The created event, or null on failure
+ */
+export const addMilestoneToGoogleCalendar = async (accessToken, node) => {
+    if (!accessToken) {
+        console.warn('Google Calendar: No access token — skipping milestone sync.');
+        return null;
+    }
+
+    try {
+        const startDate = node.startDate
+            ? (node.startDate?.toDate ? node.startDate.toDate() : new Date(node.startDate))
+            : (node.dueDate?.toDate ? node.dueDate.toDate() : new Date(node.dueDate));
+
+        const endDate = node.dueDate
+            ? (node.dueDate?.toDate ? node.dueDate.toDate() : new Date(node.dueDate))
+            : new Date(startDate.getTime() + 86400000);
+
+        // All-day events need end date exclusive (+1 day)
+        const endDateInclusive = new Date(endDate);
+        endDateInclusive.setDate(endDateInclusive.getDate() + 1);
+
+        const depthLabel = node.depth === 0 ? 'Root Milestone' : 'Milestone';
+
+        const event = {
+            summary: `[AirBuddy Roadmap] ${node.title}`,
+            description: [
+                node.description ? `📋 ${node.description}` : '',
+                `🗺️ Type: ${depthLabel}`,
+                `📊 Status: ${node.status || 'pending'}`,
+                `🔴 Priority: ${node.priority || 'medium'}`,
+                `📈 Progress: ${node.progress ?? 0}%`,
+                '',
+                '— Created by AirBuddy WorkSpace Roadmap',
+            ]
+                .filter(Boolean)
+                .join('\n'),
+            start: {
+                date: startDate.toISOString().split('T')[0],
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            },
+            end: {
+                date: endDateInclusive.toISOString().split('T')[0],
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            },
+            // colorId '2' = Sage (green-grey) — distinct from task red/yellow/teal
+            colorId: '2',
+            reminders: {
+                useDefault: false,
+                overrides: [
+                    { method: 'popup', minutes: 60 * 24 * 3 }, // 3 days before
+                    { method: 'popup', minutes: 60 * 24 },      // 1 day before
+                ],
+            },
+            source: {
+                title: 'AirBuddy WorkSpace Roadmap',
+                url: window.location.origin + '/roadmap',
+            },
+        };
+
+        const response = await fetch(`${CALENDAR_API}/calendars/primary/events`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(event),
+        });
+
+        if (!response.ok) {
+            const errBody = await response.json().catch(() => ({}));
+            console.error('Google Calendar API error (milestone):', response.status, errBody);
+            if (response.status === 401) {
+                console.warn('Google Calendar: Access token expired. User needs to re-login.');
+            }
+            return null;
+        }
+
+        const createdEvent = await response.json();
+        console.log('✅ Google Calendar milestone event created:', createdEvent.htmlLink);
+        return createdEvent;
+    } catch (err) {
+        console.error('Google Calendar: Unexpected error (milestone):', err);
+        return null;
+    }
+};
+
