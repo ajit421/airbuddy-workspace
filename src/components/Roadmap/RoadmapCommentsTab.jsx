@@ -3,6 +3,9 @@ import { useAuth } from '../../context/AuthContext';
 import { canEditRoadmapStructure } from '../../utils/permissions';
 import { subscribeToComments, postComment, deleteComment } from '../../services/roadmapCommentService';
 import { timeFromNow } from '../../utils/dateHelpers';
+import { notifyUsers, ROADMAP_NOTIF_TYPES } from '../../services/notificationService';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../services/firebase';
 
 /**
  * RoadmapCommentsTab.jsx
@@ -63,6 +66,21 @@ export default function RoadmapCommentsTab({ nodeId }) {
       });
       setText('');
       textareaRef.current?.focus();
+
+      // Notify node assignees (one-shot getDoc, not a subscription)
+      getDoc(doc(db, 'roadmapNodes', nodeId)).then((snap) => {
+        if (!snap.exists()) return;
+        const assignedTo = snap.data()?.assignedTo ?? [];
+        if (assignedTo.length === 0) return;
+        const commenterName = userProfile?.name ?? 'Someone';
+        notifyUsers(
+          assignedTo,
+          uid,
+          `New Comment on "${snap.data()?.title ?? 'Milestone'}"`,
+          `${commenterName} posted a comment. Open the Roadmap to view it.`,
+          ROADMAP_NOTIF_TYPES.COMMENT_POSTED
+        ).catch((err) => console.warn('[CommentsTab] notify comment:', err));
+      }).catch(() => {/* silent — notification is best-effort */});
     } catch (err) {
       setPostError(err?.message ?? 'Failed to post comment.');
     } finally {

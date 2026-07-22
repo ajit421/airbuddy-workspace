@@ -12,6 +12,77 @@ const BellIcon = () => (
   </svg>
 );
 
+/**
+ * Returns a small coloured icon element for each notification type.
+ * New roadmap types get distinct icons; legacy types fall back to a generic circle.
+ */
+const NOTIF_ICON_MAP = {
+  // ── Roadmap types ──────────────────────────────────────────────────────────
+  roadmap_task_assigned: {
+    bg: 'bg-orange-muted',
+    color: 'text-orange',
+    path: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2',
+  },
+  roadmap_milestone_completed: {
+    bg: 'bg-green-500/10',
+    color: 'text-green-400',
+    path: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
+  },
+  roadmap_deadline_tomorrow: {
+    bg: 'bg-yellow-500/10',
+    color: 'text-yellow-400',
+    path: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
+  },
+  roadmap_deadline_missed: {
+    bg: 'bg-red-500/10',
+    color: 'text-red-400',
+    path: 'M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+  },
+  roadmap_comment_posted: {
+    bg: 'bg-blue-500/10',
+    color: 'text-blue-400',
+    path: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
+  },
+  // ── Legacy types ───────────────────────────────────────────────────────────
+  task_assigned: {
+    bg: 'bg-orange-muted',
+    color: 'text-orange',
+    path: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2',
+  },
+  task_completed: {
+    bg: 'bg-green-500/10',
+    color: 'text-green-400',
+    path: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
+  },
+  announcement: {
+    bg: 'bg-purple-500/10',
+    color: 'text-purple-400',
+    path: 'M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z',
+  },
+  partner_added: {
+    bg: 'bg-blue-500/10',
+    color: 'text-blue-400',
+    path: 'M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z',
+  },
+};
+
+const DEFAULT_NOTIF_ICON = {
+  bg: 'bg-surfaceHover',
+  color: 'text-text-muted',
+  path: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+};
+
+function NotifIcon({ type }) {
+  const cfg = NOTIF_ICON_MAP[type] ?? DEFAULT_NOTIF_ICON;
+  return (
+    <span className={`flex-shrink-0 w-7 h-7 rounded-full ${cfg.bg} flex items-center justify-center`}>
+      <svg className={`w-3.5 h-3.5 ${cfg.color}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={cfg.path} />
+      </svg>
+    </span>
+  );
+}
+
 const MenuIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -148,12 +219,18 @@ export default function Navbar({ onMenuToggle }) {
                     <div
                       key={n.id}
                       onClick={() => markAsRead(n.id)}
-                      className={`px-4 py-3 border-b border-borderLight cursor-pointer hover:bg-surfaceHover transition-colors ${!n.read ? 'bg-orange-muted/30' : ''}`}
+                      className={`px-3 py-3 border-b border-borderLight cursor-pointer hover:bg-surfaceHover transition-colors ${!n.read ? 'bg-orange-muted/30' : ''}`}
                     >
-                      <div className="flex items-start gap-2">
-                        <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${!n.read ? 'bg-orange' : 'bg-border'}`} />
+                      <div className="flex items-start gap-2.5">
+                        {/* Type icon */}
+                        <NotifIcon type={n.type} />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-text-primary font-medium truncate">{n.title}</p>
+                          <div className="flex items-start justify-between gap-1">
+                            <p className="text-sm text-text-primary font-medium leading-snug">{n.title}</p>
+                            {!n.read && (
+                              <span className="flex-shrink-0 w-2 h-2 rounded-full bg-orange mt-1" />
+                            )}
+                          </div>
                           <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{n.message}</p>
                           <div className="flex items-center justify-between mt-1">
                             <p className="text-xs text-text-muted">{formatDate(n.createdAt)}</p>

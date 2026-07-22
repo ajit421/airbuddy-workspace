@@ -3,6 +3,7 @@ import Modal from '../shared/Modal';
 import { useAuth } from '../../context/AuthContext';
 import { createNode, updateNode } from '../../services/roadmapService';
 import { subscribeToAllUsers } from '../../services/teamMembersService';
+import { notifyUsers, ROADMAP_NOTIF_TYPES } from '../../services/notificationService';
 
 /**
  * RoadmapNodeModal.jsx
@@ -167,6 +168,18 @@ export default function RoadmapNodeModal({
     try {
       if (isEdit) {
         await updateNode(node.id, payload, uid);
+        // Notify assignees when a milestone is marked completed
+        const wasCompleted  = node.status === 'completed';
+        const nowCompleted  = payload.status === 'completed';
+        if (!wasCompleted && nowCompleted && payload.assignedTo.length > 0) {
+          notifyUsers(
+            payload.assignedTo,
+            uid,
+            `Milestone Completed: ${payload.title}`,
+            `The milestone "${payload.title}" has been marked as completed.`,
+            ROADMAP_NOTIF_TYPES.MILESTONE_COMPLETED
+          ).catch((err) => console.warn('[RoadmapNodeModal] notify milestone:', err));
+        }
         onClose();
       } else {
         const newId = await createNode(payload, uid, parentNode);
