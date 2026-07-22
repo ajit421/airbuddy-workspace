@@ -312,13 +312,73 @@ export async function deleteNode(nodeId) {
 }
 
 /**
- * Return roadmap nodes as calendar events for CalendarView.jsx (Phase 15).
+ * Convert roadmap nodes into calendar event objects with dedup logic.
+ * Pure function — no Firestore calls. Takes already-subscribed data.
  *
- * @param {string}  uid     - effectiveUid of current user
- * @param {boolean} isAdmin - Whether user is admin
- * @returns {Promise<Array>} Calendar event objects
+ * DEDUP RULES:
+ *  1. Nodes without a dueDate are excluded.
+ *  2. Leaf node (childCount === 0) with exactly 1 task whose dueDate matches
+ *     the node's dueDate → include 1 node event, add task.id to dedupTaskIds.
+ *  3. Parent nodes → include only their own dueDate event, never child dates.
+ *  4. Google Calendar sync: only depth 0 and 1 (returned as `syncEligible` flag).
+ *
+ * @param {Array}  nodes  - All roadmap node objects (from subscribeToChildren / subscribeToSubtree)
+ * @param {Array}  tasks  - All roadmap tasks across all nodes (from collectionGroup query)
+ * @returns {{ roadmapEvents: Array, dedupTaskIds: Set<string> }}
  */
-export async function getRoadmapCalendarEvents(uid, isAdmin) {
-  // Phase 15 implementation: dedup logic, depth filter, Google Calendar push
-  return [];
+export function getRoadmapCalendarEvents(nodes = [], tasks = []) {
+  // Build a map: nodeId → task[]
+  const tasksByNode = {};
+  for (const task of tasks) {
+    const nid = task.nodeId;
+    if (!nid) continue;
+    if (!tasksByNode[nid]) tasksByNode[nid] = [];
+    tasksByNode[nid].push(task);
+  }
+
+  const roadmapEvents = [];
+  const dedupTaskIds  = new Set();
+
+  for (const node of nodes) {
+    // Rule 1: skip nodes without a dueDate
+    if (!node.dueDate) continue;
+
+    const dueDateValue = node.dueDate?.toDate?.() ?? new Date(node.dueDate);
+    if (!dueDateValue || isNaN(dueDateValue)) continue;
+
+    const startValue = node.startDate
+      ? (node.startDate?.toDate?.() ?? new Date(node.startDate))
+      : dueDateValue;
+
+    // Rule 2: leaf node dedup check
+    const isLeaf      = (node.childCount ?? 0) === 0;
+    const nodeTasks   = tasksByNode[node.id] ?? [];
+
+    if (isLeaf && nodeTasks.length === 1) {
+      const singleTask = nodeTasks[0];
+      const taskDue    = singleTask.dueDate
+        ? (singleTask.dueDate?.toDate?.() ?? new Date(singleTask.dueDate))
+        : null;
+      // If dates match (same calendar day) → suppress the task event
+      if (taskDue && taskDue.toDateString() === dueDateValue.toDateString()) {
+        dedupTaskIds.add(singleTask.id);
+      }
+    }
+
+    // Build the calendar event for this node
+    roadmapEvents.push({
+      id:       `roadmap-${node.id}`,
+      title:    node.title,
+      start:    startValue,
+      end:      dueDateValue,
+      allDay:   true,
+      resource: {
+        ...node,
+        _type:        'roadmap',
+        syncEligible: (node.depth ?? 0) <= 1, // depth 0+1 only for Google Calendar sync
+      },
+    });
+  }
+
+  return { roadmapEvents, dedupTaskIds };
 }
