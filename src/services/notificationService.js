@@ -88,3 +88,57 @@ export const notifyUsers = async (uids = [], senderUid, title, message, type = '
     const recipients = uids.filter(uid => uid !== senderUid);
     await Promise.all(recipients.map(uid => sendNotification(uid, title, message, type, null, senderUid)));
 };
+
+// ─── Roadmap notification types ───────────────────────────────────────────────
+
+/**
+ * Exported constant — use these values instead of raw strings to prevent typos.
+ * Matches the `type` field written to Firestore and read by Navbar's icon map.
+ */
+export const ROADMAP_NOTIF_TYPES = {
+  TASK_ASSIGNED:         'roadmap_task_assigned',
+  MILESTONE_COMPLETED:   'roadmap_milestone_completed',
+  DEADLINE_TOMORROW:     'roadmap_deadline_tomorrow',
+  DEADLINE_MISSED:       'roadmap_deadline_missed',
+  COMMENT_POSTED:        'roadmap_comment_posted',
+};
+
+/**
+ * Notify employees who were newly assigned to a roadmap task.
+ * Only fires for UIDs in `newUids` that are NOT in `previousUids`
+ * (diff-aware — avoids re-notifying existing assignees on edit).
+ * Self-notifications are always skipped.
+ *
+ * @param {object} params
+ * @param {string}   params.nodeId      - Parent node ID (for context)
+ * @param {string}   params.nodeName    - Parent node title (shown in notification)
+ * @param {string}   params.taskTitle   - Task title
+ * @param {string[]} params.newUids     - assignedTo UIDs after save
+ * @param {string[]} params.previousUids - assignedTo UIDs before save ([] for create)
+ * @param {string}   params.senderUid   - Acting user's effective UID
+ * @returns {Promise<void>}
+ */
+export const notifyRoadmapTaskAssigned = async ({
+  nodeId,
+  nodeName,
+  taskTitle,
+  newUids     = [],
+  previousUids = [],
+  senderUid,
+}) => {
+  // Only notify UIDs that are newly added (diff)
+  const addedUids = newUids.filter(
+    (uid) => !previousUids.includes(uid) && uid !== senderUid
+  );
+  if (addedUids.length === 0) return;
+
+  const title   = `Task Assigned: ${taskTitle}`;
+  const message = `You've been assigned a new task under "${nodeName}". Open the Roadmap to view it.`;
+
+  await Promise.all(
+    addedUids.map((uid) =>
+      sendNotification(uid, title, message, ROADMAP_NOTIF_TYPES.TASK_ASSIGNED, null, senderUid)
+    )
+  );
+};
+

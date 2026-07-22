@@ -414,6 +414,7 @@ function TasksTab({ nodeId, node }) {
         isOpen={modalOpen}
         onClose={handleClose}
         nodeId={nodeId}
+        nodeName={node?.title ?? ''}
         task={editTask}
       />
     </div>

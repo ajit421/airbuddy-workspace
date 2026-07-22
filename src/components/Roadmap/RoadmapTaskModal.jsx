@@ -3,6 +3,7 @@ import Modal from '../shared/Modal';
 import { useAuth } from '../../context/AuthContext';
 import { createRoadmapTask, updateRoadmapTask } from '../../services/roadmapTaskService';
 import { subscribeToAllUsers } from '../../services/teamMembersService';
+import { notifyRoadmapTaskAssigned } from '../../services/notificationService';
 
 /**
  * RoadmapTaskModal.jsx
@@ -35,7 +36,7 @@ function toInputDate(value) {
   return d.toISOString().slice(0, 10);
 }
 
-export default function RoadmapTaskModal({ isOpen, onClose, nodeId, task = null }) {
+export default function RoadmapTaskModal({ isOpen, onClose, nodeId, nodeName = '', task = null }) {
   const { userProfile, effectiveUid } = useAuth();
   const isEdit = Boolean(task);
 
@@ -123,8 +124,26 @@ export default function RoadmapTaskModal({ isOpen, onClose, nodeId, task = null 
     try {
       if (isEdit) {
         await updateRoadmapTask(nodeId, task.id, payload, uid);
+        // Notify any newly added assignees (diff-aware)
+        notifyRoadmapTaskAssigned({
+          nodeId,
+          nodeName,
+          taskTitle:    payload.title,
+          newUids:      payload.assignedTo,
+          previousUids: Array.isArray(task.assignedTo) ? task.assignedTo : [],
+          senderUid:    uid,
+        }).catch((err) => console.warn('[RoadmapTaskModal] notify assign edit:', err));
       } else {
         await createRoadmapTask(nodeId, payload, uid);
+        // Notify all assignees on create
+        notifyRoadmapTaskAssigned({
+          nodeId,
+          nodeName,
+          taskTitle:    payload.title,
+          newUids:      payload.assignedTo,
+          previousUids: [],
+          senderUid:    uid,
+        }).catch((err) => console.warn('[RoadmapTaskModal] notify assign create:', err));
       }
       onClose();
     } catch (err) {
