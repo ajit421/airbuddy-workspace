@@ -20,6 +20,18 @@ import RoadmapNodeDetail   from './RoadmapNodeDetail';
  *  - "Add Child Node" flow from detail panel
  *  - onCreated callback auto-selects the new node
  *  - onNavigate (breadcrumb) scrolls tree to parent nodes
+ *
+ * Phase 18 — Responsive:
+ *  Mobile  (< sm / <640px):
+ *    - Detail panel → full-screen bottom drawer (fixed, slides up, 85vh)
+ *    - Toolbar filters collapse into a toggleable row
+ *    - "Add Milestone" button shrinks to icon-only
+ *    - Page subtitle hidden on very small screens
+ *  Tablet  (sm – lg / 640–1024px):
+ *    - Detail panel → w-72 side panel (still inline)
+ *    - Toolbar selects visible but compact
+ *  Desktop (lg+ / >1024px):
+ *    - Unchanged from Phase 11
  */
 export default function CompanyRoadmap() {
   const { nodeId: deepLinkId }  = useParams();
@@ -32,14 +44,17 @@ export default function CompanyRoadmap() {
   const [selectedNodeId, setSelectedNodeId] = useState(deepLinkId ?? null);
 
   // Modal state
-  const [modalOpen,     setModalOpen]     = useState(false);
-  const [modalNode,     setModalNode]     = useState(null);   // null = create, obj = edit
-  const [modalParent,   setModalParent]   = useState(null);   // full parent node doc
+  const [modalOpen,   setModalOpen]   = useState(false);
+  const [modalNode,   setModalNode]   = useState(null);   // null = create, obj = edit
+  const [modalParent, setModalParent] = useState(null);   // full parent node doc
 
   // Filter/search state
   const [searchQuery,    setSearchQuery]    = useState('');
   const [filterStatus,   setFilterStatus]   = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
+
+  // Phase 18: mobile filter row toggle
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // ── Deep-link: auto-select nodeId from URL ────────────────────────────────
   useEffect(() => {
@@ -56,38 +71,32 @@ export default function CompanyRoadmap() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
-  // Toggle selection: click same node again → deselect (close panel)
   const handleSelect = useCallback((node) => {
     setSelectedNodeId((prev) => prev === node.id ? null : node.id);
   }, []);
 
-  // Admin: open edit modal from card hover button OR from detail panel
   const handleEdit = useCallback((node) => {
     setModalNode(node);
     setModalParent(null);
     setModalOpen(true);
   }, []);
 
-  // Admin: open create-child modal from detail panel "Add Child" button
   const handleAddChild = useCallback((parentNode) => {
     setModalNode(null);
     setModalParent(parentNode);
     setModalOpen(true);
   }, []);
 
-  // Admin: open root-level create modal from toolbar button
   const handleAddRoot = useCallback(() => {
     setModalNode(null);
     setModalParent(null);
     setModalOpen(true);
   }, []);
 
-  // After successful create: auto-select the new node
   const handleCreated = useCallback((newNodeId) => {
     setSelectedNodeId(newNodeId);
   }, []);
 
-  // Archive (soft-delete) from card hover button
   const handleDelete = useCallback(async (node) => {
     if ((node.childCount ?? 0) > 0) return;
     const confirmed = window.confirm(
@@ -96,7 +105,6 @@ export default function CompanyRoadmap() {
     if (!confirmed) return;
     try {
       await archiveNode(node.id, userProfile?.uid);
-      // If the archived node was selected, deselect
       if (selectedNodeId === node.id) setSelectedNodeId(null);
     } catch (err) {
       console.error('[CompanyRoadmap] archiveNode:', err);
@@ -104,12 +112,10 @@ export default function CompanyRoadmap() {
     }
   }, [userProfile, selectedNodeId]);
 
-  // Breadcrumb navigation: clicking an ancestor highlights it
   const handleNavigate = useCallback((nodeId) => {
     setSelectedNodeId(nodeId ?? null);
   }, []);
 
-  // Collapse all expanded nodes
   const handleCollapseAll = useCallback(() => {
     treeHook.expandedIds.forEach((id) => {
       if (treeHook.isExpanded(id)) treeHook.toggleExpand(id);
@@ -120,6 +126,15 @@ export default function CompanyRoadmap() {
     setModalOpen(false);
     setModalNode(null);
     setModalParent(null);
+  }, []);
+
+  const closeDetail = useCallback(() => setSelectedNodeId(null), []);
+
+  const hasActiveFilters = searchQuery || filterStatus !== 'all' || filterPriority !== 'all';
+  const clearFilters = useCallback(() => {
+    setSearchQuery('');
+    setFilterStatus('all');
+    setFilterPriority('all');
   }, []);
 
   // ── Loading state ─────────────────────────────────────────────────────────
@@ -153,16 +168,19 @@ export default function CompanyRoadmap() {
   return (
     <div className="flex flex-col h-full min-h-0">
 
-      {/* ── Page Header ────────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex items-center justify-between gap-4 px-1 pb-4">
-        <div>
-          <h1 className="section-title flex items-center gap-2">
+      {/* ── Page Header ─────────────────────────────────────────────────────── */}
+      <div className="flex-shrink-0 flex items-center justify-between gap-3 px-1 pb-3">
+        <div className="min-w-0">
+          <h1 className="section-title flex items-center gap-2 flex-wrap">
             <span className="text-gradient">Company Roadmap</span>
             <span className="badge bg-orange-muted text-orange border border-orange/30 text-xs">
               {rootNodes.length} {rootNodes.length === 1 ? 'milestone' : 'milestones'}
             </span>
           </h1>
-          <p className="section-subtitle mt-0.5">Track company goals, milestones, and deliverables</p>
+          {/* Phase 18: subtitle hidden on xs screens to save vertical space */}
+          <p className="section-subtitle mt-0.5 hidden sm:block">
+            Track company goals, milestones, and deliverables
+          </p>
         </div>
 
         {canEdit && (
@@ -170,87 +188,163 @@ export default function CompanyRoadmap() {
             id="roadmap-add-root-btn"
             onClick={handleAddRoot}
             className="btn-primary flex-shrink-0"
+            title="Add Milestone"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            Add Milestone
+            {/* Phase 18: label hidden on xs to keep header compact */}
+            <span className="hidden xs:inline sm:inline">Add Milestone</span>
           </button>
         )}
       </div>
 
-      {/* ── Toolbar ────────────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex flex-wrap items-center gap-2 pb-3">
-        <div className="relative flex-1 min-w-[180px]">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
-            id="roadmap-search"
-            type="text"
-            placeholder="Search milestones…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="input-field pl-8 h-8 text-xs"
-          />
+      {/* ── Toolbar ──────────────────────────────────────────────────────────── */}
+      <div className="flex-shrink-0 pb-3 space-y-2">
+
+        {/* Search + filter-toggle row (always visible) */}
+        <div className="flex items-center gap-2">
+
+          {/* Search — always visible, flex-1 */}
+          <div className="relative flex-1 min-w-0">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              id="roadmap-search"
+              type="text"
+              placeholder="Search milestones…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="input-field pl-8 h-8 text-xs w-full"
+            />
+          </div>
+
+          {/* Phase 18: filter selects inline on sm+; toggle button on mobile */}
+          {/* Inline selects — sm+ only */}
+          <select
+            id="roadmap-filter-status"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="select-field h-8 text-xs w-32 hidden sm:block flex-shrink-0"
+          >
+            <option value="all">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="in-progress">In Progress</option>
+            <option value="completed">Completed</option>
+            <option value="blocked">Blocked</option>
+          </select>
+
+          <select
+            id="roadmap-filter-priority"
+            value={filterPriority}
+            onChange={(e) => setFilterPriority(e.target.value)}
+            className="select-field h-8 text-xs w-32 hidden sm:block flex-shrink-0"
+          >
+            <option value="all">All Priorities</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+
+          {/* Mobile filter toggle button */}
+          <button
+            onClick={() => setFiltersOpen((v) => !v)}
+            className={`sm:hidden btn-ghost h-8 px-2.5 flex-shrink-0 relative ${hasActiveFilters ? 'text-orange' : ''}`}
+            aria-label="Toggle filters"
+            title="Filters"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+            </svg>
+            {hasActiveFilters && (
+              <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-orange" />
+            )}
+          </button>
+
+          {/* Collapse all — visible when expanded nodes exist */}
+          {treeHook.expandedIds.size > 0 && (
+            <button
+              id="roadmap-collapse-all"
+              onClick={handleCollapseAll}
+              className="btn-ghost h-8 text-xs flex-shrink-0 hidden sm:flex"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+              </svg>
+              Collapse all
+            </button>
+          )}
+
+          {/* Clear filters (inline, sm+) */}
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="btn-ghost h-8 text-xs flex-shrink-0 text-orange hidden sm:flex"
+            >
+              Clear
+            </button>
+          )}
         </div>
 
-        <select
-          id="roadmap-filter-status"
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="select-field h-8 text-xs w-36"
-        >
-          <option value="all">All Statuses</option>
-          <option value="pending">Pending</option>
-          <option value="in-progress">In Progress</option>
-          <option value="completed">Completed</option>
-          <option value="blocked">Blocked</option>
-        </select>
-
-        <select
-          id="roadmap-filter-priority"
-          value={filterPriority}
-          onChange={(e) => setFilterPriority(e.target.value)}
-          className="select-field h-8 text-xs w-36"
-        >
-          <option value="all">All Priorities</option>
-          <option value="critical">Critical</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-
-        {treeHook.expandedIds.size > 0 && (
-          <button
-            id="roadmap-collapse-all"
-            onClick={handleCollapseAll}
-            className="btn-ghost h-8 text-xs flex-shrink-0"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-            </svg>
-            Collapse all
-          </button>
-        )}
-
-        {(searchQuery || filterStatus !== 'all' || filterPriority !== 'all') && (
-          <button
-            onClick={() => { setSearchQuery(''); setFilterStatus('all'); setFilterPriority('all'); }}
-            className="btn-ghost h-8 text-xs flex-shrink-0 text-orange"
-          >
-            Clear filters
-          </button>
+        {/* Phase 18: Mobile filter row (collapsible) */}
+        {filtersOpen && (
+          <div className="sm:hidden flex flex-col gap-2 animate-fade-in">
+            <div className="flex gap-2">
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="select-field h-8 text-xs flex-1"
+              >
+                <option value="all">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="in-progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="blocked">Blocked</option>
+              </select>
+              <select
+                value={filterPriority}
+                onChange={(e) => setFilterPriority(e.target.value)}
+                className="select-field h-8 text-xs flex-1"
+              >
+                <option value="all">All Priorities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <div className="flex gap-2">
+              {treeHook.expandedIds.size > 0 && (
+                <button onClick={handleCollapseAll} className="btn-ghost h-7 text-xs flex-1">
+                  Collapse all
+                </button>
+              )}
+              {hasActiveFilters && (
+                <button onClick={clearFilters} className="btn-ghost h-7 text-xs text-orange flex-1">
+                  Clear filters
+                </button>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
-      {/* ── Main content: tree panel + detail side panel ──────────────────── */}
-      <div className="flex-1 min-h-0 flex gap-0 overflow-hidden">
+      {/* ── Main content: tree panel + detail panel ──────────────────────────── */}
+      {/*
+       * Phase 18 layout strategy:
+       *   Mobile  (< sm): tree fills full width; detail is a fixed bottom drawer
+       *   Tablet  (sm+):  tree + inline side panel side-by-side (current behaviour)
+       *   Desktop (lg+):  same as tablet but detail panel wider (w-80 xl:w-96)
+       */}
+      <div className="flex-1 min-h-0 flex gap-0 overflow-hidden relative">
 
-        {/* Tree panel */}
+        {/* Tree panel — always full width on mobile; shrinks on sm+ when detail open */}
         <div className={`
-          flex-1 min-w-0 overflow-y-auto pr-1 transition-all duration-300
-          ${detailOpen ? 'pr-3' : ''}
+          flex-1 min-w-0 overflow-y-auto transition-all duration-300
+          ${detailOpen ? 'sm:pr-3' : ''}
         `}>
           {filteredRoots.length > 0 ? (
             <RoadmapTree
@@ -274,30 +368,50 @@ export default function CompanyRoadmap() {
                 </svg>
               </div>
               <p className="text-text-secondary text-sm font-medium">No milestones match your filters</p>
-              <button
-                onClick={() => { setSearchQuery(''); setFilterStatus('all'); setFilterPriority('all'); }}
-                className="text-orange text-xs hover:underline"
-              >
+              <button onClick={clearFilters} className="text-orange text-xs hover:underline">
                 Clear filters
               </button>
             </div>
           )}
         </div>
 
-        {/* Detail side panel — slide in when a node is selected */}
+        {/* ── Detail panel ─────────────────────────────────────────────────── */}
         {detailOpen && (
-          <div className="
-            w-80 xl:w-96 flex-shrink-0 rounded-xl overflow-hidden border border-border
-            animate-slide-in
-          ">
-            <RoadmapNodeDetail
-              nodeId={selectedNodeId}
-              onClose={() => setSelectedNodeId(null)}
-              onEdit={handleEdit}
-              onAddChild={handleAddChild}
-              onNavigate={handleNavigate}
+          <>
+            {/*
+             * Phase 18 — Mobile: fixed full-screen bottom drawer
+             * The detail panel slides up from the bottom on small screens.
+             * On sm+ it is an inline side panel (existing behaviour).
+             */}
+
+            {/* Mobile backdrop (tap to close) */}
+            <div
+              className="sm:hidden fixed inset-0 z-30 bg-black/50 backdrop-blur-sm animate-fade-in"
+              onClick={closeDetail}
+              aria-label="Close detail panel"
             />
-          </div>
+
+            {/* Panel itself */}
+            <div className={`
+              /* Mobile: fixed bottom drawer */
+              fixed inset-x-0 bottom-0 z-40 h-[85vh]
+              rounded-t-2xl overflow-hidden border border-border
+              animate-slide-up
+
+              /* Tablet/Desktop: inline side panel (overrides fixed positioning) */
+              sm:static sm:inset-auto sm:h-auto sm:z-auto
+              sm:w-72 lg:w-80 xl:w-96
+              sm:flex-shrink-0 sm:rounded-xl sm:animate-slide-in
+            `}>
+              <RoadmapNodeDetail
+                nodeId={selectedNodeId}
+                onClose={closeDetail}
+                onEdit={handleEdit}
+                onAddChild={handleAddChild}
+                onNavigate={handleNavigate}
+              />
+            </div>
+          </>
         )}
       </div>
 
@@ -331,7 +445,7 @@ function EmptyState({ canEdit, onAdd }) {
         </div>
       </div>
 
-      <div className="text-center max-w-xs">
+      <div className="text-center max-w-xs px-4">
         <h3 className="text-text-primary font-semibold text-base mb-1">No milestones yet</h3>
         <p className="text-text-muted text-sm leading-relaxed">
           {canEdit

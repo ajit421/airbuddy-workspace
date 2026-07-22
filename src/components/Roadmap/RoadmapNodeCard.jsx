@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { PriorityBadge, StatusBadge, ProgressBar } from '../shared/TaskCard';
 import { formatDate, getDueDateColor, getDueDateLabel } from '../../utils/dateHelpers';
 
@@ -5,6 +6,18 @@ import { formatDate, getDueDateColor, getDueDateLabel } from '../../utils/dateHe
  * RoadmapNodeCard.jsx
  * Single roadmap node card — the visual building block of the tree.
  * Reuses PriorityBadge, StatusBadge, ProgressBar from shared/TaskCard.jsx.
+ *
+ * Phase 19 — Performance:
+ *  Wrapped in React.memo with a custom areEqual comparator.
+ *  Why custom? — The `node` prop is a Firestore document object. Even when
+ *  data is unchanged, a new snapshot creates a new object reference, so the
+ *  default shallow-equal would always return false and re-render every card.
+ *  The custom comparator checks only the fields that affect rendered output,
+ *  so cards only re-render when their actual data changes.
+ *
+ *  onToggle / onSelect / onEdit / onDelete are useCallback-stable (Phase 19
+ *  Step 1 made toggleExpand stable; handlers in CompanyRoadmap are already
+ *  wrapped in useCallback), so they are excluded from the comparator.
  *
  * Props:
  *  - node          {object}   Full roadmap node data from Firestore
@@ -19,22 +32,22 @@ import { formatDate, getDueDateColor, getDueDateLabel } from '../../utils/dateHe
  */
 
 const STATUS_BORDER = {
-  pending:     'border-yellow-500/60',
+  pending:       'border-yellow-500/60',
   'in-progress': 'border-blue-500/60',
-  completed:   'border-green-500/60',
-  blocked:     'border-red-500/60',
-  archived:    'border-text-muted/40',
+  completed:     'border-green-500/60',
+  blocked:       'border-red-500/60',
+  archived:      'border-text-muted/40',
 };
 
 const STATUS_DOT = {
-  pending:     'bg-yellow-400',
+  pending:       'bg-yellow-400',
   'in-progress': 'bg-blue-400',
-  completed:   'bg-green-400',
-  blocked:     'bg-red-400',
-  archived:    'bg-text-muted',
+  completed:     'bg-green-400',
+  blocked:       'bg-red-400',
+  archived:      'bg-text-muted',
 };
 
-export default function RoadmapNodeCard({
+function RoadmapNodeCard({
   node,
   depth = 0,
   isExpanded = false,
@@ -47,12 +60,12 @@ export default function RoadmapNodeCard({
 }) {
   if (!node) return null;
 
-  const hasChildren   = (node.childCount ?? 0) > 0 || (node.childCompletedCount ?? 0) > 0;
-  const borderColor   = STATUS_BORDER[node.status] ?? 'border-border';
-  const dotColor      = STATUS_DOT[node.status] ?? 'bg-text-muted';
-  const dueDateColor  = getDueDateColor(node.dueDate, node.status);
-  const dueDateLabel  = getDueDateLabel(node.dueDate, node.status);
-  const isRoot        = depth === 0;
+  const hasChildren  = (node.childCount ?? 0) > 0 || (node.childCompletedCount ?? 0) > 0;
+  const borderColor  = STATUS_BORDER[node.status] ?? 'border-border';
+  const dotColor     = STATUS_DOT[node.status]    ?? 'bg-text-muted';
+  const dueDateColor = getDueDateColor(node.dueDate, node.status);
+  const dueDateLabel = getDueDateLabel(node.dueDate, node.status);
+  const isRoot       = depth === 0;
 
   return (
     <div
@@ -189,3 +202,35 @@ export default function RoadmapNodeCard({
     </div>
   );
 }
+
+/**
+ * Phase 19 — Custom memo comparator.
+ * Returns true (skip re-render) when all visible-output fields are equal.
+ * Function props (onToggle, onSelect, onEdit, onDelete) are excluded because
+ * they are stable references (useCallback with empty/stable deps).
+ */
+function areNodePropsEqual(prev, next) {
+  // Fast path: same node reference (shouldn't happen with Firestore but cheap check)
+  if (prev.node === next.node &&
+      prev.isSelected  === next.isSelected  &&
+      prev.isExpanded  === next.isExpanded  &&
+      prev.canEdit     === next.canEdit) return true;
+
+  return (
+    prev.isSelected               === next.isSelected               &&
+    prev.isExpanded               === next.isExpanded               &&
+    prev.canEdit                  === next.canEdit                  &&
+    prev.depth                    === next.depth                    &&
+    prev.node?.id                 === next.node?.id                 &&
+    prev.node?.title              === next.node?.title              &&
+    prev.node?.status             === next.node?.status             &&
+    prev.node?.priority           === next.node?.priority           &&
+    prev.node?.progress           === next.node?.progress           &&
+    prev.node?.dueDate            === next.node?.dueDate            &&
+    prev.node?.childCount         === next.node?.childCount         &&
+    prev.node?.childCompletedCount=== next.node?.childCompletedCount&&
+    (prev.node?.tags?.join('|') ?? '') === (next.node?.tags?.join('|') ?? '')
+  );
+}
+
+export default memo(RoadmapNodeCard, areNodePropsEqual);
