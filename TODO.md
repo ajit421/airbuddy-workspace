@@ -491,11 +491,11 @@ Medium
 Enable admins to assign tasks under roadmap nodes, and employees to update their assigned task progress.
 
 ### Tasks
-- [ ] Build task list tab inside `RoadmapNodeDetail.jsx`
-- [ ] Build admin task-assignment form (select employee(s), reuse existing employee-picker component if present)
-- [ ] Build employee progress/status update control (restricted fields only)
-- [ ] Verify automatic parent progress rollup reflects in UI without manual refresh
-- [ ] Verify field-level Firestore Rules block unauthorized employee edits at the UI form level too (defense in depth)
+- [x] Build task list tab inside `RoadmapNodeDetail.jsx`
+- [x] Build admin task-assignment form (select employee(s), reuse existing employee-picker component if present)
+- [x] Build employee progress/status update control (restricted fields only)
+- [x] Verify automatic parent progress rollup reflects in UI without manual refresh
+- [x] Verify field-level Firestore Rules block unauthorized employee edits at the UI form level too (defense in depth)
 
 ### Deliverables
 - Task assignment + progress update UI within Roadmap module
@@ -517,12 +517,12 @@ Medium
 - UI allowing an edit that Firestore Rules then silently reject (poor error feedback)
 
 ### Validation Checklist
-- [ ] Feature completed
-- [ ] Existing code not broken
-- [ ] Tested
-- [ ] Responsive
-- [ ] Firestore rules verified
-- [ ] Ready for next phase
+- [x] Feature completed
+- [x] Existing code not broken
+- [x] Tested
+- [x] Responsive
+- [x] Firestore rules verified
+- [x] Ready for next phase
 
 ---
 
@@ -532,10 +532,10 @@ Medium
 Add collaboration features to roadmap nodes.
 
 ### Tasks
-- [ ] Build comments tab in `RoadmapNodeDetail.jsx` (reuse existing `collaborationService.js` pattern)
-- [ ] Build attachments tab (file upload to Firebase Storage, metadata to `attachments` subcollection)
-- [ ] Implement thumbnail generation for image attachments
-- [ ] Verify comment-posting permission (open to all signed-in users, per confirmed default)
+- [x] Build comments tab in `RoadmapNodeDetail.jsx` (reuse existing `collaborationService.js` pattern)
+- [x] Build attachments tab (file upload to Firebase Storage, metadata to `attachments` subcollection)
+- [x] Implement thumbnail generation for image attachments
+- [x] Verify comment-posting permission (open to all signed-in users, per confirmed default)
 
 ### Deliverables
 - Comments UI, Attachments UI
@@ -557,12 +557,12 @@ Medium
 - Large file uploads without size limits causing storage cost issues
 
 ### Validation Checklist
-- [ ] Feature completed
-- [ ] Existing code not broken
-- [ ] Tested
-- [ ] Responsive
-- [ ] Firestore rules verified
-- [ ] Ready for next phase
+- [x] Feature completed
+- [x] Existing code not broken
+- [x] Tested
+- [x] Responsive
+- [x] Firestore rules verified
+- [x] Ready for next phase
 
 ---
 
