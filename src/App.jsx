@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -32,7 +33,19 @@ import IPPanel            from './components/KPI/PatentsPanel';
 
 // Company Roadmap Module imports
 import { RoadmapProvider } from './context/RoadmapContext';
-import CompanyRoadmap      from './components/Roadmap/CompanyRoadmap';
+// Phase 19: lazy-loaded so the entire Roadmap component tree is split into
+// a separate async chunk and excluded from the initial bundle.
+const CompanyRoadmap = lazy(() => import('./components/Roadmap/CompanyRoadmap'));
+
+/** Suspense fallback shown while the roadmap chunk is downloading */
+function RoadmapLoadingFallback() {
+  return (
+    <div className="flex flex-col h-full items-center justify-center gap-4">
+      <div className="w-10 h-10 border-2 border-orange border-t-transparent rounded-full animate-spin" />
+      <p className="text-text-muted text-sm">Loading roadmap…</p>
+    </div>
+  );
+}
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -138,9 +151,13 @@ const AppRoutes = () => {
           <Route path="kpi/patents"    element={<Navigate to="/kpi/ip" replace />} />
         </Route>
 
-        {/* Company Roadmap Routes — wrapped in RoadmapProvider (scoped listeners) */}
-        {/* Phase 10: CompanyRoadmap.jsx will be fully implemented */}
-        <Route element={<RoadmapProvider><Outlet /></RoadmapProvider>}>
+        {/* Company Roadmap Routes — lazy-loaded chunk (Phase 19) */}
+        {/* RoadmapProvider scopes Firestore listeners to /roadmap routes only */}
+        <Route element={
+          <Suspense fallback={<RoadmapLoadingFallback />}>
+            <RoadmapProvider><Outlet /></RoadmapProvider>
+          </Suspense>
+        }>
           <Route path="roadmap"         element={<CompanyRoadmap />} />
           <Route path="roadmap/:nodeId" element={<CompanyRoadmap />} />
         </Route>

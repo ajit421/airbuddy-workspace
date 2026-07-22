@@ -97,7 +97,8 @@ function NodeStatusDoughnut({ nodesByStatus }) {
   return (
     <div className="card p-5 flex flex-col gap-3">
       <p className="text-sm font-bold text-text-primary">Node Status</p>
-      <div className="relative" style={{ height: '200px' }}>
+      {/* Phase 18: clamp height so chart shrinks on narrow mobile screens */}
+      <div className="relative" style={{ height: 'clamp(160px, 30vw, 200px)' }}>
         <Doughnut data={data} options={options} />
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <span className="text-xl font-black text-text-primary">{total}</span>
@@ -151,7 +152,8 @@ function TaskPriorityBar({ tasksByPriority }) {
   return (
     <div className="card p-5 flex flex-col gap-3">
       <p className="text-sm font-bold text-text-primary">Tasks by Priority</p>
-      <div style={{ height: '200px' }}>
+      {/* Phase 18: clamp height so chart shrinks on narrow mobile screens */}
+      <div style={{ height: 'clamp(160px, 30vw, 200px)' }}>
         <Bar data={data} options={options} />
       </div>
     </div>
