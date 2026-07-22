@@ -6,6 +6,7 @@
 
 import { useNavigate } from 'react-router-dom';
 import { useKpi } from '../../context/KpiContext';
+import RoadmapKpiStrip from './RoadmapKpiStrip';
 
 const Spinner = () => (
   <div className="flex items-center justify-center py-16">
@@ -134,6 +135,9 @@ export default function KpiDashboard() {
               </button>
             ))}
           </div>
+
+          {/* Phase 16: Roadmap KPI analytics strip */}
+          <RoadmapKpiStrip />
 
           {/* Panel navigation grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
