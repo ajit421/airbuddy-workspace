@@ -8,6 +8,9 @@ admin.initializeApp();
 const roadmapTriggers = require('./roadmapTriggers');
 exports.onRoadmapTaskWrite          = roadmapTriggers.onRoadmapTaskWrite;
 exports.onRoadmapNodeProgressChange = roadmapTriggers.onRoadmapNodeProgressChange;
+// ─── Phase 17: Audit History Triggers ────────────────────────────────────────
+exports.onRoadmapNodeHistory        = roadmapTriggers.onRoadmapNodeHistory;
+exports.onRoadmapTaskHistory        = roadmapTriggers.onRoadmapTaskHistory;
 // ─────────────────────────────────────────────────────────────────────────────
 
 

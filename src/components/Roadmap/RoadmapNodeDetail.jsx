@@ -9,6 +9,7 @@ import RoadmapTaskCard        from './RoadmapTaskCard';
 import RoadmapTaskModal       from './RoadmapTaskModal';
 import RoadmapCommentsTab     from './RoadmapCommentsTab';
 import RoadmapAttachmentsTab  from './RoadmapAttachmentsTab';
+import RoadmapHistoryLog      from './RoadmapHistoryLog';
 import { subscribeToRoadmapTasks } from '../../services/roadmapTaskService';
 import { subscribeToAllUsers }     from '../../services/teamMembersService';
 
@@ -173,11 +174,7 @@ export default function RoadmapNodeDetail({
           <RoadmapAttachmentsTab nodeId={nodeId} />
         )}
         {activeTab === 'History' && (
-          <PlaceholderTab
-            icon="📋"
-            title="Audit History"
-            description="View a full audit trail of all changes. Coming in Phase 17."
-          />
+          <RoadmapHistoryLog nodeId={nodeId} />
         )}
       </div>
     </aside>
