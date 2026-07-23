@@ -1,0 +1,242 @@
+﻿// ════════════════════════════════════════════════════════════════════════════
+// DRAFT — Phase 4 Security Planning
+// Company Roadmap — Firestore Security Rules Block
+//
+// STATUS: DRAFT — NOT YET DEPLOYED
+// To be added to firestore.rules in Phase 9 (inside the existing
+//   match /databases/{database}/documents { } block, after KPI rules).
+//
+// Dependencies:
+//   - Reuses existing helper functions: isAuthenticated(), isEmailAllowed(),
+//     getEffectiveUid(), isAdmin()
+//   - New helpers defined here: isRoadmapTaskAssignee()
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── New helper — roadmap-specific ───────────────────────────────────────────
+
+// Returns true if the effective UID appears in a roadmapTask's assignedTo array.
+// Called with the task document data (already fetched by the rule match).
+// Note: we pass taskData directly (not a nodeId get()) to avoid an extra read.
+function isRoadmapTaskAssignee(taskData) {
+  let uid = getEffectiveUid();
+  let assigned = taskData.get('assignedTo', []);
+  return assigned is list && uid in assigned;
+}
+
+// ── Company Roadmap — roadmapNodes collection ────────────────────────────────
+//
+// Access model:
+//   Read:   Any whitelisted authenticated user can read all non-archived nodes.
+//           (Company-wide transparency — employees see the full roadmap.)
+//   Create: Admin only.
+//   Update: Admin only for structural fields.
+//           Employees cannot write to the node document directly — their
+//           task progress updates go to the /tasks subcollection only.
+//           The node's own `progress` field is maintained by Cloud Functions.
+//   Delete: Admin only.
+//
+match /roadmapNodes/{nodeId} {
+
+  // Read: any whitelisted authenticated user sees the full roadmap tree.
+  allow read: if isAuthenticated() && isEmailAllowed();
+
+  // Create: admin only. Validates required fields are present on write.
+  allow create: if isAuthenticated() && isEmailAllowed() && isAdmin()
+    && request.resource.data.get('createdBy', '') == getEffectiveUid()
+    && request.resource.data.get('title', '').size() >= 1
+    && request.resource.data.get('isArchived', false) == false;
+
+  // Update: admin only for all structural changes.
+  // The progress, childCount, childCompletedCount fields are Cloud Function territory —
+  // a client admin update must NOT touch these (Cloud Functions handle them atomically).
+  allow update: if isAuthenticated() && isEmailAllowed() && isAdmin()
+    && request.resource.data.get('updatedBy', '') == getEffectiveUid()
+    // Block client-side writes to rollup fields — Cloud Functions own these.
+    && !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['progress', 'childCount', 'childCompletedCount',
+                 'path', 'ancestorIds', 'depth']);
+    // Note: `isArchived`, `status`, `priority`, `title`, `assignedTo` etc. ARE
+    // allowed to be changed by admin updates (archiving, editing, reassigning).
+
+  // Delete: admin only. Client-side childCount > 0 guard is enforced in
+  // roadmapService.deleteNode() before this rule is even reached.
+  allow delete: if isAuthenticated() && isEmailAllowed() && isAdmin();
+
+
+  // ── Tasks Subcollection ───────────────────────────────────────────────────
+  // Schema: roadmapNodes/{nodeId}/tasks/{taskId}
+  // See phase3_firestore_schema.md for full field list.
+  //
+  // Access model:
+  //   Read:   Admin sees all. Assigned employee sees only their own tasks.
+  //   Create: Admin only.
+  //   Update: Admin can update any field.
+  //           Assigned employee can update ONLY:
+  //             status | progress | completionNote | updatedBy | updatedAt
+  //   Delete: Admin only.
+  //
+  match /tasks/{taskId} {
+
+    // Read: admin sees all; employee sees only tasks they are assigned to.
+    allow read: if isAuthenticated() && isEmailAllowed() && (
+      isAdmin() ||
+      isRoadmapTaskAssignee(resource.data)
+    );
+
+    // Create: admin only. Validates nodeId denormalization matches parent.
+    allow create: if isAuthenticated() && isEmailAllowed() && isAdmin()
+      && request.resource.data.get('nodeId', '') == nodeId
+      && request.resource.data.get('createdBy', '') == getEffectiveUid()
+      && request.resource.data.get('title', '').size() >= 1;
+
+    // Update:
+    //   - Admin: any field.
+    //   - Assigned employee: ONLY the five restricted fields.
+    allow update: if isAuthenticated() && isEmailAllowed() && (
+      isAdmin()
+      ||
+      (
+        isRoadmapTaskAssignee(resource.data) &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'progress', 'completionNote', 'updatedBy', 'updatedAt']) &&
+        request.resource.data.get('updatedBy', '') == getEffectiveUid() &&
+        // Validate employee progress is a number in 0–100 range.
+        request.resource.data.get('progress', 0) >= 0 &&
+        request.resource.data.get('progress', 100) <= 100 &&
+        // Validate status is within allowed enum.
+        request.resource.data.get('status', '') in ['pending', 'in-progress', 'completed']
+      )
+    );
+
+    // Delete: admin only.
+    allow delete: if isAuthenticated() && isEmailAllowed() && isAdmin();
+  }
+
+
+  // ── Comments Subcollection ────────────────────────────────────────────────
+  // Schema: roadmapNodes/{nodeId}/comments/{commentId}
+  //
+  // Access model:
+  //   Read:   All whitelisted authenticated users.
+  //   Create: All whitelisted authenticated users (company collaboration default).
+  //   Update: Author or admin.
+  //   Delete: Author or admin.
+  //
+  match /comments/{commentId} {
+
+    // Read: any whitelisted authenticated user.
+    allow read: if isAuthenticated() && isEmailAllowed();
+
+    // Create: any whitelisted authenticated user.
+    // authorUid must equal effective UID — no impersonation allowed.
+    // text limited to 2000 characters.
+    allow create: if isAuthenticated() && isEmailAllowed()
+      && request.resource.data.get('authorUid', '') == getEffectiveUid()
+      && request.resource.data.get('text', '').size() >= 1
+      && request.resource.data.get('text', '').size() <= 2000
+      && request.resource.data.get('nodeId', '') == nodeId;
+
+    // Update: author can edit own comment; admin can edit any.
+    // Can only change: text, isEdited, updatedAt — nothing else.
+    allow update: if isAuthenticated() && isEmailAllowed() && (
+      isAdmin() ||
+      (
+        resource.data.authorUid == getEffectiveUid() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['text', 'isEdited', 'updatedAt']) &&
+        request.resource.data.get('text', '').size() >= 1 &&
+        request.resource.data.get('text', '').size() <= 2000
+      )
+    );
+
+    // Delete: author or admin.
+    allow delete: if isAuthenticated() && isEmailAllowed() && (
+      isAdmin() || resource.data.authorUid == getEffectiveUid()
+    );
+  }
+
+
+  // ── History Subcollection ─────────────────────────────────────────────────
+  // Schema: roadmapNodes/{nodeId}/history/{historyId}
+  //
+  // TAMPER-PROOF DESIGN: allow write: if false for ALL clients.
+  // History entries are written ONLY by Cloud Functions (Firebase Admin SDK),
+  // in the same batch/transaction as the triggering mutation.
+  // Even admins cannot write history entries from the client.
+  //
+  match /history/{historyId} {
+    allow read:  if isAuthenticated() && isEmailAllowed();
+    allow write: if false;
+  }
+
+
+  // ── Attachments Subcollection ─────────────────────────────────────────────
+  // Schema: roadmapNodes/{nodeId}/attachments/{attachmentId}
+  //
+  // Access model:
+  //   Read:   All whitelisted authenticated users.
+  //   Create: All whitelisted authenticated users (upload own files).
+  //   Update: Uploader or admin.
+  //   Delete: Uploader or admin.
+  //
+  match /attachments/{attachmentId} {
+
+    // Read: any whitelisted authenticated user.
+    allow read: if isAuthenticated() && isEmailAllowed();
+
+    // Create: any whitelisted authenticated user can upload a file.
+    // uploadedBy must equal effective UID — no impersonation.
+    // fileSize must be ≤ 10 MB (10,485,760 bytes).
+    // nodeId must match the parent node.
+    allow create: if isAuthenticated() && isEmailAllowed()
+      && request.resource.data.get('uploadedBy', '') == getEffectiveUid()
+      && request.resource.data.get('fileSize', 0) <= 10485760
+      && request.resource.data.get('nodeId', '') == nodeId
+      && request.resource.data.get('fileName', '').size() >= 1;
+
+    // Update: uploader or admin (e.g., to update thumbnailUrl after generation).
+    allow update: if isAuthenticated() && isEmailAllowed() && (
+      isAdmin() || resource.data.uploadedBy == getEffectiveUid()
+    );
+
+    // Delete: uploader or admin.
+    allow delete: if isAuthenticated() && isEmailAllowed() && (
+      isAdmin() || resource.data.uploadedBy == getEffectiveUid()
+    );
+  }
+}
+
+
+// ── collectionGroup rules for Phase 16 analytics ─────────────────────────────
+//
+// These rules allow cross-collection queries needed by the KPI dashboard.
+// Firestore evaluates collectionGroup rules alongside path-specific rules.
+// The existing root-level /tasks/{taskId} rule is NOT affected by these.
+//
+// IMPORTANT: These match blocks must be placed at the TOP LEVEL inside
+//   match /databases/{database}/documents { }
+//   NOT inside the roadmapNodes match block.
+//
+// (Shown here for planning — will be placed at top level in Phase 9.)
+
+// collectionGroup: tasks
+// Allows KPI analytics to query all roadmap task subcollections.
+// Only admin sees all; employees see only tasks assigned to them.
+match /{path=**}/tasks/{taskId} {
+  allow read: if isAuthenticated() && isEmailAllowed() && (
+    isAdmin() ||
+    (
+      'assignedTo' in resource.data &&
+      resource.data.assignedTo is list &&
+      getEffectiveUid() in resource.data.assignedTo
+    )
+  );
+  // No write rule here — writes go through the path-specific subcollection rules.
+}
+
+// collectionGroup: history
+// Allows Recent Activity widget to query history across all nodes.
+match /{path=**}/history/{historyId} {
+  allow read:  if isAuthenticated() && isEmailAllowed();
+  allow write: if false;
+}
