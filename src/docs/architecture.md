@@ -220,3 +220,63 @@ Four Cloud Functions are deployed:
 | `onTaskUpdate` | Firestore `tasks/{taskId}` onUpdate | Push notification on status change |
 | `onAnnouncementCreate` | Firestore `announcements/{id}` onCreate | Push notification to all users |
 | `onDueDateApproach` | Pub/Sub schedule (daily 09:00 ET) | Push notification for tasks due tomorrow |
+
+---
+
+## Company Roadmap — Cloud Functions
+
+Three additional Cloud Functions power the Company Roadmap module. They are defined in `functions/roadmapTriggers.js` and are **pending deploy** (Blaze plan required).
+
+| Function | Trigger | Purpose |
+|---|---|---|
+| `onRoadmapTaskWrite` | `onDocumentWritten('roadmapNodes/{nodeId}/tasks/{taskId}')` | Recomputes parent node progress rollup |
+| `onRoadmapNodeWrite` | `onDocumentWritten('roadmapNodes/{nodeId}')` | Propagates progress to ancestor nodes + writes audit history |
+| _(history write)_ | Internal to both above | Appends immutable audit entry to `history` subcollection via Admin SDK |
+
+### Loop Guard
+
+Both triggers use a `Math.round` comparison to prevent infinite cascades:
+
+```js
+if (Math.round(newProgress) === Math.round(existingProgress)) {
+  // Skip write — progress hasn't meaningfully changed
+  return null;
+}
+```
+
+Additionally, `onRoadmapNodeWrite` detects self-triggered writes by checking whether **only** `updatedAt` / `updatedBy` changed. If so, it skips the re-propagation to break the cycle.
+
+### Why Batched Ancestor Writes (Not Recursive Triggers)?
+
+Progress propagation from a leaf task up to the root could be implemented as a chain of recursive triggers (each node write triggers its parent). This approach was rejected for three reasons:
+
+1. **Infinite loop risk** — without a precise guard, `updatedAt` timestamp changes re-trigger the function indefinitely.
+2. **Firestore cost amplification** — each recursive invocation is billed separately; deep trees produce O(depth) function calls per task write.
+3. **Testability** — a single, deterministic function that reads all ancestors from `ancestorIds` (already stored on every node) and performs one batched pass is far easier to unit-test and reason about.
+
+### Audit History Immutability
+
+The `history` subcollection Firestore Rule is:
+
+```
+match /history/{historyId} {
+  allow read:  if isAuthenticated() && isEmailAllowed();
+  allow write: if false;   // BLOCKED for ALL clients, including admin
+}
+```
+
+Cloud Functions use the **Admin SDK**, which bypasses Firestore Rules entirely. This is the only write path — history entries are therefore tamper-proof from any client.
+
+---
+
+## Company Roadmap — Permission Matrix Addendum
+
+Additional rows for the roadmap collections (appended to the Permission Matrix table above):
+
+| Collection | Employee | Admin |
+|---|---|---|
+| `roadmapNodes` | Read all | Full CRUD |
+| `roadmapNodes/{id}/tasks` | Read own assigned; update `status`/`progress`/`completionNote` only | Full CRUD |
+| `roadmapNodes/{id}/comments` | Read all; create own (authorUid check); delete own | Full CRUD |
+| `roadmapNodes/{id}/history` | Read only | Read only (write blocked — Cloud Function only) |
+| `roadmapNodes/{id}/attachments` | Read all; create/update/delete own | Full CRUD |
