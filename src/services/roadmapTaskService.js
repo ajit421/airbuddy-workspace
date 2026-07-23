@@ -1,6 +1,6 @@
 import {
   collection, doc, addDoc, updateDoc, deleteDoc,
-  query, where, onSnapshot, serverTimestamp,
+  query, onSnapshot, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { z } from 'zod';
@@ -155,7 +155,7 @@ export async function updateRoadmapTask(nodeId, taskId, data, uid) {
   if (!taskId) throw new Error('[roadmapTaskService] updateRoadmapTask: taskId is required');
 
   // Strip immutable fields
-  const { createdAt, createdBy, nodeId: _nodeId, id, ...safeData } = data;
+  const { createdAt: _createdAt, createdBy: _createdBy, nodeId: _nodeId, id: _id, ...safeData } = data;
 
   try {
     await updateDoc(

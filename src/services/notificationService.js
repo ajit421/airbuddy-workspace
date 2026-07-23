@@ -119,7 +119,7 @@ export const ROADMAP_NOTIF_TYPES = {
  * @returns {Promise<void>}
  */
 export const notifyRoadmapTaskAssigned = async ({
-  nodeId,
+  nodeId: _nodeId,
   nodeName,
   taskTitle,
   newUids     = [],

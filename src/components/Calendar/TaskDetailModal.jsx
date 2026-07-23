@@ -4,7 +4,7 @@ import { db } from '../../services/firebase';
 import { useAuth } from '../../context/AuthContext';
 import Modal from '../shared/Modal';
 import { PriorityBadge, StatusBadge, ProgressBar } from '../shared/TaskCard';
-import { formatDate, formatDateTime, getDueDateLabel, getDueDateColor, isOverdue } from '../../utils/dateHelpers';
+import { formatDate, getDueDateLabel, getDueDateColor, isOverdue } from '../../utils/dateHelpers';
 import { canEditTask, canUpdateProgress } from '../../utils/permissions';
 import { notifyUsers } from '../../services/notificationService';
 import { addTaskToGoogleCalendar } from '../../services/googleCalendarService';
@@ -122,9 +122,9 @@ export default function TaskDetailModal({ task, onClose }) {
 
   if (!task) return null;
 
-  const canEdit = canEditTask(task, userProfile);
+  const _canEdit = canEditTask(task, userProfile);
   const canUpdate = canUpdateProgress(task, userProfile);
-  const overdue = isOverdue(task.dueDate) && task.status !== 'completed';
+  const _overdue = isOverdue(task.dueDate) && task.status !== 'completed';
   const dueDays = getDueDateLabel(task.dueDate);
   const dueDateColor = getDueDateColor(task.dueDate);
 

@@ -236,7 +236,7 @@ const WorkPartnerCard = ({ task, currentUid, allUsers, onClick }) => {
 
 export default function WorkPartner() {
   const { tasks, loading, allUsers } = useTasks();
-  const { user, isAdmin, effectiveUid } = useAuth();
+  const { isAdmin, effectiveUid } = useAuth();
   const { viewMode } = useViewMode();
   const [selectedTask, setSelectedTask] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');

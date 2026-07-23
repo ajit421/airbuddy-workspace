@@ -248,7 +248,7 @@ export async function createNode(form, adminUid, parentNode = null) {
 export async function updateNode(nodeId, data, editorUid) {
   if (!nodeId) throw new Error('[roadmapService] updateNode: nodeId is required');
   // Strip fields owned by Cloud Functions or immutable after create
-  const { progress, childCount, childCompletedCount, path, ancestorIds, depth, createdAt, createdBy, id, ...safeData } = data;
+  const { progress: _progress, childCount: _childCount, childCompletedCount: _childCompletedCount, path: _path, ancestorIds: _ancestorIds, depth: _depth, createdAt: _createdAt, createdBy: _createdBy, id: _id, ...safeData } = data;
   try {
     await updateDoc(doc(db, ROADMAP_NODES_COL, nodeId), {
       ...safeData,

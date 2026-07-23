@@ -30,7 +30,6 @@ export function useRoadmapCalendarEvents() {
   const [tasksLoading, setTasksLoading] = useState(true);
 
   const unsubNodesRef = useRef(null);
-  const unsubTasksRef = useRef(null);
 
   // ── Subscribe to all non-archived nodes ──────────────────────────────────
   useEffect(() => {

@@ -7,7 +7,7 @@ import TaskCard from '../shared/TaskCard';
 import { PriorityBadge, StatusBadge } from '../shared/TaskCard';
 import TaskDetailModal from '../Calendar/TaskDetailModal';
 import SelfTaskModal from './SelfTaskModal';
-import { getDueDateLabel, getDueDateColor, formatDate } from '../../utils/dateHelpers';
+import { getDueDateColor, formatDate } from '../../utils/dateHelpers';
 import TaskFilterBar from './TaskFilterBar';
 import { useTaskFilters } from '../../hooks/useTaskFilters';
 // HRMS Dashboard Widget — attendance punch service

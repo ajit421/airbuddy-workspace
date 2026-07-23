@@ -13,7 +13,6 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { useMemo } from 'react';
 import {
   Chart as ChartJS,
   ArcElement, CategoryScale, LinearScale,
