@@ -20,6 +20,17 @@ import { z } from 'zod';
 const ROADMAP_NODES_COL = 'roadmapNodes';
 const TASKS_SUBCOL      = 'tasks';
 
+/**
+ * Zod validation schema for a full roadmap task document.
+ * Used as a TypeScript-like contract for the shape of every task stored
+ * under roadmapNodes/{nodeId}/tasks/{taskId}.
+ *
+ * `nodeId` is **denormalized** onto every task document so that
+ * collectionGroup('tasks') queries (Phase 16 analytics) can filter
+ * by nodeId without requiring a composite index.
+ *
+ * @see {@link createRoadmapTask} for the write-boundary schema (subset)
+ */
 // Zod Schema - kept in sync with phase3_firestore_schema.md
 export const RoadmapTaskSchema = z.object({
   title:          z.string().min(1, 'Task title is required'),

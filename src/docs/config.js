@@ -12,6 +12,12 @@ export const docsConfig = [
     file: () => import('./features.md?raw'),
   },
   {
+    id: 'company-roadmap',
+    title: 'Company Roadmap',
+    icon: '🗺️',
+    file: () => import('./company-roadmap.md?raw'),
+  },
+  {
     id: 'architecture',
     title: 'Architecture',
     icon: '🏗️',

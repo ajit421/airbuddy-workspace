@@ -20,6 +20,17 @@ import { z } from 'zod';
 
 const ROADMAP_NODES_COL = 'roadmapNodes';
 
+/**
+ * Zod validation schema for a full roadmap node document.
+ * Used for write-time validation in createNode() and as a TypeScript-like
+ * contract for the shape of every node in Firestore.
+ *
+ * Hierarchy fields (path, ancestorIds, depth, parentId) and rollup fields
+ * (progress, childCount, childCompletedCount) are included here for
+ * completeness but are computed internally — never passed in by callers.
+ *
+ * @see {@link createNode} for the write-boundary schema (subset of this)
+ */
 // Zod Schema - kept in sync with phase3_firestore_schema.md
 export const RoadmapNodeSchema = z.object({
   title:               z.string().min(1, 'Title is required'),

@@ -123,6 +123,22 @@ Route guards (`ProtectedRoute`, `AdminRoute`) enforce access at the router level
 ### 🤝 Work Partner
 - Dedicated section for team collaboration features (`WorkPartner.jsx`).
 
+### 🗺️ Company Roadmap
+A hierarchical project-planning module for visualising and managing multi-level roadmap nodes (phases, milestones, deliverables).
+
+- **Tree view** with recursive expand/collapse — unlimited depth, sorted by `order` field.
+- **Node cards** — show title, status, priority, progress bar (Cloud Function–owned rollup), and child count.
+- **Node detail panel** — 5 tabs: Overview, Tasks, Comments, Attachments, and History.
+- **Tasks** — admin assigns tasks to employees under each node; progress rolls up to the node automatically.
+- **Comments** — any whitelisted user can post; delete own or any (admin).
+- **Attachments** — upload images, PDFs, Word docs, and CSV/text files (max 10 MB). Stored in Firebase Storage.
+- **Audit History** — every structural and task change is logged immutably by Cloud Functions (clients cannot write history).
+- **KPI Strip** — real-time metrics: total nodes, by-status breakdown, overall weighted progress.
+- **Access control** — read is open to all authenticated employees; structural writes (create/edit/archive/delete nodes, create/delete tasks) are admin-only.
+- **Performance** — lazy-loaded route chunk (~18.6 kB gzip), `React.memo` on node cards, virtualization shim for 50+ root nodes.
+
+> Full documentation available in the in-app Docs page under **Company Roadmap**, or see `src/docs/company-roadmap.md`.
+
 ### ℹ️ About Page
 - Static page describing the platform and aerospace module list.
 
