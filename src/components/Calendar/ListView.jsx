@@ -125,7 +125,7 @@ export default function ListView({ tasks, leaves = [], onTaskClick }) {
                 </td>
               </tr>
             ) : (
-              filtered.map((task, index) => (
+              filtered.map((task, _) => (
                 <tr
                   key={task.id}
                   onClick={() => onTaskClick(task)}

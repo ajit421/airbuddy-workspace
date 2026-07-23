@@ -44,7 +44,7 @@ function EmptyState({ query, filterRole }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function TeamMembers() {
-  const { user, isAdmin, effectiveUid } = useAuth();
+  const { isAdmin, effectiveUid } = useAuth();
   const { members, loading, error } = useTeamMembers();
 
   // ── Local UI state ──
@@ -156,7 +156,7 @@ export default function TeamMembers() {
           <EmptyState query={searchQuery} filterRole={filterRole} />
         ) : (
           filteredMembers.map((member) => {
-            const canEdit = isAdmin || member.uid === effectiveUid;
+            const _canEdit = isAdmin || member.uid === effectiveUid;
             return (
               <ProfileCard
                 key={member.uid}

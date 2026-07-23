@@ -279,7 +279,7 @@ export default function CalendarView() {
   const [showList, setShowList] = useState(false);
 
   // Phase 15: roadmap calendar events
-  const { roadmapEvents, dedupTaskIds, roadmapLoading } = useRoadmapCalendarEvents();
+  const { roadmapEvents, dedupTaskIds, roadmapLoading: _roadmapLoading } = useRoadmapCalendarEvents();
 
   // ── Leave data ────────────────────────────────────────────────────────────────
   const [leaves, setLeaves] = useState([]);

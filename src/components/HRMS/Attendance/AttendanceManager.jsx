@@ -81,15 +81,6 @@ function isWeekend(dateStr) {
   return day === 0; // Only Sunday is a weekend; Saturday is a working day
 }
 
-function buildLast30Days() {
-  const days = [];
-  for (let i = 0; i < 30; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(localDateStr(d)); // HI-3 fix: was toISOString().slice(0,10)
-  }
-  return days;
-}
 
 function enumerateDaysBetween(startDate, endDate) {
   const dates = [];

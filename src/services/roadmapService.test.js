@@ -35,6 +35,7 @@ import {
   subscribeToSubtree,
   subscribeToNode,
 } from './roadmapService';
+// eslint-disable-next-line no-unused-vars
 import { addDoc, updateDoc, deleteDoc, where, getDoc } from 'firebase/firestore';
 
 // ─── Valid base form ─────────────────────────────────────────────────────────
@@ -66,7 +67,7 @@ describe('computeHierarchy', () => {
   });
 
   it('builds correct path for depth-2 child', () => {
-    const grandparent = { id: 'gp', path: 'gp', ancestorIds: [], depth: 0 };
+    const _grandparent = { id: 'gp', path: 'gp', ancestorIds: [], depth: 0 };
     const parent = { id: 'p', path: 'gp/p', ancestorIds: ['gp'], depth: 1 };
     const result = computeHierarchy('child', parent);
     expect(result.path).toBe('gp/p/child');

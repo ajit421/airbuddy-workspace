@@ -103,7 +103,7 @@ describe('createRoadmapTask', () => {
 
   it('applies default progress=0 when not provided', async () => {
     const { addDoc } = await import('firebase/firestore');
-    const { progress: _, ...formWithoutProgress } = validForm;
+    const { progress: _ } = validForm;
     await createRoadmapTask('node-abc', { title: 'T', status: 'pending', priority: 'medium' }, 'admin-uid');
     const callArgs = addDoc.mock.calls[0][1];
     expect(callArgs.progress).toBe(0);

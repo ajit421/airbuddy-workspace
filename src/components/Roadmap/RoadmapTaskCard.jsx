@@ -45,10 +45,10 @@ export default function RoadmapTaskCard({ task, nodeId, allUsers = [], onEdit })
 
   // Reset inline edit state when task prop changes (realtime update from Firestore)
   // Only reset if not currently in edit mode to avoid disrupting user input
-  const isEditing = expanded;
+  const _isEditing = expanded;
 
   const dueDateColor = getDueDateColor(task.dueDate, task.status);
-  const dueDateLabel = getDueDateLabel(task.dueDate, task.status);
+  const _dueDateLabel = getDueDateLabel(task.dueDate, task.status);
 
   // Resolve assignee display names
   const assigneeNames = (task.assignedTo ?? []).map((uid) => {

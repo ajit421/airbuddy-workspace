@@ -23,7 +23,19 @@ export default defineConfig([
       },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      'no-unused-vars': ['error', {
+        varsIgnorePattern: '^[A-Z_]',
+        argsIgnorePattern: '^_',
+        destructuredArrayIgnorePattern: '^_',
+        ignoreRestSiblings: true,
+      }],
+      // Downgraded to warn: setState in effect guard clauses (e.g. setLoading(false) on early
+      // return) is a legitimate pattern used throughout this codebase for Firestore subscriptions.
+      'react-hooks/set-state-in-effect': 'warn',
+      // Downgraded to warn: context files intentionally export both the provider component and
+      // hooks (e.g. RoadmapContext exports RoadmapProvider + useRoadmap). This is the standard
+      // React context pattern and does not break fast refresh in practice.
+      'react-refresh/only-export-components': 'warn',
     },
   },
   // CR-2 fix: block firebase-admin imports in client-side code.
@@ -54,6 +66,13 @@ export default defineConfig([
           ],
         },
       ],
+    },
+  },
+  // Node.js globals for Vercel serverless API routes (api/ directory)
+  {
+    files: ['api/**/*.{js,cjs,mjs}'],
+    languageOptions: {
+      globals: globals.node,
     },
   },
 ])

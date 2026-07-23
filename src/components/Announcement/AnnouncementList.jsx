@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, updateDoc, doc, arrayUnion } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { formatDate, timeFromNow } from '../../utils/dateHelpers';
+import { timeFromNow } from '../../utils/dateHelpers';
 
 const PriorityDot = ({ priority }) => {
   const color = {
@@ -105,7 +105,7 @@ const AnnouncementCard = ({ announcement, currentUser }) => {
 export default function AnnouncementList() {
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { user, userProfile, effectiveUid } = useAuth();
+  const { user, effectiveUid } = useAuth();
   // Create a synthetic user object with the effective UID for read tracking
   const effectiveUser = user ? { ...user, uid: effectiveUid || user.uid } : null;
 
