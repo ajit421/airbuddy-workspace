@@ -52,6 +52,18 @@ export default function RoadmapNodeDetail({
   const canEdit                   = canEditRoadmapStructure(userProfile);
   const { node, loading }         = useRoadmapNode(nodeId);
 
+  // Phase 23: subscribe to all users once at this level so OverviewTab
+  // can resolve UIDs to names without a separate Firestore subscription.
+  const [allUsers, setAllUsers]   = useState([]);
+  const unsubUsersRef             = useRef(null);
+  useEffect(() => {
+    unsubUsersRef.current = subscribeToAllUsers(
+      (users) => setAllUsers(users),
+      (err)   => console.error('[RoadmapNodeDetail] subscribeToAllUsers:', err)
+    );
+    return () => { unsubUsersRef.current?.(); };
+  }, []);
+
   // ── Loading skeleton ───────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -162,7 +174,7 @@ export default function RoadmapNodeDetail({
       {/* ── Tab body (scrollable) ─────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'Overview' && (
-          <OverviewTab node={node} dueDateColor={dueDateColor} dueDateLabel={dueDateLabel} hasChildren={hasChildren} />
+          <OverviewTab node={node} dueDateColor={dueDateColor} dueDateLabel={dueDateLabel} hasChildren={hasChildren} allUsers={allUsers} />
         )}
         {activeTab === 'Tasks' && (
           <TasksTab nodeId={nodeId} node={node} />
@@ -182,7 +194,7 @@ export default function RoadmapNodeDetail({
 }
 
 /* ── Overview tab ───────────────────────────────────────────────────────────── */
-function OverviewTab({ node, dueDateColor, dueDateLabel, hasChildren }) {
+function OverviewTab({ node, dueDateColor, dueDateLabel, hasChildren, allUsers = [] }) {
   return (
     <div className="p-4 space-y-5">
 
@@ -236,17 +248,23 @@ function OverviewTab({ node, dueDateColor, dueDateLabel, hasChildren }) {
         </h3>
         {node.assignedTo?.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
-            {node.assignedTo.map((uid) => (
-              <span
-                key={uid}
-                className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-surfaceHover border border-border text-xs text-text-secondary"
-              >
-                <span className="w-4 h-4 rounded-full bg-orange/20 text-orange text-[9px] flex items-center justify-center font-bold flex-shrink-0">
-                  {uid.charAt(0).toUpperCase()}
+            {node.assignedTo.map((uid) => {
+              const u = allUsers.find((x) => x.uid === uid);
+              const displayName = u?.name || uid.slice(0, 8);
+              const initial = (u?.name ?? uid).charAt(0).toUpperCase();
+              return (
+                <span
+                  key={uid}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-surfaceHover border border-border text-xs text-text-secondary"
+                  title={u?.name ? `${u.name} (${uid})` : uid}
+                >
+                  <span className="w-4 h-4 rounded-full bg-orange/20 text-orange text-[9px] flex items-center justify-center font-bold flex-shrink-0">
+                    {initial}
+                  </span>
+                  {displayName}
                 </span>
-                {uid}
-              </span>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <p className="text-xs text-text-muted italic">No assignees</p>

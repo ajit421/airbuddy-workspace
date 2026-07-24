@@ -51,6 +51,11 @@ export default function TaskCard({ task, onClick }) {
               Self-Assigned
             </span>
           )}
+          {task._mirrorOf === 'roadmap' && (
+            <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange/10 text-orange border border-orange/20">
+              🗺 Roadmap
+            </span>
+          )}
         </h3>
         <PriorityBadge priority={task.priority} />
       </div>
