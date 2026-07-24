@@ -1,6 +1,7 @@
 import {
   collection, doc, addDoc, updateDoc, deleteDoc,
   query, onSnapshot, serverTimestamp,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { z } from 'zod';
@@ -19,6 +20,7 @@ import { z } from 'zod';
 
 const ROADMAP_NODES_COL = 'roadmapNodes';
 const TASKS_SUBCOL      = 'tasks';
+const TASKS_COL         = 'tasks'; // root mirror collection (Phase 23)
 
 /**
  * Zod validation schema for a full roadmap task document.
@@ -113,14 +115,15 @@ export async function createRoadmapTask(nodeId, form, adminUid) {
   });
 
   const validated = CreateTaskSchema.parse(form);  // throws ZodError if invalid
+  const dueDateValue = validated.dueDate ? new Date(validated.dueDate) : null;
 
   try {
+    // ── Write to roadmap subcollection to get the auto-generated ID ──────
     const taskRef = await addDoc(
       collection(db, ROADMAP_NODES_COL, nodeId, TASKS_SUBCOL),
       {
         ...validated,
-        dueDate:    validated.dueDate ? new Date(validated.dueDate) : null,
-        // Audit + denormalized
+        dueDate:    dueDateValue,
         assignedBy: adminUid,
         createdBy:  adminUid,
         updatedBy:  adminUid,
@@ -129,6 +132,31 @@ export async function createRoadmapTask(nodeId, form, adminUid) {
         updatedAt:  serverTimestamp(),
       }
     );
+
+    // ── Phase 23: mirror-write to root tasks/ collection ─────────────────
+    // Uses the same taskId so update/delete can reference by ID.
+    // Best-effort: mirror failure must NOT break the roadmap task create.
+    try {
+      const mirrorRef = doc(db, TASKS_COL, taskRef.id);
+      const batch = writeBatch(db);
+      batch.set(mirrorRef, {
+        ...validated,
+        dueDate:         dueDateValue,
+        assignedBy:      adminUid,
+        createdBy:       adminUid,
+        updatedBy:       adminUid,
+        nodeId:          nodeId,
+        roadmapNodeId:   nodeId,    // link back to source node
+        _mirrorOf:       'roadmap', // origin marker for Dashboard UI badge
+        workPartnerUids: [],        // roadmap tasks have no work partners
+        createdAt:       serverTimestamp(),
+        updatedAt:       serverTimestamp(),
+      });
+      await batch.commit();
+    } catch (mirrorErr) {
+      console.warn('[roadmapTaskService] createRoadmapTask mirror write failed (non-fatal):', mirrorErr.message);
+    }
+
     return taskRef.id;
   } catch (err) {
     console.error('[roadmapTaskService] createRoadmapTask:', err);
@@ -157,15 +185,35 @@ export async function updateRoadmapTask(nodeId, taskId, data, uid) {
   // Strip immutable fields
   const { createdAt: _createdAt, createdBy: _createdBy, nodeId: _nodeId, id: _id, ...safeData } = data;
 
+  const updatePayload = {
+    ...safeData,
+    updatedBy: uid,
+    updatedAt: serverTimestamp(),
+  };
+
   try {
+    // ── Update source subcollection ──────────────────────────────────────────
     await updateDoc(
       doc(db, ROADMAP_NODES_COL, nodeId, TASKS_SUBCOL, taskId),
-      {
-        ...safeData,
-        updatedBy: uid,
-        updatedAt: serverTimestamp(),
-      }
+      updatePayload
     );
+
+    // ── Phase 23: sync mirror in root tasks/ collection ───────────────────
+    try {
+      const MIRROR_SYNC_FIELDS = [
+        'title', 'description', 'status', 'priority', 'progress',
+        'assignedTo', 'dueDate', 'completionNote',
+      ];
+      const mirrorUpdate = { updatedBy: uid, updatedAt: serverTimestamp() };
+      MIRROR_SYNC_FIELDS.forEach((field) => {
+        if (Object.prototype.hasOwnProperty.call(safeData, field)) {
+          mirrorUpdate[field] = safeData[field];
+        }
+      });
+      await updateDoc(doc(db, TASKS_COL, taskId), mirrorUpdate);
+    } catch (mirrorErr) {
+      console.warn('[roadmapTaskService] updateRoadmapTask mirror update failed (non-fatal):', mirrorErr.message);
+    }
   } catch (err) {
     console.error('[roadmapTaskService] updateRoadmapTask:', err);
     throw err;
@@ -184,7 +232,15 @@ export async function deleteRoadmapTask(nodeId, taskId) {
   if (!nodeId) throw new Error('[roadmapTaskService] deleteRoadmapTask: nodeId is required');
   if (!taskId) throw new Error('[roadmapTaskService] deleteRoadmapTask: taskId is required');
   try {
+    // ── Delete source subcollection doc ──────────────────────────────────────
     await deleteDoc(doc(db, ROADMAP_NODES_COL, nodeId, TASKS_SUBCOL, taskId));
+
+    // ── Phase 23: delete mirror from root tasks/ collection ───────────────
+    try {
+      await deleteDoc(doc(db, TASKS_COL, taskId));
+    } catch (mirrorErr) {
+      console.warn('[roadmapTaskService] deleteRoadmapTask mirror delete failed (non-fatal):', mirrorErr.message);
+    }
   } catch (err) {
     console.error('[roadmapTaskService] deleteRoadmapTask:', err);
     throw err;
