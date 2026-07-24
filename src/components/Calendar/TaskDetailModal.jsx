@@ -9,6 +9,7 @@ import { canEditTask, canUpdateProgress } from '../../utils/permissions';
 import { notifyUsers } from '../../services/notificationService';
 import { addTaskToGoogleCalendar } from '../../services/googleCalendarService';
 import { recordStatusChange, recordProgressUpdate } from '../../services/collaborationService';
+import { updateRoadmapTask } from '../../services/roadmapTaskService';
 import WorkPartnersSection from '../WorkPartner/WorkPartnersSection';
 import TaskTimeline from '../WorkPartner/TaskTimeline';
 
@@ -184,12 +185,26 @@ export default function TaskDetailModal({ task, onClose }) {
       }
 
       if (attachment) {
-        // Append to existing attachments array (or create it)
         const existingAttachments = task.attachments || [];
         updatePayload.attachments = [...existingAttachments, attachment];
       }
 
       await updateDoc(doc(db, 'tasks', task.id), updatePayload);
+
+      // Phase 23: if this task is a roadmap mirror, also sync back to the
+      // roadmap subcollection so RoadmapTaskCard reflects the update in real-time.
+      if (task._mirrorOf === 'roadmap' && task.roadmapNodeId) {
+        try {
+          await updateRoadmapTask(
+            task.roadmapNodeId,
+            task.id,
+            { status: newStatus, progress, completionNote: updatePayload.completionNote ?? task.completionNote },
+            userProfile?.uid || ''
+          );
+        } catch (syncErr) {
+          console.warn('[TaskDetailModal] roadmap subcollection sync failed (non-fatal):', syncErr.message);
+        }
+      }
 
       // ── Timeline events (fire-and-forget — errors logged, not surfaced) ──
       const timelineAuthor = {
@@ -295,6 +310,11 @@ export default function TaskDetailModal({ task, onClose }) {
               )}
               {task.isAdminTask === false && (
                 <span className="badge bg-purple-500/10 text-purple-400 border border-purple-500/20">Self-Assigned</span>
+              )}
+              {task._mirrorOf === 'roadmap' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange/10 text-orange border border-orange/20">
+                  🗺 Admin Assigned · Roadmap
+                </span>
               )}
               <PriorityBadge priority={task.priority} />
               <StatusBadge status={task.status} />
