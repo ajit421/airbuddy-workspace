@@ -573,6 +573,11 @@ export default function EmployeeDashboard() {
                       {task.isAdminTask === false && (
                         <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">Self-Assigned</span>
                       )}
+                      {task._mirrorOf === 'roadmap' && (
+                        <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange/10 text-orange border border-orange/20">
+                          🗺 Admin Assigned · Roadmap
+                        </span>
+                      )}
                     </td>
                     {/* <td className="px-4 py-3 text-xs text-text-muted hidden md:table-cell">{task.module || '—'}</td> */}
                     <td className="px-4 py-3 hidden sm:table-cell"><PriorityBadge priority={task.priority} /></td>

@@ -304,8 +304,11 @@ export default function CalendarView() {
   // ── Convert tasks + leaves + roadmap nodes to calendar events ─────────────────
   const events = useMemo(() => {
     // Task events — filtered to remove deduped roadmap-leaf entries
+    // Phase 23 fix: mirror tasks (_mirrorOf === 'roadmap') are NEVER deduped —
+    // they represent admin-assigned roadmap tasks and should always appear on
+    // the calendar even if their ID is in dedupTaskIds.
     const taskEvents = tasks
-      .filter((task) => !dedupTaskIds.has(task.id))
+      .filter((task) => task._mirrorOf === 'roadmap' || !dedupTaskIds.has(task.id))
       .map((task) => {
         const start = toDate(task.startDate) || new Date();
         const end = toDate(task.dueDate) || start;
