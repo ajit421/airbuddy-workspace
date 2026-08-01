@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "airbuddy-workspace"
-  }
+    "work": "workspace-airbuddy"
+  },
+  "targets": {},
+  "etags": {}
 }
