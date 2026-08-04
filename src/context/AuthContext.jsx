@@ -38,38 +38,40 @@ export const AuthProvider = ({ children }) => {
 
       if (firebaseUser) {
         try {
-          // ── Whitelist / Invite-Only gate ─────────────────────────────────────
-          // Check the allowed_emails collection BEFORE any other logic.
-          // The document ID is the user's email address.
-          const allowedEmailRef = doc(db, 'allowed_emails', firebaseUser.email);
-          const allowedEmailSnap = await getDoc(allowedEmailRef);
+          // ── Access Gate ───────────────────────────────────────────────────────
+          // Rule: @airbuddy.in domain emails are automatically trusted (company domain).
+          //       All other emails must exist in the allowed_emails whitelist.
+          const isAirbuddyDomain = firebaseUser.email.endsWith('@airbuddy.in');
 
-          if (!allowedEmailSnap.exists()) {
-            // Email is NOT whitelisted — reject immediately
-            await firebaseSignOut(auth);
-            setAuthError('Unauthorized access: Your email is not whitelisted. Please contact the admin.');
-            setUser(null);
-            setEffectiveUid(null);
-            setUserProfile(null);
-            setLoading(false);
-            return;
-          }
+          if (!isAirbuddyDomain) {
+            // External email — check the allowed_emails whitelist
+            const allowedEmailRef = doc(db, 'allowed_emails', firebaseUser.email);
+            const allowedEmailSnap = await getDoc(allowedEmailRef);
 
-          // NEW-2 fix: CR-4 was fixed in Firestore rules (status check) but the
-          // client-side gate only checked existence. A suspended user would pass
-          // this gate and see the app UI before hitting Firestore permission errors.
-          // Now we check the status field here too — matching what the rules enforce.
-          const emailDocStatus = allowedEmailSnap.data()?.status;
-          if (emailDocStatus === 'suspended') {
-            await firebaseSignOut(auth);
-            setAuthError('Your account has been suspended. Please contact the admin.');
-            setUser(null);
-            setEffectiveUid(null);
-            setUserProfile(null);
-            setLoading(false);
-            return;
+            if (!allowedEmailSnap.exists()) {
+              // Email is NOT whitelisted — reject immediately
+              await firebaseSignOut(auth);
+              setAuthError('Unauthorized access: Your email is not whitelisted. Please contact the admin.');
+              setUser(null);
+              setEffectiveUid(null);
+              setUserProfile(null);
+              setLoading(false);
+              return;
+            }
+
+            // CR-4 fix: also block suspended external accounts
+            const emailDocStatus = allowedEmailSnap.data()?.status;
+            if (emailDocStatus === 'suspended') {
+              await firebaseSignOut(auth);
+              setAuthError('Your account has been suspended. Please contact the admin.');
+              setUser(null);
+              setEffectiveUid(null);
+              setUserProfile(null);
+              setLoading(false);
+              return;
+            }
           }
-          // ── Email is whitelisted and active — continue with normal flow ───────
+          // ── Access granted — continue with normal flow ────────────────────────
 
           setUser(firebaseUser);
           

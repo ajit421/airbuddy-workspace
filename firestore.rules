@@ -8,14 +8,24 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Returns true only if the signed-in user's email exists in the allowed_emails
-    // whitelist collection AND the document has status 'approved' (or no status field).
-    // CR-4 fix: checking status allows admins to suspend a user by setting status:'suspended'
-    // without having to delete the document entirely.
+    // Returns true if the signed-in user is allowed to access the app.
+    //
+    // Rule:
+    //   • @airbuddy.in domain  → automatically trusted (company domain). No whitelist
+    //     document required — any employee who signs in with their work Google account
+    //     is granted access immediately.
+    //   • All other emails     → must exist in allowed_emails with status == 'approved'.
+    //     Admins can revoke access by setting status:'suspended' without deleting the doc.
+    //
+    // CR-4 fix preserved: suspended external users are still blocked.
+    // NOTE: Firestore Rules use CEL — no if/return statements inside functions.
+    //       We use a short-circuit OR: company domain passes first; otherwise check whitelist.
     function isEmailAllowed() {
-      let ref = /databases/$(database)/documents/allowed_emails/$(request.auth.token.email);
-      return exists(ref)
-        && get(ref).data.get('status', 'approved') == 'approved';
+      let email = request.auth.token.email;
+      let ref   = /databases/$(database)/documents/allowed_emails/$(email);
+      // Company domain is auto-trusted || external email must be explicitly whitelisted
+      return email.matches('.*@airbuddy\\.in')
+        || (exists(ref) && get(ref).data.get('status', 'approved') == 'approved');
     }
 
     // Resolves secondary emails to their primary UID via user_email_map.
