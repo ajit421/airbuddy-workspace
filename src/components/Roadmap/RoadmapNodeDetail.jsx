@@ -207,7 +207,7 @@ function OverviewTab({ node, dueDateColor, dueDateLabel, hasChildren, allUsers =
         <ProgressBar progress={node.progress} />
         {hasChildren && (
           <p className="text-xs text-text-muted mt-1">
-            {node.childCompletedCount ?? 0} of {node.childCount ?? 0} child nodes completed
+            {node.childCount ?? 0} child {node.childCount === 1 ? 'node' : 'nodes'}
           </p>
         )}
       </section>

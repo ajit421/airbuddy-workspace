@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { z } from 'zod';
+import { recomputeNodeRollup } from './roadmapService';
 
 /**
  * roadmapTaskService.js
@@ -157,6 +158,10 @@ export async function createRoadmapTask(nodeId, form, adminUid) {
       console.warn('[roadmapTaskService] createRoadmapTask mirror write failed (non-fatal):', mirrorErr.message);
     }
 
+    // Client-side stand-in for the undeployed Cloud Function rollup trigger —
+    // see recomputeNodeRollup for why this is needed.
+    await recomputeNodeRollup(nodeId);
+
     return taskRef.id;
   } catch (err) {
     console.error('[roadmapTaskService] createRoadmapTask:', err);
@@ -214,6 +219,10 @@ export async function updateRoadmapTask(nodeId, taskId, data, uid) {
     } catch (mirrorErr) {
       console.warn('[roadmapTaskService] updateRoadmapTask mirror update failed (non-fatal):', mirrorErr.message);
     }
+
+    // Client-side stand-in for the undeployed Cloud Function rollup trigger —
+    // see recomputeNodeRollup for why this is needed.
+    await recomputeNodeRollup(nodeId);
   } catch (err) {
     console.error('[roadmapTaskService] updateRoadmapTask:', err);
     throw err;
@@ -241,6 +250,10 @@ export async function deleteRoadmapTask(nodeId, taskId) {
     } catch (mirrorErr) {
       console.warn('[roadmapTaskService] deleteRoadmapTask mirror delete failed (non-fatal):', mirrorErr.message);
     }
+
+    // Client-side stand-in for the undeployed Cloud Function rollup trigger —
+    // see recomputeNodeRollup for why this is needed.
+    await recomputeNodeRollup(nodeId);
   } catch (err) {
     console.error('[roadmapTaskService] deleteRoadmapTask:', err);
     throw err;

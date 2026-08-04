@@ -353,13 +353,26 @@ service cloud.firestore {
     //   Read:   All whitelisted authenticated users can read all nodes
     //           (company-wide transparency — no filtering by assignedTo)
     //   Create: Admin only
-    //   Update: Admin only — employees NEVER write directly to a node's structural
-    //           or rollup fields; progress rollup is Cloud Function–owned (Phase 8)
+    //   Update: Admin — any field.
+    //           Any other whitelisted user — rollup fields only (progress,
+    //           childCompletedCount, status, updatedAt). The Phase 8 Cloud
+    //           Function that was meant to own this write is not deployed
+    //           (project is on the Spark plan), so recomputeNodeRollup() in
+    //           src/services/roadmapService.js writes these fields directly
+    //           as the requesting user — including a non-admin who just
+    //           completed their own assigned task. Without this clause that
+    //           write is silently rejected and the node's progress/status
+    //           never reflects a task an employee (not an admin) completed.
     //   Delete: Admin only
     match /roadmapNodes/{nodeId} {
       allow read:   if isAuthenticated() && isEmailAllowed();
       allow create: if isAuthenticated() && isEmailAllowed() && isAdmin();
-      allow update: if isAuthenticated() && isEmailAllowed() && isAdmin();
+      allow update: if isAuthenticated() && isEmailAllowed() && (
+        isAdmin() ||
+        request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasOnly(['progress', 'childCompletedCount', 'status', 'updatedAt'])
+      );
       allow delete: if isAuthenticated() && isEmailAllowed() && isAdmin();
 
       // ── tasks subcollection ───────────────────────────────────────────────

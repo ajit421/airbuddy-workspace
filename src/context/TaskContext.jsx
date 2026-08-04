@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, collectionGroup, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from './AuthContext';
 
@@ -16,6 +16,7 @@ export const TaskProvider = ({ children }) => {
   // The merge happens in useMemo below — atomically, without clear() races.
   const [assignedTasks, setAssignedTasks] = useState(null); // null = not yet received
   const [partnerTasks,  setPartnerTasks]  = useState(null);
+  const [roadmapAssignedTasks, setRoadmapAssignedTasks] = useState(null);
 
   useEffect(() => {
     if (!user || !effectiveUid) {
@@ -23,6 +24,7 @@ export const TaskProvider = ({ children }) => {
       setAllUsers({});
       setAssignedTasks(null);
       setPartnerTasks(null);
+      setRoadmapAssignedTasks(null);
       setLoading(false);
       return;
     }
@@ -80,7 +82,34 @@ export const TaskProvider = ({ children }) => {
         setLoading(false);
       });
 
-      unsubTasks = () => { unsubAssigned(); unsubPartner(); };
+      // Query 3: roadmap tasks assigned to this user, read directly from their
+      // source (roadmapNodes/{nodeId}/tasks/{taskId}) via a collectionGroup
+      // query — not from the root `tasks` mirror written by roadmapTaskService.
+      // The mirror write is explicitly best-effort/non-fatal (see
+      // roadmapTaskService.js), so a roadmap task can be correctly assigned at
+      // the source yet still be missing from the mirror. Querying the source
+      // directly means the Dashboard reflects a roadmap assignment even if
+      // mirroring silently failed. Deduped against the mirror by task id below.
+      const roadmapTasksQuery = query(
+        collectionGroup(db, 'tasks'),
+        where('assignedTo', 'array-contains', effectiveUid)
+      );
+      const unsubRoadmapAssigned = onSnapshot(roadmapTasksQuery, (snap) => {
+        const roadmapOnly = snap.docs
+          .filter((d) => {
+            const parts = d.ref.path.split('/');
+            return parts[0] === 'roadmapNodes' && parts.length === 4;
+          })
+          .map((d) => ({ id: d.id, ...d.data() }));
+        setRoadmapAssignedTasks(roadmapOnly);
+        setLoading(false);
+      }, (err) => {
+        console.error('Task listener (roadmap assignedTo) error:', err);
+        setRoadmapAssignedTasks([]);
+        setLoading(false);
+      });
+
+      unsubTasks = () => { unsubAssigned(); unsubPartner(); unsubRoadmapAssigned(); };
     }
 
     return () => {
@@ -96,12 +125,13 @@ export const TaskProvider = ({ children }) => {
   const tasks = useMemo(() => {
     if (isAdmin) return allTasks; // admin path uses allTasks directly
 
-    // Wait until both snapshots have been received at least once
-    if (assignedTasks === null || partnerTasks === null) return [];
+    // Wait until all snapshots have been received at least once
+    if (assignedTasks === null || partnerTasks === null || roadmapAssignedTasks === null) return [];
 
-    // Deduplicate by id (a task can appear in both queries)
+    // Deduplicate by id — a roadmap task and its root-collection mirror share
+    // the same document id, so this also collapses mirror duplicates.
     const map = new Map();
-    [...assignedTasks, ...partnerTasks].forEach(t => map.set(t.id, t));
+    [...assignedTasks, ...partnerTasks, ...roadmapAssignedTasks].forEach(t => map.set(t.id, t));
     const merged = Array.from(map.values());
 
     // Sort by due date ascending (soonest first)
@@ -111,7 +141,7 @@ export const TaskProvider = ({ children }) => {
       return dateA - dateB;
     });
     return merged;
-  }, [isAdmin, allTasks, assignedTasks, partnerTasks]);
+  }, [isAdmin, allTasks, assignedTasks, partnerTasks, roadmapAssignedTasks]);
 
   const getTasksByStatus = (status) => tasks.filter(t => t.status === status);
   const getUpcomingTasks = (days = 7) => {
