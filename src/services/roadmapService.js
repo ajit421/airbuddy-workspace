@@ -1,6 +1,6 @@
 import {
-  collection, doc, addDoc, updateDoc, deleteDoc,
-  query, where, onSnapshot, serverTimestamp, getDoc,
+  collection, doc, setDoc, updateDoc, deleteDoc,
+  query, where, onSnapshot, serverTimestamp, getDoc, getDocs, increment,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { z } from 'zod';
@@ -191,8 +191,13 @@ export async function createNode(form, adminUid, parentNode = null) {
   try {
     const colRef = collection(db, ROADMAP_NODES_COL);
 
-    // Step 1: addDoc to generate the ID
-    const docRef = await addDoc(colRef, {
+    // Pre-generate the doc ID so hierarchy fields can be computed and written
+    // in a single atomic setDoc — avoids the broken-intermediate-state window
+    // of a two-step addDoc + updateDoc.
+    const docRef = doc(colRef);
+    const h = computeHierarchy(docRef.id, parentNode);
+
+    await setDoc(docRef, {
       ...validated,
       startDate:           validated.startDate ? new Date(validated.startDate) : null,
       dueDate:             validated.dueDate   ? new Date(validated.dueDate)   : null,
@@ -204,26 +209,16 @@ export async function createNode(form, adminUid, parentNode = null) {
       updatedBy:           adminUid,
       createdAt:           serverTimestamp(),
       updatedAt:           serverTimestamp(),
-      // hierarchy placeholders — overwritten in step 2
-      parentId:    parentNode ? parentNode.id : null,
-      path:        '',
-      ancestorIds: [],
-      depth:       0,
-    });
-
-    // Step 2: write correct hierarchy fields now that we have the ID
-    const h = computeHierarchy(docRef.id, parentNode);
-    await updateDoc(docRef, {
+      parentId:    h.parentId,
       path:        h.path,
       ancestorIds: h.ancestorIds,
       depth:       h.depth,
-      updatedAt:   serverTimestamp(),
     });
 
-    // Step 3: increment parent childCount (best-effort; Phase 8 CF owns this authoritatively)
+    // Increment parent childCount atomically (best-effort; Phase 8 CF owns this authoritatively)
     if (parentNode) {
       await updateDoc(doc(db, ROADMAP_NODES_COL, parentNode.id), {
-        childCount: (parentNode.childCount ?? 0) + 1,
+        childCount: increment(1),
         updatedAt:  serverTimestamp(),
       });
     }
@@ -272,11 +267,23 @@ export async function updateNode(nodeId, data, editorUid) {
 export async function archiveNode(nodeId, adminUid) {
   if (!nodeId) throw new Error('[roadmapService] archiveNode: nodeId is required');
   try {
+    const snap = await getDoc(doc(db, ROADMAP_NODES_COL, nodeId));
+    const parentId = snap.exists() ? snap.data().parentId : null;
+
     await updateDoc(doc(db, ROADMAP_NODES_COL, nodeId), {
       isArchived: true,
       updatedBy:  adminUid,
       updatedAt:  serverTimestamp(),
     });
+
+    // Archived nodes are excluded from all queries, so the parent's
+    // childCount must be decremented the same way deleteNode does.
+    if (parentId) {
+      await updateDoc(doc(db, ROADMAP_NODES_COL, parentId), {
+        childCount: increment(-1),
+        updatedAt:  serverTimestamp(),
+      });
+    }
   } catch (err) {
     console.error('[roadmapService] archiveNode:', err);
     throw err;
@@ -319,6 +326,95 @@ export async function deleteNode(nodeId) {
   } catch (err) {
     console.error('[roadmapService] deleteNode:', err);
     throw err;
+  }
+}
+
+/**
+ * Recompute a node's progress/status/childCompletedCount from its own tasks
+ * subcollection, then propagate the change up through its ancestors.
+ *
+ * This is a client-side stand-in for the Phase 8 Cloud Function triggers
+ * (onRoadmapTaskWrite / onRoadmapNodeProgressChange in functions/roadmapTriggers.js).
+ * Those triggers require the Firebase Blaze plan to deploy; this project is
+ * currently on Spark, so no Cloud Functions are deployed at all — without this,
+ * completing a task never updates the node's progress bar or status.
+ * Mirrors the pure logic in functions/roadmapService.server.js exactly.
+ *
+ * Best-effort: failures are logged, never thrown — a rollup miss must not
+ * block the task write that triggered it.
+ *
+ * @param {string} nodeId - The roadmap node whose own tasks subcollection changed
+ * @returns {Promise<void>}
+ */
+export async function recomputeNodeRollup(nodeId) {
+  if (!nodeId) return;
+  try {
+    const nodeRef  = doc(db, ROADMAP_NODES_COL, nodeId);
+    const nodeSnap = await getDoc(nodeRef);
+    if (!nodeSnap.exists()) return;
+    const nodeData = nodeSnap.data();
+
+    const tasksSnap = await getDocs(collection(db, ROADMAP_NODES_COL, nodeId, 'tasks'));
+    const active = tasksSnap.docs
+      .map((d) => d.data())
+      .filter((t) => t.status !== 'archived');
+
+    let progress = 0;
+    let childCompletedCount = 0;
+    let nodeStatus = null;
+    if (active.length > 0) {
+      const total = active.reduce((sum, t) => sum + (Number(t.progress) || 0), 0);
+      progress = Math.round(total / active.length);
+      childCompletedCount = active.filter((t) => t.status === 'completed').length;
+      if (childCompletedCount === active.length) {
+        nodeStatus = 'completed';
+      } else if (active.some((t) => t.status === 'in-progress' || (t.progress || 0) > 0)) {
+        nodeStatus = 'in-progress';
+      }
+    }
+
+    const updatePayload = {};
+    if (Math.round(progress) !== Math.round(nodeData.progress ?? 0)) {
+      updatePayload.progress = progress;
+    }
+    if (childCompletedCount !== (nodeData.childCompletedCount ?? 0)) {
+      updatePayload.childCompletedCount = childCompletedCount;
+    }
+    if (nodeStatus !== null && nodeStatus !== nodeData.status) {
+      updatePayload.status = nodeStatus;
+    }
+    if (Object.keys(updatePayload).length > 0) {
+      updatePayload.updatedAt = serverTimestamp();
+      await updateDoc(nodeRef, updatePayload);
+    }
+
+    // Propagate to ancestors, nearest-first, stopping when a value is unchanged.
+    const ancestorIds = [...(nodeData.ancestorIds ?? [])].reverse().slice(0, 10);
+    for (const ancestorId of ancestorIds) {
+      const ancestorRef  = doc(db, ROADMAP_NODES_COL, ancestorId);
+      const ancestorSnap = await getDoc(ancestorRef);
+      if (!ancestorSnap.exists()) break;
+
+      const childrenSnap = await getDocs(query(
+        collection(db, ROADMAP_NODES_COL),
+        where('parentId',   '==', ancestorId),
+        where('isArchived', '==', false),
+      ));
+      if (childrenSnap.empty) break;
+
+      const childTotal = childrenSnap.docs.reduce((sum, d) => sum + (Number(d.data().progress) || 0), 0);
+      const newAncestorProgress = Math.round(childTotal / childrenSnap.docs.length);
+      const currentAncestorProgress = ancestorSnap.data().progress ?? 0;
+
+      if (Math.round(newAncestorProgress) === Math.round(currentAncestorProgress)) break;
+
+      await updateDoc(ancestorRef, {
+        progress:  newAncestorProgress,
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (err) {
+    console.error('[roadmapService] recomputeNodeRollup:', err);
   }
 }
 

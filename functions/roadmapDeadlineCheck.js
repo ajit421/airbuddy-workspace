@@ -64,12 +64,24 @@ async function writeNotification(uid, title, message, type) {
 }
 
 // ─── Helper: fan-out to all assignees except already-notified set ─────────────
-async function notifyAssignees(assignedTo, title, message, type, alreadyNotified) {
-  const pending = (assignedTo ?? []).filter((uid) => !alreadyNotified.has(uid));
+// alreadyNotified is keyed by `${uid}:${taskId}` so a user assigned to
+// multiple due/overdue tasks in the same run gets notified for each task,
+// while still preventing duplicate notifications for the same task+user.
+async function notifyAssignees(assignedTo, taskId, title, message, type, alreadyNotified) {
+  const pending = (assignedTo ?? []).filter((uid) => !alreadyNotified.has(`${uid}:${taskId}`));
   await Promise.all(pending.map((uid) => {
-    alreadyNotified.add(uid);
+    alreadyNotified.add(`${uid}:${taskId}`);
     return writeNotification(uid, title, message, type);
   }));
+}
+
+// ─── Helper: is this task doc actually under roadmapNodes/*/tasks? ────────────
+// db.collectionGroup('tasks') also matches unrelated top-level `tasks` docs
+// (personal/assigned tasks, Phase 23 mirror docs) which are not roadmap tasks
+// and must not trigger roadmap deadline notifications.
+function isRoadmapTask(taskDoc) {
+  const parts = taskDoc.ref.path.split('/');
+  return parts.length === 4 && parts[0] === 'roadmapNodes' && parts[2] === 'tasks';
 }
 
 // ─── Main scheduled function ──────────────────────────────────────────────────
@@ -102,6 +114,7 @@ exports.roadmapDeadlineCheck = onSchedule(
 
     const tomorrowNotified = new Set();
     for (const taskDoc of tomorrowSnap.docs) {
+      if (!isRoadmapTask(taskDoc)) continue;
       const task = taskDoc.data();
       if (!task.assignedTo?.length) continue;
       if (task.status === 'completed') continue;
@@ -110,7 +123,7 @@ exports.roadmapDeadlineCheck = onSchedule(
       const title      = `Deadline Tomorrow: ${task.title}`;
       const message    = `Your task "${task.title}" under "${nodeTitle}" is due tomorrow. Update your progress on the Roadmap.`;
 
-      await notifyAssignees(task.assignedTo, title, message, ROADMAP_NOTIF_TYPES.DEADLINE_TOMORROW, tomorrowNotified);
+      await notifyAssignees(task.assignedTo, taskDoc.id, title, message, ROADMAP_NOTIF_TYPES.DEADLINE_TOMORROW, tomorrowNotified);
     }
     console.log(`  ✓ Deadline-tomorrow: processed ${tomorrowSnap.size} tasks`);
 
@@ -122,6 +135,7 @@ exports.roadmapDeadlineCheck = onSchedule(
 
     const overdueNotified = new Set();
     for (const taskDoc of overdueSnap.docs) {
+      if (!isRoadmapTask(taskDoc)) continue;
       const task = taskDoc.data();
       if (!task.assignedTo?.length) continue;
 
@@ -129,7 +143,7 @@ exports.roadmapDeadlineCheck = onSchedule(
       const title      = `Overdue: ${task.title}`;
       const message    = `Your task "${task.title}" under "${nodeTitle}" is overdue. Please update the Roadmap.`;
 
-      await notifyAssignees(task.assignedTo, title, message, ROADMAP_NOTIF_TYPES.DEADLINE_MISSED, overdueNotified);
+      await notifyAssignees(task.assignedTo, taskDoc.id, title, message, ROADMAP_NOTIF_TYPES.DEADLINE_MISSED, overdueNotified);
     }
     console.log(`  ✓ Overdue: processed ${overdueSnap.size} tasks`);
     console.log('[roadmapDeadlineCheck] Done.');

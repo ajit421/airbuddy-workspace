@@ -10,11 +10,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ── Mock firebase/firestore ──────────────────────────────────────────────────
 vi.mock('firebase/firestore', () => ({
   collection:       vi.fn().mockReturnValue('col-ref'),
-  doc:              vi.fn().mockReturnValue('doc-ref'),
-  addDoc:           vi.fn().mockResolvedValue({ id: 'new-node-id' }),
+  doc:              vi.fn().mockReturnValue({ id: 'new-node-id' }),
+  setDoc:           vi.fn().mockResolvedValue(undefined),
   updateDoc:        vi.fn().mockResolvedValue(undefined),
   deleteDoc:        vi.fn().mockResolvedValue(undefined),
-  getDoc:           vi.fn(),
+  getDoc:           vi.fn().mockResolvedValue({ exists: () => false }),
+  getDocs:          vi.fn().mockResolvedValue({ empty: true, docs: [] }),
+  increment:        vi.fn((n) => ({ __increment: n })),
   query:            vi.fn().mockReturnValue('query-ref'),
   where:            vi.fn().mockReturnValue('where-ref'),
   onSnapshot:       vi.fn().mockReturnValue(() => {}),
@@ -34,9 +36,10 @@ import {
   subscribeToChildren,
   subscribeToSubtree,
   subscribeToNode,
+  recomputeNodeRollup,
 } from './roadmapService';
 // eslint-disable-next-line no-unused-vars
-import { addDoc, updateDoc, deleteDoc, where, getDoc } from 'firebase/firestore';
+import { setDoc, updateDoc, deleteDoc, where, getDoc, getDocs } from 'firebase/firestore';
 
 // ─── Valid base form ─────────────────────────────────────────────────────────
 const validForm = {
@@ -124,63 +127,63 @@ describe('createNode', () => {
   });
 
   it('applies default status=pending when not provided', async () => {
-    const { addDoc } = await import('firebase/firestore');
+    const { setDoc } = await import('firebase/firestore');
     await createNode({ title: 'Test Node', priority: 'medium' }, 'admin-uid');
-    expect(addDoc).toHaveBeenCalled();
-    const callArgs = addDoc.mock.calls[0][1];
+    expect(setDoc).toHaveBeenCalled();
+    const callArgs = setDoc.mock.calls[0][1];
     expect(callArgs.status).toBe('pending');
   });
 
   it('applies default priority=medium when not provided', async () => {
-    const { addDoc } = await import('firebase/firestore');
+    const { setDoc } = await import('firebase/firestore');
     await createNode({ title: 'Test Node', status: 'pending' }, 'admin-uid');
-    const callArgs = addDoc.mock.calls[0][1];
+    const callArgs = setDoc.mock.calls[0][1];
     expect(callArgs.priority).toBe('medium');
   });
 
   it('sets progress=0, childCount=0, isArchived=false on create', async () => {
-    const { addDoc } = await import('firebase/firestore');
+    const { setDoc } = await import('firebase/firestore');
     await createNode(validForm, 'admin-uid');
-    const callArgs = addDoc.mock.calls[0][1];
+    const callArgs = setDoc.mock.calls[0][1];
     expect(callArgs.progress).toBe(0);
     expect(callArgs.childCount).toBe(0);
     expect(callArgs.isArchived).toBe(false);
   });
 
   it('sets createdBy and updatedBy to adminUid', async () => {
-    const { addDoc } = await import('firebase/firestore');
+    const { setDoc } = await import('firebase/firestore');
     await createNode(validForm, 'my-admin-uid');
-    const callArgs = addDoc.mock.calls[0][1];
+    const callArgs = setDoc.mock.calls[0][1];
     expect(callArgs.createdBy).toBe('my-admin-uid');
     expect(callArgs.updatedBy).toBe('my-admin-uid');
   });
 
   it('sets parentId=null for root nodes', async () => {
-    const { addDoc } = await import('firebase/firestore');
+    const { setDoc } = await import('firebase/firestore');
     await createNode(validForm, 'admin-uid', null);
-    const callArgs = addDoc.mock.calls[0][1];
+    const callArgs = setDoc.mock.calls[0][1];
     expect(callArgs.parentId).toBeNull();
   });
 
   it('sets parentId to parent.id for child nodes', async () => {
-    const { addDoc } = await import('firebase/firestore');
+    const { setDoc } = await import('firebase/firestore');
     const parent = { id: 'parent-id', path: 'parent-id', ancestorIds: [], depth: 0, childCount: 0 };
     await createNode(validForm, 'admin-uid', parent);
-    const callArgs = addDoc.mock.calls[0][1];
+    const callArgs = setDoc.mock.calls[0][1];
     expect(callArgs.parentId).toBe('parent-id');
   });
 
-  it('calls updateDoc twice for child nodes (hierarchy + parent childCount)', async () => {
+  it('calls updateDoc once for child nodes (parent childCount increment)', async () => {
     const { updateDoc } = await import('firebase/firestore');
     const parent = { id: 'parent-id', path: 'parent-id', ancestorIds: [], depth: 0, childCount: 2 };
     await createNode(validForm, 'admin-uid', parent);
-    expect(updateDoc).toHaveBeenCalledTimes(2);
+    expect(updateDoc).toHaveBeenCalledTimes(1);
   });
 
-  it('calls updateDoc once for root nodes (hierarchy update only)', async () => {
+  it('does not call updateDoc for root nodes (single setDoc write only)', async () => {
     const { updateDoc } = await import('firebase/firestore');
     await createNode(validForm, 'admin-uid', null);
-    expect(updateDoc).toHaveBeenCalledTimes(1);
+    expect(updateDoc).toHaveBeenCalledTimes(0);
   });
 });
 
@@ -238,11 +241,20 @@ describe('archiveNode', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('sets isArchived=true in Firestore', async () => {
+    getDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ parentId: null }) });
     const { updateDoc } = await import('firebase/firestore');
     await archiveNode('node-123', 'admin-uid');
     const callArgs = updateDoc.mock.calls[0][1];
     expect(callArgs.isArchived).toBe(true);
     expect(callArgs.updatedBy).toBe('admin-uid');
+  });
+
+  it('decrements parent childCount when archiving a child node', async () => {
+    getDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ parentId: 'parent-id' }) });
+    const { updateDoc, increment } = await import('firebase/firestore');
+    await archiveNode('child-node', 'admin-uid');
+    const parentUpdate = updateDoc.mock.calls.find((c) => c[1]?.childCount !== undefined);
+    expect(parentUpdate[1].childCount).toEqual(increment(-1));
   });
 
   it('throws when nodeId is empty', async () => {
@@ -346,5 +358,147 @@ describe('subscribeToNode', () => {
   it('returns an unsubscribe function', () => {
     const unsub = subscribeToNode('node-id', vi.fn(), vi.fn());
     expect(typeof unsub).toBe('function');
+  });
+});
+
+// ─── recomputeNodeRollup ─────────────────────────────────────────────────────
+// Client-side stand-in for the undeployed Cloud Function rollup triggers —
+// see roadmapService.js for why this exists.
+describe('recomputeNodeRollup', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('computes averaged progress + completed count from own tasks and writes the diff', async () => {
+    getDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data:   () => ({ progress: 0, childCompletedCount: 0, status: 'pending', ancestorIds: [] }),
+    });
+    getDocs.mockResolvedValueOnce({
+      docs: [
+        { data: () => ({ status: 'completed',   progress: 100 }) },
+        { data: () => ({ status: 'in-progress', progress: 50 }) },
+      ],
+    });
+
+    await recomputeNodeRollup('node-1');
+
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    const payload = updateDoc.mock.calls[0][1];
+    expect(payload.progress).toBe(75);
+    expect(payload.childCompletedCount).toBe(1);
+    expect(payload.status).toBe('in-progress');
+  });
+
+  it('marks the node completed when every task is completed', async () => {
+    getDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data:   () => ({ progress: 50, childCompletedCount: 1, status: 'in-progress', ancestorIds: [] }),
+    });
+    getDocs.mockResolvedValueOnce({
+      docs: [
+        { data: () => ({ status: 'completed', progress: 100 }) },
+        { data: () => ({ status: 'completed', progress: 100 }) },
+      ],
+    });
+
+    await recomputeNodeRollup('node-1');
+
+    const payload = updateDoc.mock.calls[0][1];
+    expect(payload.progress).toBe(100);
+    expect(payload.status).toBe('completed');
+  });
+
+  it('does not write when computed values match the stored ones', async () => {
+    getDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data:   () => ({ progress: 0, childCompletedCount: 0, status: 'pending', ancestorIds: [] }),
+    });
+    getDocs.mockResolvedValueOnce({ docs: [] });
+
+    await recomputeNodeRollup('node-1');
+
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  it('excludes archived tasks from the average', async () => {
+    getDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data:   () => ({ progress: 0, childCompletedCount: 0, status: 'pending', ancestorIds: [] }),
+    });
+    getDocs.mockResolvedValueOnce({
+      docs: [
+        { data: () => ({ status: 'completed', progress: 100 }) },
+        { data: () => ({ status: 'archived',  progress: 0 }) },
+      ],
+    });
+
+    await recomputeNodeRollup('node-1');
+
+    const payload = updateDoc.mock.calls[0][1];
+    expect(payload.progress).toBe(100);
+    expect(payload.childCompletedCount).toBe(1);
+  });
+
+  it('propagates the new progress to a direct ancestor', async () => {
+    // 1st getDoc: the node itself. 2nd getDoc: the ancestor.
+    getDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data:   () => ({ progress: 0, childCompletedCount: 0, status: 'pending', ancestorIds: ['parent-id'] }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data:   () => ({ progress: 0 }),
+      });
+    // 1st getDocs: the node's own tasks. 2nd getDocs: the ancestor's direct children.
+    getDocs
+      .mockResolvedValueOnce({
+        docs: [{ data: () => ({ status: 'completed', progress: 100 }) }],
+      })
+      .mockResolvedValueOnce({
+        empty: false,
+        docs: [{ data: () => ({ progress: 100 }) }],
+      });
+
+    await recomputeNodeRollup('child-node');
+
+    expect(updateDoc).toHaveBeenCalledTimes(2);
+    const ancestorPayload = updateDoc.mock.calls[1][1];
+    expect(ancestorPayload.progress).toBe(100);
+  });
+
+  it('stops propagating once an ancestor value is unchanged (loop guard)', async () => {
+    getDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data:   () => ({ progress: 0, childCompletedCount: 0, status: 'pending', ancestorIds: ['parent-id', 'grandparent-id'] }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data:   () => ({ progress: 100 }), // already matches what the children average to
+      });
+    getDocs
+      .mockResolvedValueOnce({ docs: [] }) // node has no tasks -> progress stays 0, no self-write
+      .mockResolvedValueOnce({
+        empty: false,
+        docs: [{ data: () => ({ progress: 100 }) }],
+      });
+
+    await recomputeNodeRollup('child-node');
+
+    // No self-write (progress unchanged) and no ancestor write (loop guard stops at parent-id)
+    expect(updateDoc).not.toHaveBeenCalled();
+    expect(getDoc).toHaveBeenCalledTimes(2); // node + first ancestor only — grandparent never reached
+  });
+
+  it('does nothing when the node does not exist', async () => {
+    getDoc.mockResolvedValueOnce({ exists: () => false });
+    await recomputeNodeRollup('missing-node');
+    expect(updateDoc).not.toHaveBeenCalled();
+    expect(getDocs).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when nodeId is falsy', async () => {
+    await recomputeNodeRollup('');
+    expect(getDoc).not.toHaveBeenCalled();
   });
 });

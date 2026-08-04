@@ -66,6 +66,9 @@ export default function RoadmapTaskModal({ isOpen, onClose, nodeId, nodeName = '
           assignedTo:  Array.isArray(task.assignedTo) ? [...task.assignedTo] : [],
         });
       } else {
+        // Deliberately NOT inheriting the milestone's assignedTo here — a
+        // milestone's own assignees are a separate concept from its tasks'
+        // assignees and must be chosen explicitly per task.
         setForm(EMPTY_FORM);
       }
     }

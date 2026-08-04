@@ -6,8 +6,11 @@ import { useAuth }         from '../../context/AuthContext';
 import { canEditRoadmapStructure } from '../../utils/permissions';
 import { archiveNode }     from '../../services/roadmapService';
 import RoadmapTree         from './RoadmapTree';
+import RoadmapJourneyView  from './RoadmapJourneyView';
 import RoadmapNodeModal    from './RoadmapNodeModal';
 import RoadmapNodeDetail   from './RoadmapNodeDetail';
+
+const ROADMAP_VIEW_STORAGE_KEY = 'roadmap-view-mode';
 
 /**
  * CompanyRoadmap.jsx
@@ -55,6 +58,14 @@ export default function CompanyRoadmap() {
 
   // Phase 18: mobile filter row toggle
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // View mode: 'list' (tree) or 'journey' (gamified level-map)
+  const [viewMode, setViewMode] = useState(
+    () => localStorage.getItem(ROADMAP_VIEW_STORAGE_KEY) || 'list'
+  );
+  useEffect(() => {
+    localStorage.setItem(ROADMAP_VIEW_STORAGE_KEY, viewMode);
+  }, [viewMode]);
 
   // ── Deep-link: auto-select nodeId from URL ────────────────────────────────
   useEffect(() => {
@@ -183,20 +194,51 @@ export default function CompanyRoadmap() {
           </p>
         </div>
 
-        {canEdit && (
-          <button
-            id="roadmap-add-root-btn"
-            onClick={handleAddRoot}
-            className="btn-primary flex-shrink-0"
-            title="Add Milestone"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            {/* Phase 18: label hidden on xs to keep header compact */}
-            <span className="hidden xs:inline sm:inline">Add Milestone</span>
-          </button>
-        )}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* View switcher: List / Journey (gamified) */}
+          <div className="flex items-center rounded-lg border border-border bg-surface p-0.5">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-1.5 px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
+                viewMode === 'list' ? 'bg-orange text-white' : 'text-text-secondary hover:text-text-primary'
+              }`}
+              title="List view"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+              <span className="hidden sm:inline">List</span>
+            </button>
+            <button
+              onClick={() => setViewMode('journey')}
+              className={`flex items-center gap-1.5 px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
+                viewMode === 'journey' ? 'bg-orange text-white' : 'text-text-secondary hover:text-text-primary'
+              }`}
+              title="Journey view"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span className="hidden sm:inline">Journey</span>
+            </button>
+          </div>
+
+          {canEdit && (
+            <button
+              id="roadmap-add-root-btn"
+              onClick={handleAddRoot}
+              className="btn-primary flex-shrink-0"
+              title="Add Milestone"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              {/* Phase 18: label hidden on xs to keep header compact */}
+              <span className="hidden xs:inline sm:inline">Add Milestone</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Toolbar ──────────────────────────────────────────────────────────── */}
@@ -347,16 +389,27 @@ export default function CompanyRoadmap() {
           ${detailOpen ? 'sm:pr-3' : ''}
         `}>
           {filteredRoots.length > 0 ? (
-            <RoadmapTree
-              nodes={filteredRoots}
-              depth={0}
-              treeState={treeHook}
-              selectedId={selectedNodeId}
-              onSelect={handleSelect}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              canEdit={canEdit}
-            />
+            viewMode === 'journey' ? (
+              <RoadmapJourneyView
+                nodes={filteredRoots}
+                selectedId={selectedNodeId}
+                onSelect={handleSelect}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                canEdit={canEdit}
+              />
+            ) : (
+              <RoadmapTree
+                nodes={filteredRoots}
+                depth={0}
+                treeState={treeHook}
+                selectedId={selectedNodeId}
+                onSelect={handleSelect}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                canEdit={canEdit}
+              />
+            )
           ) : rootNodes.length === 0 ? (
             <EmptyState canEdit={canEdit} onAdd={handleAddRoot} />
           ) : (

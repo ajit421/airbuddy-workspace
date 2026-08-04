@@ -35,7 +35,7 @@ export const getPriorityColor = (priority) => {
 
 export const getPriorityBg = (priority) => {
   switch (priority) {
-    case 'high': return '#rbc-event-high';
+    case 'high': return '#EF4444';
     case 'medium': return '#F59E0B';
     case 'low': return '#3B82F6';
     default: return '#8B949E';

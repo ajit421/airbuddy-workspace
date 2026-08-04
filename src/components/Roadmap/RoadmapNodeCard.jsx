@@ -60,7 +60,7 @@ function RoadmapNodeCard({
 }) {
   if (!node) return null;
 
-  const hasChildren  = (node.childCount ?? 0) > 0 || (node.childCompletedCount ?? 0) > 0;
+  const hasChildren  = (node.childCount ?? 0) > 0;
   const borderColor  = STATUS_BORDER[node.status] ?? 'border-border';
   const dotColor     = STATUS_DOT[node.status]    ?? 'bg-text-muted';
   const dueDateColor = getDueDateColor(node.dueDate, node.status);
@@ -189,7 +189,7 @@ function RoadmapNodeCard({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M3 7h18M3 12h18M3 17h18" />
               </svg>
-              {node.childCompletedCount ?? 0}/{node.childCount ?? 0} done
+              {node.childCount ?? 0} child {node.childCount === 1 ? 'node' : 'nodes'}
             </span>
           )}
           {isRoot && (
