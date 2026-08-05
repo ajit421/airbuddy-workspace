@@ -166,6 +166,18 @@ export async function updateEmployeeHRDetails(uid, hrData) {
 //   { punchIn: Timestamp, punchOut?: Timestamp, date: 'YYYY-MM-DD' }
 const attendancePath = (uid) => collection(db, 'attendance', uid, 'records');
 
+// ─── HI-2/HI-3 fix: shared local-timezone date string helper ────────────────
+// toISOString().slice(0,10) produces a UTC date, which is wrong for UTC+
+// timezones (e.g. IST users at 00:15 IST → 18:45 UTC previous day).
+// This helper always returns the date in the browser's local timezone.
+function getLocalDateString(date = new Date()) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-'); // 'YYYY-MM-DD' in local timezone
+}
+
 // ─── recordPunch ─────────────────────────────────────────────────────────────
 /**
  * Toggles punch state for the current user.
@@ -177,15 +189,7 @@ const attendancePath = (uid) => collection(db, 'attendance', uid, 'records');
  */
 export async function recordPunch(uid) {
   try {
-    // HI-3 fix: toISOString() gives the UTC date which is wrong for UTC+ timezones
-    // (e.g. IST users punching in at 00:15 IST = 18:45 UTC previous day → wrong date stored).
-    // Reading local year/month/date is always timezone-correct.
-    const now = new Date();
-    const todayStr = [
-      now.getFullYear(),
-      String(now.getMonth() + 1).padStart(2, '0'),
-      String(now.getDate()).padStart(2, '0'),
-    ].join('-'); // 'YYYY-MM-DD' in local timezone
+    const todayStr = getLocalDateString();
     const col = attendancePath(uid);
 
     // Look for an open record for today (has punchIn, no punchOut)
@@ -225,7 +229,8 @@ export async function recordPunch(uid) {
  */
 export async function getTodayAttendance(uid) {
   try {
-    const todayStr = new Date().toISOString().slice(0, 10);
+    // HI-2 fix: use local-timezone date string (was UTC via toISOString)
+    const todayStr = getLocalDateString();
     const q = query(attendancePath(uid), where('date', '==', todayStr), limit(1));
     const snap = await getDocs(q);
     if (snap.empty) return null;
@@ -248,7 +253,8 @@ export async function getAttendanceLast30Days(uid) {
   try {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const cutoff = thirtyDaysAgo.toISOString().slice(0, 10); // 'YYYY-MM-DD'
+    // HI-3 fix: use local-timezone date string (was UTC via toISOString)
+    const cutoff = getLocalDateString(thirtyDaysAgo);
 
     const q = query(
       attendancePath(uid),
