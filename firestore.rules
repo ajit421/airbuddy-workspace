@@ -219,7 +219,10 @@ service cloud.firestore {
         && request.resource.data.get('read', true) == false
         && request.resource.data.get('type', '') in [
              'task_assigned', 'task_updated', 'task_completed',
-             'announcement', 'partner_added', 'general'
+             'announcement', 'partner_added', 'general',
+             'roadmap_task_assigned', 'roadmap_milestone_completed',
+             'roadmap_deadline_tomorrow', 'roadmap_deadline_missed',
+             'roadmap_comment_posted'
            ]
         && request.resource.data.get('title', '').size() <= 200
         && request.resource.data.get('message', '').size() <= 500;

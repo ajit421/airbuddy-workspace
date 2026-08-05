@@ -25,10 +25,8 @@ dist-ssr
 
 # env files — NEVER commit (live API keys inside, see CR-1 in audit)
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+functions/.env
+**/.env
 
 # firebase
 .firebase/
@@ -46,8 +44,4 @@ serviceAccountKey.json
 **/serviceAccountKey.json
 
 # Migration scripts (LO-10: moved to scripts/ — ignore scoped correctly)
-scripts/migrateAttendance.cjs
-
-airbuddy-workspace-firebase-adminsdk-fbsvc-6e16bf3b13.json
-
-workspace-airbuddy-firebase-adminsdk-fbsvc-799fcc43f9.json
+scripts/
