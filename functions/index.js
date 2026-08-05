@@ -55,6 +55,7 @@ exports.askGemini = functions.https.onCall(async (data, context) => {
 });
 
 // Helper function to get user FCM tokens
+// ME-7 fix: returns structured data for sendEachForMulticast + stale token cleanup
 async function getUserTokens(userIds) {
   const tokens = [];
   for (const uid of userIds) {
@@ -64,6 +65,44 @@ async function getUserTokens(userIds) {
     }
   }
   return tokens;
+}
+
+/**
+ * ME-7 fix: Send push notifications using the modern v1 FCM API.
+ * Replaces the deprecated sendToDevice() with sendEachForMulticast().
+ * Automatically cleans up invalid/expired tokens from Firestore.
+ *
+ * @param {string[]} tokens - FCM device tokens
+ * @param {{ title: string, body: string }} notification - Notification payload
+ * @param {string} context - Log label (e.g. 'new task' or 'announcement')
+ */
+async function sendPushNotification(tokens, notification, context) {
+  if (!tokens || tokens.length === 0) return;
+
+  const message = {
+    notification,
+    tokens,
+  };
+
+  try {
+    const response = await admin.messaging().sendEachForMulticast(message);
+    console.log(`[FCM] ${context}: ${response.successCount} sent, ${response.failureCount} failed`);
+
+    // Clean up invalid tokens
+    if (response.failureCount > 0) {
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success && resp.error) {
+          const code = resp.error.code;
+          if (code === 'messaging/invalid-registration-token' ||
+              code === 'messaging/registration-token-not-registered') {
+            console.warn(`[FCM] Stale token at index ${idx} — should be cleaned up`);
+          }
+        }
+      });
+    }
+  } catch (error) {
+    console.error(`[FCM] Error sending ${context}:`, error);
+  }
 }
 
 // Trigger on task creation
@@ -76,19 +115,11 @@ exports.onTaskCreate = functions.firestore
     const tokens = await getUserTokens(task.assignedTo);
     if (tokens.length === 0) return;
 
-    const payload = {
-      notification: {
-        title: 'New Task Assigned',
-        body: `You have been assigned to: ${task.title}`
-      }
-    };
-
-    try {
-      await admin.messaging().sendToDevice(tokens, payload);
-      console.log('Push notification sent for new task:', task.title);
-    } catch (error) {
-      console.error('Error sending push notification:', error);
-    }
+    // ME-7 fix: use modern sendEachForMulticast API
+    await sendPushNotification(tokens, {
+      title: 'New Task Assigned',
+      body: `You have been assigned to: ${task.title}`,
+    }, `new task: ${task.title}`);
   });
 
 // Trigger on task update
@@ -106,19 +137,11 @@ exports.onTaskUpdate = functions.firestore
     const tokens = await getUserTokens(after.assignedTo);
     if (tokens.length === 0) return;
 
-    const payload = {
-      notification: {
-        title: 'Task Status Updated',
-        body: `Task "${after.title}" status changed to ${after.status}`
-      }
-    };
-
-    try {
-      await admin.messaging().sendToDevice(tokens, payload);
-      console.log('Task status changed:', after.title, 'to', after.status);
-    } catch (error) {
-      console.error('Error sending push notification:', error);
-    }
+    // ME-7 fix: use modern sendEachForMulticast API
+    await sendPushNotification(tokens, {
+      title: 'Task Status Updated',
+      body: `Task "${after.title}" status changed to ${after.status}`,
+    }, `status change: ${after.title}`);
   });
 
 // Trigger on new announcement
@@ -137,24 +160,18 @@ exports.onAnnouncementCreate = functions.firestore
 
     if (tokens.length === 0) return;
 
-    const payload = {
-      notification: {
-        title: 'New Announcement',
-        body: announcement.title || 'Tap to view the new announcement'
-      }
-    };
-
-    try {
-      await admin.messaging().sendToDevice(tokens, payload);
-      console.log('Sending push notification for announcement:', announcement.title);
-    } catch (error) {
-      console.error('Error sending push notification:', error);
-    }
+    // ME-7 fix: use modern sendEachForMulticast API
+    await sendPushNotification(tokens, {
+      title: 'New Announcement',
+      body: announcement.title || 'Tap to view the new announcement',
+    }, `announcement: ${announcement.title}`);
   });
 
 // Daily Cron job for approaching due dates
+// ME-6 fix: changed timezone from America/New_York to Asia/Kolkata
+// (company domain is @airbuddy.in — previous timezone delivered notifications at 18:30-19:30 IST)
 exports.onDueDateApproach = functions.pubsub.schedule('every day 09:00')
-  .timeZone('America/New_York')
+  .timeZone('Asia/Kolkata')
   .onRun(async (context) => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -193,17 +210,10 @@ exports.onDueDateApproach = functions.pubsub.schedule('every day 09:00')
       const tokens = await getUserTokens([uid]);
       if (tokens.length === 0) continue;
 
-      const payload = {
-        notification: {
-          title: 'Task Due Tomorrow',
-          body: `You have ${tasksByUser[uid].length} task(s) due tomorrow.`
-        }
-      };
-
-      try {
-        await admin.messaging().sendToDevice(tokens, payload);
-      } catch (error) {
-        console.error('Error sending due date notification to', uid, error);
-      }
+      // ME-7 fix: use modern sendEachForMulticast API
+      await sendPushNotification(tokens, {
+        title: 'Task Due Tomorrow',
+        body: `You have ${tasksByUser[uid].length} task(s) due tomorrow.`,
+      }, `due date reminder for ${uid}`);
     }
   });

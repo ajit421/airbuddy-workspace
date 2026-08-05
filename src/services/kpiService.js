@@ -19,6 +19,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { z } from 'zod';
 
 // ─── Collection name constants ────────────────────────────────────────────────
 const KPI_INDUSTRIES = 'kpi_industries';
@@ -32,6 +33,55 @@ const KPI_PATENTS    = 'kpi_patents';
 /** Map a Firestore QuerySnapshot to a plain-JS array with `id` injected. */
 const snapToArray = (snap) =>
   snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+// ─── ME-5 fix: Zod schemas for write-boundary validation ─────────────────────
+// Matches the pattern in hrmsService.js and roadmapService.js.
+const IndustrySchema = z.object({
+  name:          z.string().min(1, 'Name is required').max(200),
+  status:        z.string().optional().default(''),
+  growthPercent: z.number().optional().nullable(),
+});
+
+const ClientSchema = z.object({
+  name:            z.string().min(1, 'Name is required').max(200),
+  industryId:      z.string().optional().default(''),
+  currentStatus:   z.string().optional().default(''),
+  progressPercent: z.number().min(0).max(100).optional().nullable(),
+});
+
+const ProductSchema = z.object({
+  name:         z.string().min(1, 'Name is required').max(200),
+  type:         z.string().optional().default(''),
+  devCompleted: z.boolean().optional().default(false),
+  stage:        z.enum(['Design', 'Testing', 'Iteration', 'Design Freeze']).optional().nullable(),
+  industryIds:  z.array(z.string()).optional().default([]),
+});
+
+const SaleSchema = z.object({
+  productId:            z.string().optional().default(''),
+  unitsSold:            z.number().int().min(0).optional().default(0),
+  salesProgressPercent: z.number().min(0).max(100).optional().nullable(),
+  launched:             z.boolean().optional().default(false),
+  type:                 z.enum(['B2B Sale', 'Paid Pilot']).optional().nullable(),
+  clientId:             z.string().optional().default(''),
+});
+
+const IPSchema = z.object({
+  ipType:           z.enum(['Patent', 'Trademark', 'Software/Calculator']).default('Patent'),
+  title:            z.string().min(1, 'Title is required').max(300),
+  filingStage:      z.string().optional().default(''),
+  appNumber:        z.string().optional().default(''),
+  fieldOfInvention: z.string().optional().default(''),
+  trademarkClass:   z.string().optional().default(''),
+  toolName:         z.string().optional().default(''),
+  status:           z.string().optional().default(''),
+  repoOrToolLink:   z.string().optional().default(''),
+});
+
+/** Strips unknown keys and validates partial data for updates. */
+function validatePartial(schema, data) {
+  return schema.partial().strip().parse(data);
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // INDUSTRIES
@@ -65,8 +115,9 @@ export function subscribeToKpiIndustries(onData, onError) {
  */
 export async function addKpiIndustry(data) {
   try {
+    const validated = IndustrySchema.parse(data); // ME-5: validate at write boundary
     const ref = await addDoc(collection(db, KPI_INDUSTRIES), {
-      ...data,
+      ...validated,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -84,8 +135,9 @@ export async function addKpiIndustry(data) {
  */
 export async function updateKpiIndustry(id, data) {
   try {
+    const validated = validatePartial(IndustrySchema, data); // ME-5
     await updateDoc(doc(db, KPI_INDUSTRIES, id), {
-      ...data,
+      ...validated,
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
@@ -139,8 +191,9 @@ export function subscribeToKpiClients(onData, onError) {
  */
 export async function addKpiClient(data) {
   try {
+    const validated = ClientSchema.parse(data); // ME-5
     const ref = await addDoc(collection(db, KPI_CLIENTS), {
-      ...data,
+      ...validated,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -158,8 +211,9 @@ export async function addKpiClient(data) {
  */
 export async function updateKpiClient(id, data) {
   try {
+    const validated = validatePartial(ClientSchema, data); // ME-5
     await updateDoc(doc(db, KPI_CLIENTS, id), {
-      ...data,
+      ...validated,
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
@@ -217,8 +271,9 @@ export function subscribeToKpiProducts(onData, onError) {
  */
 export async function addKpiProduct(data) {
   try {
+    const validated = ProductSchema.parse(data); // ME-5
     const ref = await addDoc(collection(db, KPI_PRODUCTS), {
-      ...data,
+      ...validated,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -236,8 +291,9 @@ export async function addKpiProduct(data) {
  */
 export async function updateKpiProduct(id, data) {
   try {
+    const validated = validatePartial(ProductSchema, data); // ME-5
     await updateDoc(doc(db, KPI_PRODUCTS, id), {
-      ...data,
+      ...validated,
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
@@ -295,8 +351,9 @@ export function subscribeToKpiSales(onData, onError) {
  */
 export async function addKpiSale(data) {
   try {
+    const validated = SaleSchema.parse(data); // ME-5
     const ref = await addDoc(collection(db, KPI_SALES), {
-      ...data,
+      ...validated,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -314,8 +371,9 @@ export async function addKpiSale(data) {
  */
 export async function updateKpiSale(id, data) {
   try {
+    const validated = validatePartial(SaleSchema, data); // ME-5
     await updateDoc(doc(db, KPI_SALES, id), {
-      ...data,
+      ...validated,
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
@@ -373,9 +431,9 @@ export function subscribeToKpiPatents(onData, onError) {
  */
 export async function addKpiPatent(data) {
   try {
+    const validated = IPSchema.parse({ ...data, ipType: data.ipType || 'Patent' }); // ME-5
     const ref = await addDoc(collection(db, KPI_PATENTS), {
-      ...data,
-      ipType: data.ipType || 'Patent',
+      ...validated,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -393,8 +451,9 @@ export async function addKpiPatent(data) {
  */
 export async function updateKpiPatent(id, data) {
   try {
+    const validated = validatePartial(IPSchema, data); // ME-5
     await updateDoc(doc(db, KPI_PATENTS, id), {
-      ...data,
+      ...validated,
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
@@ -431,8 +490,9 @@ export async function deleteKpiPatent(id) {
  */
 export async function addKpiIP(data) {
   try {
+    const validated = IPSchema.parse(data); // ME-5
     const ref = await addDoc(collection(db, KPI_PATENTS), {
-      ...data,
+      ...validated,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -450,8 +510,9 @@ export async function addKpiIP(data) {
  */
 export async function updateKpiIP(id, data) {
   try {
+    const validated = validatePartial(IPSchema, data); // ME-5
     await updateDoc(doc(db, KPI_PATENTS, id), {
-      ...data,
+      ...validated,
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
