@@ -6,6 +6,7 @@ import { ProgressBar } from '../shared/TaskCard';
 import { formatDate, getDueDateLabel, getDueDateColor } from '../../utils/dateHelpers';
 import TaskTimeline from './TaskTimeline';
 import RoleBadge from '../shared/RoleBadge';
+import TaskTodoList from '../shared/TaskTodoList';
 
 const statusColors = {
   'pending': 'bg-orange/10 text-orange border-orange/20',
@@ -112,6 +113,12 @@ const TaskDetailDrawer = ({ task, colleagues, onClose }) => (
             <span className="text-text-primary">{task.progress || 0}%</span>
           </div>
           <ProgressBar progress={task.progress} />
+        </div>
+
+        {/* Todo List — same shared section as TaskDetailModal so the checklist
+            is identical wherever a task is opened from */}
+        <div className="bg-surfaceHover/20 rounded-xl border border-border/50 p-4">
+          <TaskTodoList task={task} />
         </div>
 
         {/* Colleagues Profiles */}

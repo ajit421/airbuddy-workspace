@@ -12,6 +12,7 @@ import { recordStatusChange, recordProgressUpdate } from '../../services/collabo
 import { updateRoadmapTask } from '../../services/roadmapTaskService';
 import WorkPartnersSection from '../WorkPartner/WorkPartnersSection';
 import TaskTimeline from '../WorkPartner/TaskTimeline';
+import TaskTodoList from '../shared/TaskTodoList';
 
 // ─── Completion Dialog ────────────────────────────────────────────────────────
 // Shown when user tries to save progress at 100%
@@ -126,8 +127,11 @@ export default function TaskDetailModal({ task, onClose }) {
   const _canEdit = canEditTask(task, userProfile);
   const canUpdate = canUpdateProgress(task, userProfile);
   const _overdue = isOverdue(task.dueDate) && task.status !== 'completed';
-  const dueDays = getDueDateLabel(task.dueDate);
-  const dueDateColor = getDueDateColor(task.dueDate);
+  // Pass the status: without it a finished task past its due date renders
+  // "Overdue by Nd" in red even though it is completed. Every other call site
+  // of these helpers (TaskCard, WorkPartner, the roadmap cards) passes it too.
+  const dueDays = getDueDateLabel(task.dueDate, task.status);
+  const dueDateColor = getDueDateColor(task.dueDate, task.status);
 
   // Permission: task creator OR admin can edit
   const canEditDetails =
@@ -417,6 +421,11 @@ export default function TaskDetailModal({ task, onClose }) {
             ) : (
               <ProgressBar progress={task.progress} />
             )}
+          </div>
+
+          {/* ── Todo List (per-task checklist, full CRUD) ───────────── */}
+          <div className="border-t border-border pt-4">
+            <TaskTodoList task={task} />
           </div>
 
           {/* Completion Note (if completed) */}

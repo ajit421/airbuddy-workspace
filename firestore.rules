@@ -140,7 +140,10 @@ service cloud.firestore {
       // Update: Admin can update any.
       // 1. Creator can update personal tasks.
       // 2. Assignee can update progress/status/dueDate/completionNote/attachments (denied from core metadata).
-      // 3. ANY participant (Creator, Assignee, Work Partner) can update the workPartner arrays + updatedAt.
+      // 3. ANY participant (Creator, Assignee, Work Partner) can update the workPartner arrays,
+      //    the `todos` checklist, and updatedAt. `todos` is here so a work partner who is
+      //    neither assignee nor creator can still tick items off the shared checklist —
+      //    assignees/creators/admins already reach it through the branches above.
       allow update: if isAuthenticated() && isEmailAllowed() && (
         isAdmin() ||
         (resource.data.get('isAdminTask', false) == false && resource.data.get('createdBy', '') == getEffectiveUid()) ||
@@ -154,7 +157,7 @@ service cloud.firestore {
         (
           isTaskParticipantLocal(resource.data) &&
           request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['workPartners', 'workPartnerUids', 'updatedAt'])
+              .hasOnly(['workPartners', 'workPartnerUids', 'updatedAt', 'todos'])
         )
       );
 
