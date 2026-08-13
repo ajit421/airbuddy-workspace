@@ -129,7 +129,7 @@ const AssignTask = ({ users }) => {
           .filter(uid => uid !== userProfile?.uid)
           .map(uid => sendNotification(
             uid,
-            '🆕 New Task Assigned',
+            'New Task Assigned',
             `"${form.title}" has been assigned to you.${eventLink ? ' Check your Google Calendar.' : ''}`,
             'task_assigned',
             eventLink,
