@@ -18,6 +18,28 @@ export const canUpdateProgress = (task, userProfile) => {
 
 export const canDeleteTask = (task, userProfile) => canEditTask(task, userProfile);
 
+/**
+ * Who may add / check / edit / delete items on a task's todo list.
+ *
+ * Everyone who actually works the task: admins, the creator, assignees, and
+ * work partners. Wider than canUpdateProgress by design — a partner brought in
+ * to help should be able to tick items off the shared checklist.
+ *
+ * Mirrors the task update rules in firestore.rules; the rules remain the real
+ * boundary (see the `todos` entry in the participant carve-out there).
+ *
+ * @param {object|null} task        - Task document
+ * @param {object|null} userProfile - User profile object from Firestore
+ * @returns {boolean}
+ */
+export const canManageTodos = (task, userProfile) => {
+  if (!task || !userProfile) return false;
+  if (userProfile.role === 'admin') return true;
+  if (task.createdBy === userProfile.uid) return true;
+  if (Array.isArray(task.assignedTo) && task.assignedTo.includes(userProfile.uid)) return true;
+  return Array.isArray(task.workPartnerUids) && task.workPartnerUids.includes(userProfile.uid);
+};
+
 export const canViewTask = (task, userProfile) => {
   if (!task || !userProfile) return false;
   if (userProfile.role === 'admin') return true;

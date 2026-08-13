@@ -69,6 +69,15 @@ describe('dateHelpers.js Unit Tests', () => {
       // Future
       expect(getDueDateLabel(new Date(2026, 6, 12), 'pending')).toBe('Due in 3 days');
 
+      // A completed task must never read as overdue, however far past its due
+      // date it is — this is what the Task Detail modal regressed on.
+      expect(getDueDateLabel(new Date(2026, 5, 1), 'completed')).toBe('Completed');
+      expect(getDueDateLabel(new Date(2026, 6, 9), 'completed')).not.toMatch(/Overdue/);
+      expect(getDueDateLabel(new Date(2026, 6, 12), 'completed')).not.toMatch(/Overdue/);
+
+      // Missing status keeps the old behaviour for non-completed callers
+      expect(getDueDateLabel(new Date(2026, 6, 5))).toBe('Overdue by 4d');
+
       vi.useRealTimers();
     });
 
@@ -84,6 +93,10 @@ describe('dateHelpers.js Unit Tests', () => {
       expect(getDueDateColor(new Date(2026, 6, 12), 'pending')).toBe('text-yellow-400');
       // Due in 5 days
       expect(getDueDateColor(new Date(2026, 6, 14), 'pending')).toBe('text-text-secondary');
+
+      // Completed tasks are never coloured as overdue, before or after the date
+      expect(getDueDateColor(new Date(2026, 6, 5), 'completed')).not.toBe('text-red-400');
+      expect(getDueDateColor(new Date(2026, 6, 14), 'completed')).not.toBe('text-red-400');
 
       vi.useRealTimers();
     });

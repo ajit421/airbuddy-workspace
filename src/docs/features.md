@@ -69,9 +69,26 @@ Clicking any task card opens a full-screen modal with:
 - Start and due dates with an **Extend Due Date** control (hover to reveal)
 - A **progress slider** (0–100%) with a **Save Progress** button
 - On reaching 100%, a **Completion Dialog** prompts for a commit message and optional attachment link
+- A **Todo List** checklist for breaking the task into steps (see below)
 - A **Work Partners** section for collaborative tasks
 - A **GitHub-style collaboration timeline** showing all commits, status changes, and partner additions
 - An **"Add to My Google Calendar"** button for syncing to your personal calendar
+
+### Todo List (task checklist)
+
+Every task carries its own checklist, shown under **Progress** in the Task Detail Modal and in the Work Partner task drawer — the same list in both places.
+
+- **Add** an item by typing in *Add a checklist item…* and pressing <kbd>Enter</kbd> (or tapping **+**)
+- **Check / uncheck** an item with its checkbox; done items are struck through
+- **Edit** an item's text with the pencil icon — <kbd>Enter</kbd> saves, <kbd>Esc</kbd> cancels
+- **Delete** an item with the trash icon
+- A counter (e.g. **3/5**), a percentage, and a bar show how much of the checklist is done
+
+The checklist counter is **separate from the task's own progress slider** — ticking items off does not move task progress, so you stay in control of what the task reports.
+
+Anyone who works the task can use the checklist: admins, the task creator, assignees, and work partners. Everyone else sees it read-only. Items record who added them and who completed them — hover an item to see that.
+
+Changes appear live for everyone viewing the task, and each change is applied inside a transaction, so two people ticking different items at the same moment can't undo each other's work.
 
 ### Creating Personal Tasks
 

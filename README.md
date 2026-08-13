@@ -95,6 +95,7 @@ Route guards (`ProtectedRoute`, `AdminRoute`) enforce access at the router level
 - Displays full task info: title, description, module, priority, status, progress, start/end dates, assignees, links, and attachments.
 - Employees can update their own **progress** (0–100% slider) and **status**.
 - Admins can edit all fields.
+- **Todo List** — a per-task checklist with full CRUD (add, check/uncheck, inline edit, delete), stored in the task's `todos` array. Open to admins, the creator, assignees, and work partners; read-only for everyone else. Shows a `done/total` counter and percentage, kept deliberately separate from the task's own progress value. Mutations run in a Firestore transaction so concurrent edits can't be lost, and the same section appears in the Work Partner task drawer.
 - **"Add to My Google Calendar"** button to sync the task to the user's personal calendar.
 
 ### 🤖 AI Assistant (AirBuddy AI)
