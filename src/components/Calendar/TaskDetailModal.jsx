@@ -229,7 +229,7 @@ export default function TaskDetailModal({ task, onClose }) {
         await notifyUsers(
           recipients,
           userProfile?.uid,
-          '✅ Task Completed!',
+          'Task Completed!',
           `"${task.title}" has been marked complete by ${userProfile?.name || 'a teammate'}.`,
           'task_completed'
         );
@@ -237,7 +237,7 @@ export default function TaskDetailModal({ task, onClose }) {
         await notifyUsers(
           recipients,
           userProfile?.uid,
-          '📊 Task Progress Updated',
+          'Task Progress Updated',
           `"${task.title}" is now at ${progress}% — ${progress > 0 ? 'in progress' : 'pending'}.`,
           'task_updated'
         );
@@ -313,7 +313,7 @@ export default function TaskDetailModal({ task, onClose }) {
               )}
               {task._mirrorOf === 'roadmap' && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange/10 text-orange border border-orange/20">
-                  🗺 Admin Assigned · Roadmap
+                  Admin Assigned - Roadmap
                 </span>
               )}
               <PriorityBadge priority={task.priority} />
