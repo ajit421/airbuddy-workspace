@@ -2,9 +2,8 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
@@ -23,33 +22,12 @@ export const googleProvider = new GoogleAuthProvider();
 
 // googleProvider.addScope('https://www.googleapis.com/auth/calendar');
 
-let messaging = null;
-try {
-  messaging = getMessaging(app);
-} catch {
-  console.warn('FCM not supported in this browser.');
-}
-export { messaging };
-
-export const requestNotificationPermission = async () => {
-  if (!messaging) return null;
-  try {
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      const token = await getToken(messaging, {
-        vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
-      });
-      return token;
-    }
-  } catch (err) {
-    console.warn('FCM token request failed:', err);
-  }
-  return null;
-};
-
-export const onForegroundMessage = (callback) => {
-  if (!messaging) return () => { };
-  return onMessage(messaging, callback);
-};
+// Cloud Messaging lives in src/services/pushService.js.
+//
+// It used to be initialised eagerly here with a bare getMessaging(app) in a
+// try/catch, which is unreliable feature detection — getMessaging does not
+// throw synchronously on every unsupported browser. pushService.js uses the
+// SDK's own async isSupported() instead and owns service-worker registration,
+// token persistence and the foreground listener as one unit.
 
 export default app;

@@ -3,6 +3,15 @@
  * Firestore Cloud Function triggers for roadmap progress rollup (Phase 8)
  * and audit history writes (Phase 17).
  *
+ * Migrated to the firebase-functions v2 API (`onDocumentWritten`). The v1
+ * entry point `functions.firestore.document(...).onWrite()` does not exist on
+ * the firebase-functions v7 root export, so the v1 version of this file threw
+ * at module load and blocked the whole codebase from deploying.
+ *
+ * v2 event shape:
+ *   event.params.{nodeId,taskId}
+ *   event.data.before / event.data.after   — DocumentSnapshot (may be missing)
+ *
  * ─── Phase 8 triggers ───────────────────────────────────────────────────────
  * Trigger 1: onRoadmapTaskWrite
  *   Path: roadmapNodes/{nodeId}/tasks/{taskId}
@@ -32,19 +41,24 @@
  * Phase 8: skips writes when rounded progress value hasn't changed.
  * Phase 17: skips history entries when only metadata fields (updatedAt,
  *   updatedBy, path, ancestorIds, depth) changed with no substantive diff.
+ *
+ * NOTE: the client also runs the same rollup in
+ * src/services/roadmapService.js#recomputeNodeRollup() for instant UI feedback.
+ * Both paths are idempotent — whichever runs second finds the rounded value
+ * unchanged and skips its write.
  */
 
 'use strict';
 
-const functions = require('firebase-functions');
-const admin     = require('firebase-admin');
+const { onDocumentWritten } = require('firebase-functions/v2/firestore');
+const logger = require('firebase-functions/logger');
+
+const { db, FieldValue } = require('./adminApp');
 
 const {
   recomputeNodeProgress,
   propagateProgressToAncestors,
 } = require('./roadmapService.server');
-
-const db = admin.firestore();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 8 — Trigger 1: onRoadmapTaskWrite
@@ -52,27 +66,27 @@ const db = admin.firestore();
 // Recomputes the parent node's progress using a transaction.
 // ─────────────────────────────────────────────────────────────────────────────
 
-exports.onRoadmapTaskWrite = functions.firestore
-  .document('roadmapNodes/{nodeId}/tasks/{taskId}')
-  .onWrite(function(change, context) {
-    var nodeId = context.params.nodeId;
-    var taskId = context.params.taskId;
+exports.onRoadmapTaskWrite = onDocumentWritten(
+  'roadmapNodes/{nodeId}/tasks/{taskId}',
+  async (event) => {
+    const { nodeId, taskId } = event.params;
 
-    console.log('[onRoadmapTaskWrite] task ' + taskId + ' written under node ' + nodeId);
+    logger.info(`[onRoadmapTaskWrite] task ${taskId} written under node ${nodeId}`);
 
-    // recomputeNodeProgress handles the loop guard internally (transaction + round check)
-    return recomputeNodeProgress(nodeId, db, admin)
-      .then(function(result) {
-        if (result.wrote) {
-          console.log('[onRoadmapTaskWrite] node ' + nodeId + ' progress -> ' + result.newProgress);
-        } else {
-          console.log('[onRoadmapTaskWrite] node ' + nodeId + ' progress unchanged (' + result.newProgress + ') - no write');
-        }
-      })
-      .catch(function(err) {
-        console.error('[onRoadmapTaskWrite] ERROR for node ' + nodeId + ':', err);
-      });
-  });
+    try {
+      // recomputeNodeProgress handles the loop guard internally
+      // (transaction + rounded-value check).
+      const result = await recomputeNodeProgress(nodeId, db, FieldValue);
+      if (result.wrote) {
+        logger.info(`[onRoadmapTaskWrite] node ${nodeId} progress -> ${result.newProgress}`);
+      } else {
+        logger.info(`[onRoadmapTaskWrite] node ${nodeId} progress unchanged (${result.newProgress}) — no write`);
+      }
+    } catch (err) {
+      logger.error(`[onRoadmapTaskWrite] ERROR for node ${nodeId}:`, err);
+    }
+  },
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 8 — Trigger 2: onRoadmapNodeProgressChange
@@ -80,69 +94,61 @@ exports.onRoadmapTaskWrite = functions.firestore
 // If the progress field changed, propagates the new value up to all ancestors.
 // ─────────────────────────────────────────────────────────────────────────────
 
-exports.onRoadmapNodeProgressChange = functions.firestore
-  .document('roadmapNodes/{nodeId}')
-  .onWrite(function(change, context) {
-    var nodeId = context.params.nodeId;
+exports.onRoadmapNodeProgressChange = onDocumentWritten(
+  'roadmapNodes/{nodeId}',
+  async (event) => {
+    const { nodeId } = event.params;
+    const change = event.data;
+    if (!change) return;
 
     // Document deleted — nothing to propagate
     if (!change.after.exists) {
-      console.log('[onRoadmapNodeProgressChange] node ' + nodeId + ' deleted — skipping');
-      return null;
+      logger.info(`[onRoadmapNodeProgressChange] node ${nodeId} deleted — skipping`);
+      return;
     }
 
-    var afterData  = change.after.data();
-    var beforeData = change.before.exists ? change.before.data() : null;
+    const afterData  = change.after.data() || {};
+    const beforeData = change.before.exists ? (change.before.data() || {}) : null;
 
-    var progressAfter  = afterData.progress  || 0;
-    var progressBefore = beforeData ? (beforeData.progress || 0) : null;
+    const progressAfter  = afterData.progress || 0;
+    const progressBefore = beforeData ? (beforeData.progress || 0) : null;
 
     // Only propagate if progress actually changed (loop guard — outer layer)
     if (beforeData !== null && Math.round(progressAfter) === Math.round(progressBefore)) {
-      console.log('[onRoadmapNodeProgressChange] node ' + nodeId +
-        ' progress unchanged (' + progressAfter + ') — skipping ancestor propagation');
-      return null;
+      logger.info(`[onRoadmapNodeProgressChange] node ${nodeId} progress unchanged (${progressAfter}) — skipping ancestor propagation`);
+      return;
     }
 
-    var ancestorIds = afterData.ancestorIds || [];
-
+    const ancestorIds = afterData.ancestorIds || [];
     if (ancestorIds.length === 0) {
-      console.log('[onRoadmapNodeProgressChange] node ' + nodeId + ' is root — no ancestors to update');
-      return null;
+      logger.info(`[onRoadmapNodeProgressChange] node ${nodeId} is root — no ancestors to update`);
+      return;
     }
 
-    console.log('[onRoadmapNodeProgressChange] node ' + nodeId +
-      ' progress ' + progressBefore + ' -> ' + progressAfter +
-      '. Propagating to ' + ancestorIds.length + ' ancestor(s)...');
+    logger.info(`[onRoadmapNodeProgressChange] node ${nodeId} progress ${progressBefore} -> ${progressAfter}. Propagating to ${ancestorIds.length} ancestor(s)...`);
 
-    return propagateProgressToAncestors(ancestorIds, db, admin)
-      .catch(function(err) {
-        console.error('[onRoadmapNodeProgressChange] ERROR for node ' + nodeId + ':', err);
-      });
-  });
+    try {
+      await propagateProgressToAncestors(ancestorIds, db, FieldValue);
+    } catch (err) {
+      logger.error(`[onRoadmapNodeProgressChange] ERROR for node ${nodeId}:`, err);
+    }
+  },
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 17 — Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Fields on a roadmap node that are "structural" and never produce
- * a history entry on their own when only they change.
- * Rollup fields (progress, childCount, childCompletedCount) are logged
- * as lightweight "system" entries — see SYSTEM_FIELDS below.
- */
-var SKIP_ONLY_FIELDS = ['updatedAt', 'updatedBy', 'path', 'ancestorIds', 'depth', 'createdAt'];
-
-/**
  * Rollup / system-managed fields. When these change they get a history
  * entry attributed to "system" with no previousValue detail.
  */
-var SYSTEM_FIELDS = ['progress', 'childCount', 'childCompletedCount'];
+const SYSTEM_FIELDS = ['progress', 'childCount', 'childCompletedCount'];
 
 /**
  * Fields to track for node history entries (non-system).
  */
-var NODE_TRACKED_FIELDS = [
+const NODE_TRACKED_FIELDS = [
   'title', 'description', 'status', 'priority',
   'startDate', 'dueDate', 'assignedTo', 'tags',
   'dependencies', 'order', 'isArchived',
@@ -151,7 +157,7 @@ var NODE_TRACKED_FIELDS = [
 /**
  * Fields to track for task history entries.
  */
-var TASK_TRACKED_FIELDS = [
+const TASK_TRACKED_FIELDS = [
   'title', 'description', 'status', 'priority',
   'progress', 'assignedTo', 'dueDate',
   'completionNote',
@@ -193,22 +199,20 @@ function valuesEqual(a, b) {
   if ((a === null || a === undefined) !== (b === null || b === undefined)) return false;
 
   // Firestore Timestamps: compare millis
-  var aIsTs = a && typeof a.toMillis === 'function';
-  var bIsTs = b && typeof b.toMillis === 'function';
+  const aIsTs = a && typeof a.toMillis === 'function';
+  const bIsTs = b && typeof b.toMillis === 'function';
   if (aIsTs && bIsTs) return a.toMillis() === b.toMillis();
   if (aIsTs !== bIsTs) {
     // One is a Timestamp, other might be a Date string — compare as ISO date
-    var aStr = aIsTs ? stringifyValue(a) : String(a);
-    var bStr = bIsTs ? stringifyValue(b) : String(b);
+    const aStr = aIsTs ? stringifyValue(a) : String(a);
+    const bStr = bIsTs ? stringifyValue(b) : String(b);
     return aStr === bStr;
   }
 
   // Arrays: compare sorted string representations
   if (Array.isArray(a) && Array.isArray(b)) {
     if (a.length !== b.length) return false;
-    var aSorted = [...a].sort().join(',');
-    var bSorted = [...b].sort().join(',');
-    return aSorted === bSorted;
+    return [...a].sort().join(',') === [...b].sort().join(',');
   }
   if (Array.isArray(a) !== Array.isArray(b)) return false;
 
@@ -219,19 +223,63 @@ function valuesEqual(a, b) {
  * Write a history entry to roadmapNodes/{nodeId}/history.
  * Uses Admin SDK — bypasses the client `allow write: if false` rule.
  *
+ * `nodeId` is denormalized onto the entry because firestore.indexes.json
+ * index 6 (collectionGroup history: nodeId + timestamp) queries on it.
+ *
  * @param {string} nodeId
  * @param {object} entry  - History document fields
  * @returns {Promise<void>}
  */
-function writeHistoryEntry(nodeId, entry) {
-  return db
+async function writeHistoryEntry(nodeId, entry) {
+  const ref = await db
     .collection('roadmapNodes')
     .doc(nodeId)
     .collection('history')
-    .add(entry)
-    .then(function(ref) {
-      console.log('[Phase17] History entry written: ' + ref.id + ' for node ' + nodeId);
-    });
+    .add({ nodeId, ...entry });
+  logger.info(`[Phase17] History entry written: ${ref.id} for node ${nodeId}`);
+}
+
+/**
+ * Build the changedFields array for a newly created document — every
+ * non-empty tracked field, recorded as an empty -> value transition.
+ *
+ * @param {object} data
+ * @param {string[]} trackedFields
+ * @returns {Array<{field: string, previousValue: string, newValue: string}>}
+ */
+function initialFieldEntries(data, trackedFields) {
+  const entries = [];
+  for (const field of trackedFields) {
+    const val = data[field];
+    const isEmpty = val === null || val === undefined || val === '' ||
+                    (Array.isArray(val) && val.length === 0);
+    if (!isEmpty) {
+      entries.push({ field, previousValue: '', newValue: stringifyValue(val) });
+    }
+  }
+  return entries;
+}
+
+/**
+ * Diff two documents across a tracked field list.
+ *
+ * @param {object} beforeData
+ * @param {object} afterData
+ * @param {string[]} trackedFields
+ * @returns {Array<{field: string, previousValue: string, newValue: string}>}
+ */
+function diffFields(beforeData, afterData, trackedFields) {
+  const changed = [];
+  for (const field of trackedFields) {
+    if (!valuesEqual(beforeData[field], afterData[field])) {
+      changed.push({
+        field,
+        previousValue: stringifyValue(beforeData[field]),
+        newValue:      stringifyValue(afterData[field]),
+      });
+    }
+  }
+  return changed;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -240,131 +288,81 @@ function writeHistoryEntry(nodeId, entry) {
 // document per substantive change (skips metadata-only writes).
 // ─────────────────────────────────────────────────────────────────────────────
 
-exports.onRoadmapNodeHistory = functions.firestore
-  .document('roadmapNodes/{nodeId}')
-  .onWrite(function(change, context) {
-    var nodeId = context.params.nodeId;
+exports.onRoadmapNodeHistory = onDocumentWritten(
+  'roadmapNodes/{nodeId}',
+  async (event) => {
+    const { nodeId } = event.params;
+    const change = event.data;
+    if (!change) return;
 
-    // ── Determine action ────────────────────────────────────────────────────
-    var action;
-    if (!change.before.exists && change.after.exists) {
-      action = 'created';
-    } else if (change.before.exists && !change.after.exists) {
-      action = 'deleted';
-    } else {
-      action = 'updated';
-    }
+    const afterExists  = change.after.exists;
+    const beforeExists = change.before.exists;
 
-    var afterData  = change.after.exists  ? change.after.data()  : {};
-    var beforeData = change.before.exists ? change.before.data() : {};
+    const afterData  = afterExists  ? (change.after.data()  || {}) : {};
+    const beforeData = beforeExists ? (change.before.data() || {}) : {};
 
-    // changedBy: prefer updatedBy from after; fallback to createdBy on creation
-    var changedBy = afterData.updatedBy || afterData.createdBy || 'system';
+    try {
+      // ── created ───────────────────────────────────────────────────────────
+      if (!beforeExists && afterExists) {
+        await writeHistoryEntry(nodeId, {
+          action:        'created',
+          changedBy:     afterData.updatedBy || afterData.createdBy || 'system',
+          changedFields: initialFieldEntries(afterData, NODE_TRACKED_FIELDS),
+          nodeTitle:     afterData.title || '',
+          timestamp:     FieldValue.serverTimestamp(),
+          entityType:    'node',
+        });
+        return;
+      }
 
-    // ── Action = 'created' ──────────────────────────────────────────────────
-    if (action === 'created') {
-      var createdEntry = {
-        action:         'created',
-        changedBy:      changedBy,
-        changedFields:  [],
-        nodeTitle:      afterData.title || '',
-        timestamp:      admin.firestore.FieldValue.serverTimestamp(),
-        entityType:     'node',
-      };
+      // ── deleted ───────────────────────────────────────────────────────────
+      if (beforeExists && !afterExists) {
+        await writeHistoryEntry(nodeId, {
+          action:        'deleted',
+          changedBy:     beforeData.updatedBy || beforeData.createdBy || 'system',
+          changedFields: [],
+          nodeTitle:     beforeData.title || '',
+          timestamp:     FieldValue.serverTimestamp(),
+          entityType:    'node',
+        });
+        return;
+      }
 
-      // Capture initial non-empty values as "changedFields" for completeness
-      NODE_TRACKED_FIELDS.forEach(function(field) {
-        var val = afterData[field];
-        var isEmpty = val === null || val === undefined || val === '' ||
-                      (Array.isArray(val) && val.length === 0);
-        if (!isEmpty) {
-          createdEntry.changedFields.push({
-            field:         field,
-            previousValue: '',
-            newValue:      stringifyValue(val),
-          });
+      // ── updated ───────────────────────────────────────────────────────────
+      const changedFields = diffFields(beforeData, afterData, NODE_TRACKED_FIELDS);
+
+      // Rollup fields get lighter entries with no previousValue.
+      const systemChangedFields = [];
+      for (const field of SYSTEM_FIELDS) {
+        if (!valuesEqual(beforeData[field], afterData[field])) {
+          systemChangedFields.push({ field, newValue: stringifyValue(afterData[field]) });
         }
-      });
-
-      return writeHistoryEntry(nodeId, createdEntry)
-        .catch(function(err) {
-          console.error('[onRoadmapNodeHistory] created write error for node ' + nodeId + ':', err);
-        });
-    }
-
-    // ── Action = 'deleted' ──────────────────────────────────────────────────
-    if (action === 'deleted') {
-      return writeHistoryEntry(nodeId, {
-        action:        'deleted',
-        changedBy:     beforeData.updatedBy || beforeData.createdBy || 'system',
-        changedFields: [],
-        nodeTitle:     beforeData.title || '',
-        timestamp:     admin.firestore.FieldValue.serverTimestamp(),
-        entityType:    'node',
-      }).catch(function(err) {
-        console.error('[onRoadmapNodeHistory] deleted write error for node ' + nodeId + ':', err);
-      });
-    }
-
-    // ── Action = 'updated' ──────────────────────────────────────────────────
-
-    // Determine action label (archived is a special case of updated)
-    var isArchive = !beforeData.isArchived && afterData.isArchived;
-    var actualAction = isArchive ? 'archived' : 'updated';
-
-    // Diff tracked (non-system) fields
-    var changedFields = [];
-    NODE_TRACKED_FIELDS.forEach(function(field) {
-      var before = beforeData[field];
-      var after  = afterData[field];
-      if (!valuesEqual(before, after)) {
-        changedFields.push({
-          field:         field,
-          previousValue: stringifyValue(before),
-          newValue:      stringifyValue(after),
-        });
       }
-    });
 
-    // Diff system/rollup fields — lighter entries
-    var systemChangedFields = [];
-    SYSTEM_FIELDS.forEach(function(field) {
-      var before = beforeData[field];
-      var after  = afterData[field];
-      if (!valuesEqual(before, after)) {
-        systemChangedFields.push({
-          field:    field,
-          newValue: stringifyValue(after),
-        });
+      // Loop guard: if nothing substantive changed (only updatedAt/updatedBy/
+      // path/ancestorIds/depth), don't write. This is what stops the Phase 8
+      // rollup triggers from generating an endless history stream.
+      if (changedFields.length === 0 && systemChangedFields.length === 0) {
+        logger.debug(`[onRoadmapNodeHistory] node ${nodeId} — only metadata changed, skipping history write`);
+        return;
       }
-    });
 
-    // ── Loop guard ──────────────────────────────────────────────────────────
-    // If NOTHING substantive changed (only SKIP_ONLY_FIELDS or no fields at all),
-    // don't write a history entry. This prevents infinite loops from metadata-only
-    // writes (e.g. the progress rollup triggers from Phase 8 writing updatedAt).
-    if (changedFields.length === 0 && systemChangedFields.length === 0) {
-      console.log('[onRoadmapNodeHistory] node ' + nodeId +
-        ' — only metadata changed, skipping history write');
-      return null;
-    }
+      const isArchive = !beforeData.isArchived && afterData.isArchived;
 
-    // Build the combined history entry
-    var entry = {
-      action:             actualAction,
-      changedBy:          changedBy,
-      changedFields:      changedFields,
-      systemChangedFields: systemChangedFields,
-      nodeTitle:          afterData.title || '',
-      timestamp:          admin.firestore.FieldValue.serverTimestamp(),
-      entityType:         'node',
-    };
-
-    return writeHistoryEntry(nodeId, entry)
-      .catch(function(err) {
-        console.error('[onRoadmapNodeHistory] updated write error for node ' + nodeId + ':', err);
+      await writeHistoryEntry(nodeId, {
+        action:              isArchive ? 'archived' : 'updated',
+        changedBy:           afterData.updatedBy || afterData.createdBy || 'system',
+        changedFields,
+        systemChangedFields,
+        nodeTitle:           afterData.title || '',
+        timestamp:           FieldValue.serverTimestamp(),
+        entityType:          'node',
       });
-  });
+    } catch (err) {
+      logger.error(`[onRoadmapNodeHistory] write error for node ${nodeId}:`, err);
+    }
+  },
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 17 — Trigger 4: onRoadmapTaskHistory
@@ -373,104 +371,68 @@ exports.onRoadmapNodeHistory = functions.firestore
 // so the node's History tab shows both node-level and task-level changes.
 // ─────────────────────────────────────────────────────────────────────────────
 
-exports.onRoadmapTaskHistory = functions.firestore
-  .document('roadmapNodes/{nodeId}/tasks/{taskId}')
-  .onWrite(function(change, context) {
-    var nodeId = context.params.nodeId;
-    var taskId = context.params.taskId;
+exports.onRoadmapTaskHistory = onDocumentWritten(
+  'roadmapNodes/{nodeId}/tasks/{taskId}',
+  async (event) => {
+    const { nodeId, taskId } = event.params;
+    const change = event.data;
+    if (!change) return;
 
-    var afterData  = change.after.exists  ? change.after.data()  : {};
-    var beforeData = change.before.exists ? change.before.data() : {};
+    const afterExists  = change.after.exists;
+    const beforeExists = change.before.exists;
 
-    // ── Determine action ────────────────────────────────────────────────────
-    var action;
-    if (!change.before.exists && change.after.exists) {
-      action = 'task_created';
-    } else if (change.before.exists && !change.after.exists) {
-      action = 'task_deleted';
-    } else {
-      action = 'task_updated';
-    }
+    const afterData  = afterExists  ? (change.after.data()  || {}) : {};
+    const beforeData = beforeExists ? (change.before.data() || {}) : {};
 
-    var changedBy = afterData.updatedBy || afterData.createdBy || beforeData.updatedBy || 'system';
-
-    // ── Action = 'task_created' ─────────────────────────────────────────────
-    if (action === 'task_created') {
-      var createdEntry = {
-        action:        'task_created',
-        changedBy:     changedBy,
-        taskId:        taskId,
-        taskTitle:     afterData.title || '',
-        changedFields: [],
-        nodeTitle:     '',   // populated by CF only — no extra read needed
-        timestamp:     admin.firestore.FieldValue.serverTimestamp(),
-        entityType:    'task',
-      };
-
-      TASK_TRACKED_FIELDS.forEach(function(field) {
-        var val = afterData[field];
-        var isEmpty = val === null || val === undefined || val === '' ||
-                      (Array.isArray(val) && val.length === 0);
-        if (!isEmpty) {
-          createdEntry.changedFields.push({
-            field:         field,
-            previousValue: '',
-            newValue:      stringifyValue(val),
-          });
-        }
-      });
-
-      return writeHistoryEntry(nodeId, createdEntry)
-        .catch(function(err) {
-          console.error('[onRoadmapTaskHistory] task_created error for node ' + nodeId + ', task ' + taskId + ':', err);
+    try {
+      // ── task_created ──────────────────────────────────────────────────────
+      if (!beforeExists && afterExists) {
+        await writeHistoryEntry(nodeId, {
+          action:        'task_created',
+          changedBy:     afterData.updatedBy || afterData.createdBy || 'system',
+          taskId,
+          taskTitle:     afterData.title || '',
+          changedFields: initialFieldEntries(afterData, TASK_TRACKED_FIELDS),
+          nodeTitle:     '',
+          timestamp:     FieldValue.serverTimestamp(),
+          entityType:    'task',
         });
-    }
-
-    // ── Action = 'task_deleted' ─────────────────────────────────────────────
-    if (action === 'task_deleted') {
-      return writeHistoryEntry(nodeId, {
-        action:        'task_deleted',
-        changedBy:     beforeData.updatedBy || beforeData.createdBy || 'system',
-        taskId:        taskId,
-        taskTitle:     beforeData.title || '',
-        changedFields: [],
-        timestamp:     admin.firestore.FieldValue.serverTimestamp(),
-        entityType:    'task',
-      }).catch(function(err) {
-        console.error('[onRoadmapTaskHistory] task_deleted error for node ' + nodeId + ', task ' + taskId + ':', err);
-      });
-    }
-
-    // ── Action = 'task_updated' ─────────────────────────────────────────────
-    var changedFields = [];
-    TASK_TRACKED_FIELDS.forEach(function(field) {
-      var before = beforeData[field];
-      var after  = afterData[field];
-      if (!valuesEqual(before, after)) {
-        changedFields.push({
-          field:         field,
-          previousValue: stringifyValue(before),
-          newValue:      stringifyValue(after),
-        });
+        return;
       }
-    });
 
-    // Loop guard: skip if nothing tracked actually changed
-    if (changedFields.length === 0) {
-      console.log('[onRoadmapTaskHistory] task ' + taskId +
-        ' — only metadata changed, skipping history write');
-      return null;
+      // ── task_deleted ──────────────────────────────────────────────────────
+      if (beforeExists && !afterExists) {
+        await writeHistoryEntry(nodeId, {
+          action:        'task_deleted',
+          changedBy:     beforeData.updatedBy || beforeData.createdBy || 'system',
+          taskId,
+          taskTitle:     beforeData.title || '',
+          changedFields: [],
+          timestamp:     FieldValue.serverTimestamp(),
+          entityType:    'task',
+        });
+        return;
+      }
+
+      // ── task_updated ──────────────────────────────────────────────────────
+      const changedFields = diffFields(beforeData, afterData, TASK_TRACKED_FIELDS);
+
+      if (changedFields.length === 0) {
+        logger.debug(`[onRoadmapTaskHistory] task ${taskId} — only metadata changed, skipping history write`);
+        return;
+      }
+
+      await writeHistoryEntry(nodeId, {
+        action:        'task_updated',
+        changedBy:     afterData.updatedBy || afterData.createdBy || beforeData.updatedBy || 'system',
+        taskId,
+        taskTitle:     afterData.title || '',
+        changedFields,
+        timestamp:     FieldValue.serverTimestamp(),
+        entityType:    'task',
+      });
+    } catch (err) {
+      logger.error(`[onRoadmapTaskHistory] write error for node ${nodeId}, task ${taskId}:`, err);
     }
-
-    return writeHistoryEntry(nodeId, {
-      action:        'task_updated',
-      changedBy:     changedBy,
-      taskId:        taskId,
-      taskTitle:     afterData.title || '',
-      changedFields: changedFields,
-      timestamp:     admin.firestore.FieldValue.serverTimestamp(),
-      entityType:    'task',
-    }).catch(function(err) {
-      console.error('[onRoadmapTaskHistory] task_updated error for node ' + nodeId + ', task ' + taskId + ':', err);
-    });
-  });
+  },
+);

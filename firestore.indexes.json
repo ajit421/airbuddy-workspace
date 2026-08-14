@@ -66,7 +66,27 @@
         { "fieldPath": "dueDate", "order": "ASCENDING" },
         { "fieldPath": "status",  "order": "ASCENDING" }
       ]
+    },
+    {
+      "_comment": "Index 8 — Overdue scan in functions/roadmapDeadlineCheck.js: collectionGroup('tasks').where('status','in',[...]).where('dueDate','>=',x).where('dueDate','<',y)",
+      "collectionGroup": "tasks",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "status",  "order": "ASCENDING" },
+        { "fieldPath": "dueDate", "order": "ASCENDING" }
+      ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "_comment": "roadmapDeadlineCheck's 'due tomorrow' scan is a dueDate range over collectionGroup('tasks'). Collection-group queries are not served by the automatic single-field indexes, which are COLLECTION-scoped only, so dueDate needs an explicit COLLECTION_GROUP entry. The two COLLECTION entries below are the defaults, restated because declaring an override replaces them.",
+      "collectionGroup": "tasks",
+      "fieldPath": "dueDate",
+      "indexes": [
+        { "order": "ASCENDING",  "queryScope": "COLLECTION" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION" },
+        { "order": "ASCENDING",  "queryScope": "COLLECTION_GROUP" }
+      ]
+    }
+  ]
 }

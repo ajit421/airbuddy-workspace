@@ -75,5 +75,20 @@ export default defineConfig([
       globals: globals.node,
     },
   },
+  // Service workers in public/ run in a ServiceWorkerGlobalScope, not a window,
+  // and are loaded as classic scripts (importScripts, not import). Declared here
+  // rather than with an /* eslint-env */ comment, which flat config ignores and
+  // ESLint 10 will reject outright.
+  {
+    files: ['public/**/*.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        ...globals.serviceworker,
+        // Loaded via importScripts() from gstatic — see firebase-messaging-sw.js
+        firebase: 'readonly',
+      },
+    },
+  },
 ])
 

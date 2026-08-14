@@ -95,7 +95,24 @@ service cloud.firestore {
           getEffectiveUid() == userId
           && !request.resource.data.diff(resource.data)
               .affectedKeys()
-              .hasAny(['role', 'uid', 'email', 'salaryBase', 'department', 'designation', 'fcmToken'])
+              .hasAny(['role', 'uid', 'email', 'salaryBase', 'department', 'designation',
+                       'fcmToken', 'fcmTokens', 'fcmTokenUpdatedAt'])
+        )
+        // FCM device registration.
+        //
+        // The push token fields stay OUT of the general self-update branch
+        // above so they can never ride along with an unrelated profile edit.
+        // This branch is their only way in and it accepts nothing else, which
+        // keeps a compromised profile form from touching them.
+        //
+        // Writing these is required for background push: Cloud Functions read
+        // users/{uid}.fcmTokens to address a device, and only the browser that
+        // owns the device knows its own token. See src/services/pushService.js.
+        || (
+          getEffectiveUid() == userId
+          && request.resource.data.diff(resource.data)
+              .affectedKeys()
+              .hasOnly(['fcmToken', 'fcmTokens', 'fcmTokenUpdatedAt'])
         )
       );
 
@@ -361,14 +378,17 @@ service cloud.firestore {
     //   Create: Admin only
     //   Update: Admin — any field.
     //           Any other whitelisted user — rollup fields only (progress,
-    //           childCompletedCount, status, updatedAt). The Phase 8 Cloud
-    //           Function that was meant to own this write is not deployed
-    //           (project is on the Spark plan), so recomputeNodeRollup() in
-    //           src/services/roadmapService.js writes these fields directly
-    //           as the requesting user — including a non-admin who just
-    //           completed their own assigned task. Without this clause that
-    //           write is silently rejected and the node's progress/status
-    //           never reflects a task an employee (not an admin) completed.
+    //           childCompletedCount, status, updatedAt).
+    //
+    //           The Phase 8 Cloud Function (onRoadmapTaskWrite) now owns this
+    //           write authoritatively, but recomputeNodeRollup() in
+    //           src/services/roadmapService.js still runs client-side first so
+    //           the UI updates without waiting on a cold start. Both paths are
+    //           idempotent — whichever lands second sees the rounded value
+    //           unchanged and skips its write. This clause must therefore stay:
+    //           without it the client rollup is silently rejected for a
+    //           non-admin who just completed their own assigned task, and the
+    //           node's progress visibly lags until the function catches up.
     //   Delete: Admin only
     match /roadmapNodes/{nodeId} {
       allow read:   if isAuthenticated() && isEmailAllowed();

@@ -8,6 +8,11 @@
  *  - recomputeNodeProgress() uses a Firestore transaction for race-safety.
  *  - propagateProgressToAncestors() stops early on unchanged values (loop guard).
  *  - Hard cap of 10 ancestor levels per invocation (cost control).
+ *
+ * The write helpers take `FieldValue` as an explicit parameter rather than the
+ * old `admin` namespace object: firebase-admin v14 removed `admin.firestore`,
+ * so `admin.firestore.FieldValue.serverTimestamp()` no longer exists. Callers
+ * pass the FieldValue re-exported by adminApp.js.
  */
 
 'use strict';
@@ -68,10 +73,10 @@ function computeTaskProgress(tasks) {
  *
  * @param {string} nodeId
  * @param {FirebaseFirestore.Firestore} db
- * @param {object} admin
+ * @param {object} FieldValue  From 'firebase-admin/firestore'
  * @returns {Promise<{ wrote: boolean, newProgress: number }>}
  */
-function recomputeNodeProgress(nodeId, db, admin) {
+function recomputeNodeProgress(nodeId, db, FieldValue) {
   var nodeRef  = db.collection(NODES_COL).doc(nodeId);
   var tasksRef = db.collection(NODES_COL).doc(nodeId).collection(TASKS_SUBCOL);
 
@@ -98,7 +103,7 @@ function recomputeNodeProgress(nodeId, db, admin) {
       var update = {
         progress:            result.progress,
         childCompletedCount: result.childCompletedCount,
-        updatedAt:           admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt:           FieldValue.serverTimestamp(),
       };
       if (result.nodeStatus !== null) {
         update.status = result.nodeStatus;
@@ -139,10 +144,10 @@ function getDirectChildrenProgress(parentId, db) {
  *
  * @param {string[]} ancestorIds  Stored [root, ..., direct_parent]; reversed to nearest-first
  * @param {object}   db
- * @param {object}   admin
+ * @param {object}   FieldValue  From 'firebase-admin/firestore'
  * @returns {Promise<void>}
  */
-function propagateProgressToAncestors(ancestorIds, db, admin) {
+function propagateProgressToAncestors(ancestorIds, db, FieldValue) {
   if (!ancestorIds || ancestorIds.length === 0) return Promise.resolve();
 
   // Reverse: stored as [root → parent], we want [parent → root]
@@ -185,7 +190,7 @@ function propagateProgressToAncestors(ancestorIds, db, admin) {
 
           return ancestorRef.update({
             progress:  newProgress,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
           });
         });
       });

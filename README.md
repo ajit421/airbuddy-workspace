@@ -38,7 +38,8 @@ AirBuddy WorkSpace is a full-stack SPA (Single Page Application) that enables ae
 | **AI Assistant API** | Google Gemini 2.5 Flash Lite (`@google/genai`) |
 | **Calendar Integration** | Google Calendar REST API v3 |
 | **Serverless API** | Vercel Serverless Functions (`/api/`) |
-| **Cloud Functions** | Firebase Cloud Functions (Node.js) |
+| **Cloud Functions** | Firebase Cloud Functions v2 (`firebase-functions` 7, Node 22, `asia-south1`) |
+| **Push Notifications** | Firebase Cloud Messaging + service worker (`public/firebase-messaging-sw.js`) |
 | **Charts** | Chart.js + react-chartjs-2 |
 | **Calendar UI** | react-big-calendar + moment.js |
 | **Date Utilities** | date-fns |
@@ -106,15 +107,19 @@ Route guards (`ProtectedRoute`, `AdminRoute`) enforce access at the router level
 - Supports multi-turn conversation history.
 
 ### 🔔 Notifications
-- **In-app notifications** stored in Firestore under `notifications/{userId}/items/`.
-- Notifications are sent client-side when tasks are assigned or announcements are posted.
-- **Firebase Cloud Messaging (FCM)** push notifications via Cloud Functions:
-  - `onTaskCreate` — trigger when a task is created.
-  - `onTaskUpdate` — trigger when task status changes.
-  - `onAnnouncementCreate` — trigger for new announcements.
-  - `onDueDateApproach` — daily cron at 09:00 ET for tasks due tomorrow.
-- The `useNotifications` hook manages notification state in the frontend.
-- Browser notification permission is requested automatically on sign-in.
+
+Two channels that complement each other: the **bell** is what you see with the app open, **push** is what reaches you when the tab is closed.
+
+**In-app (bell)** — stored in Firestore under `notifications/{userId}/items/`, written client-side when tasks are assigned, work partners are added, or announcements are posted. The `useNotifications` hook manages the state; the scheduled functions below write here too, so a reminder still lands even if you decline browser notifications.
+
+**Background push (FCM)** — sent by Cloud Functions:
+  - `onTaskCreate` — a task is created (the creator is not notified about their own task).
+  - `onTaskUpdate` — a task's **status** changes.
+  - `onAnnouncementCreate` — a new announcement is posted.
+  - `onDueDateApproach` — daily cron at **09:00 IST** for tasks due tomorrow.
+  - `roadmapDeadlineCheck` — daily cron at **09:15 IST** for roadmap tasks due tomorrow or overdue.
+
+Push requires three things to line up: `VITE_FIREBASE_VAPID_KEY` set in both `.env` and Vercel, the service worker at `public/firebase-messaging-sw.js`, and the functions deployed on the Blaze plan. On sign-in, `src/services/pushService.js` requests notification permission, registers the worker and stores the device token on `users/{uid}.fcmTokens`; on sign-out it removes it, so a shared machine stops receiving the previous user's notifications. Dead tokens are pruned automatically after a failed send. Browsers without web push support (Safari < 16.4, most in-app browsers) fall back to foreground-only notifications.
 
 ### 📣 Announcements
 - All authenticated users can read announcements.
@@ -152,9 +157,18 @@ Work_flow/
 ├── api/
 │   └── gemini.js              # Vercel Serverless Function — proxies Gemini API
 │
-├── functions/
-│   ├── index.js               # Firebase Cloud Functions (FCM push, Gemini callable)
+├── functions/                 # Firebase Cloud Functions (v2 API, Node 22)
+│   ├── index.js               # Task/announcement triggers, due-date cron, Gemini callable
+│   ├── adminApp.js            # Single Admin SDK initializeApp() for the codebase
+│   ├── fcm.js                 # Token lookup, batched send, dead-token pruning
+│   ├── time.js                # IST day boundaries for the scheduled functions
+│   ├── roadmapTriggers.js     # Progress rollup + audit history
+│   ├── roadmapDeadlineCheck.js# Roadmap due/overdue cron
+│   ├── roadmapService.server.js  # Pure rollup math (unit-tested from src/)
 │   └── package.json
+│
+├── public/
+│   └── firebase-messaging-sw.js  # FCM service worker — required for background push
 │
 ├── src/
 │   ├── main.jsx               # App entry point
@@ -250,7 +264,7 @@ graph LR
         FirebaseAuth["Firebase Auth\n(Google OAuth Provider)"]
         Firestore["Cloud Firestore\n(tasks / users / announcements)"]
         FCM["Firebase Cloud Messaging\n(Push Notifications)"]
-        CloudFunctions["Cloud Functions — Node.js\nonTaskCreate · onTaskUpdate\nonDueDateApproach"]
+        CloudFunctions["Cloud Functions v2 — Node 22\nonTaskCreate · onTaskUpdate\nonDueDateApproach · roadmapDeadlineCheck\nroadmap rollup · audit history"]
     end
 
     %% Auth flow
@@ -268,7 +282,7 @@ graph LR
 
     %% Cloud Functions
     Firestore -->|"Document triggers"| CloudFunctions
-    CloudFunctions -->|"sendToDevice"| FCM
+    CloudFunctions -->|"sendEachForMulticast"| FCM
 
     %% Styles
     classDef feStyle fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
@@ -296,7 +310,9 @@ graph LR
 | `email` | string | Google email |
 | `role` | string | `"employee"` or `"admin"` |
 | `avatar` | string | Google profile photo URL |
-| `fcmToken` | string | FCM device token for push notifications |
+| `fcmTokens` | string[] | FCM device tokens — one per browser/device the user has signed in on |
+| `fcmToken` | string | Most recently registered device; read as a fallback for older documents |
+| `fcmTokenUpdatedAt` | timestamp | Last device registration |
 | `createdAt` | timestamp | Auto-set on first login |
 
 ### `tasks/{taskId}`
@@ -384,10 +400,16 @@ For the **Vercel Serverless Function** (`/api/gemini`), set in your Vercel proje
 GEMINI_API_KEY=your-google-ai-studio-api-key
 ```
 
-For **Firebase Cloud Functions** (`functions/`), set via Firebase secrets or `functions.config()`:
+For **Firebase Cloud Functions** (`functions/`), set as a secret. `functions.config()` was removed in `firebase-functions` v7 and no longer works:
 
-```env
-GEMINI_API_KEY=your-google-ai-studio-api-key
+```powershell
+npx firebase-tools functions:secrets:set GEMINI_API_KEY
+```
+
+The push notification click target defaults to `https://airbuddy-workspace.vercel.app`. Override it with a parameter if the app moves:
+
+```powershell
+npx firebase-tools deploy --only functions --project work  # prompts for APP_URL on first deploy
 ```
 
 ---
@@ -395,7 +417,7 @@ GEMINI_API_KEY=your-google-ai-studio-api-key
 ## Getting Started
 
 ### Prerequisites
-- **Node.js 18+** and npm
+- **Node.js 20+** and npm (the Cloud Functions runtime is Node 22 — match it locally if you plan to deploy)
 - A **Google account** (for Firebase & Google OAuth)
 - Access to the [Firebase Console](https://console.firebase.google.com/) for project `airbuddy-workspace`
 - A **Google AI Studio API key** for Gemini ([aistudio.google.com](https://aistudio.google.com))
@@ -473,13 +495,33 @@ npm run build
 npx firebase-tools deploy --only hosting
 ```
 
-### Firebase Cloud Functions (Push Notifications + AI callable)
+### Firebase rules and indexes
 
-> Requires the **Blaze (pay-as-you-go)** Firebase plan.
+Deploy these **before** the functions — the roadmap deadline cron needs its indexes to exist, and index builds take a few minutes on a large collection.
 
 ```powershell
+npx firebase-tools use work                       # alias -> workspace-airbuddy
+npx firebase-tools deploy --only firestore:rules
+npx firebase-tools deploy --only firestore:indexes
+npx firebase-tools deploy --only storage          # storage.rules
+```
+
+To check that both rules files compile without deploying anything:
+
+```powershell
+npx firebase-tools emulators:exec --only firestore,storage "echo ok"
+```
+
+### Firebase Cloud Functions (Push Notifications + roadmap automation)
+
+> Requires the **Blaze (pay-as-you-go)** Firebase plan and the `GEMINI_API_KEY` secret above.
+
+```powershell
+cd functions; npm install; cd ..
 npx firebase-tools deploy --only functions
 ```
+
+The first deploy enables Cloud Build, Artifact Registry, Cloud Scheduler and Eventarc on the project — expect it to take several minutes and to ask for confirmation.
 
 ---
 

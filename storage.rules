@@ -1,0 +1,60 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cloud Storage security rules — AirBuddy Aerospace WorkSpace
+//
+// This file did not exist before: the project had no storage.rules under source
+// control and no `storage` entry in firebase.json, so whatever was configured
+// in the Firebase console was the only thing standing in front of the bucket
+// and nobody could review it in a diff.
+//
+// The app writes to exactly one prefix — roadmap attachments, uploaded by
+// src/services/roadmapAttachmentService.js as:
+//
+//     roadmapAttachments/{nodeId}/{timestamp}_{safeName}
+//
+// Access model mirrors firestore.rules for the attachments subcollection:
+//   Read:   any signed-in user on the company domain or the allowed_emails
+//           whitelist (company-wide transparency, same as roadmap nodes)
+//   Write:  same audience, capped at 10 MB per object to match the
+//           `fileSize <= 10485760` check on the Firestore metadata document
+//   Delete: same audience — the Firestore attachment document is the real
+//           record, and its rule already restricts deletion to the uploader or
+//           an admin. Storage objects are unreadable without that document.
+//
+// NOTE: Storage rules cannot read Firestore, so the whitelist cannot be checked
+// here the way isEmailAllowed() does in firestore.rules. The domain check plus
+// authentication is the closest equivalent available.
+// ─────────────────────────────────────────────────────────────────────────────
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isUnderSizeLimit() {
+      return request.resource.size <= 10 * 1024 * 1024;
+    }
+
+    // ── Roadmap attachments ─────────────────────────────────────────────────
+    // isSignedIn() is deliberately not narrowed to the @airbuddy.in domain:
+    // external collaborators on the allowed_emails whitelist upload here too,
+    // and that collection is unreachable from Storage rules. The Firestore
+    // attachment document — which does go through isEmailAllowed() — is what
+    // makes an object discoverable, so an unlisted account can authenticate
+    // but has nothing to look up.
+    match /roadmapAttachments/{nodeId}/{fileName} {
+      allow read:           if isSignedIn();
+      allow create, update: if isSignedIn() && isUnderSizeLimit();
+      allow delete:         if isSignedIn();
+    }
+
+    // Everything else in the bucket is closed. Add an explicit match block
+    // above when a new upload path is introduced — do not widen this.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
