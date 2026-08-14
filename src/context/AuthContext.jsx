@@ -8,6 +8,11 @@ import {
 import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../services/firebase';
 import { requestBrowserNotifPermission } from '../services/notificationService';
+import {
+  enablePushNotifications,
+  disablePushNotifications,
+  PUSH_STATUS,
+} from '../services/pushService';
 
 const AuthContext = createContext(null);
 
@@ -112,7 +117,20 @@ export const AuthProvider = ({ children }) => {
             console.error('Error in user profile real-time listener:', err);
           });
 
-          requestBrowserNotifPermission();
+          // Register this device for background push (Cloud Functions send it).
+          // enablePushNotifications() prompts for notification permission
+          // itself, so it replaces the old standalone permission request; the
+          // fallback below only runs on browsers that cannot do web push at
+          // all, where the in-app foreground Notification is all we get.
+          enablePushNotifications(targetUid)
+            .then(({ status }) => {
+              if (status === PUSH_STATUS.READY) return;
+              console.info(`[AuthContext] push notifications not active: ${status}`);
+              if (status === PUSH_STATUS.UNSUPPORTED || status === PUSH_STATUS.NO_VAPID) {
+                requestBrowserNotifPermission();
+              }
+            })
+            .catch((err) => console.warn('[AuthContext] push setup failed:', err));
         } catch (error) {
           console.error('Error setting up user profile:', error);
           setAuthError('Failed to load user profile. Please try logging in again.');
@@ -168,6 +186,12 @@ export const AuthProvider = ({ children }) => {
   // ── Sign-out ─────────────────────────────────────────────────────────────────
   const signOut = async () => {
     try {
+      // Unregister this device first — otherwise a shared machine keeps
+      // receiving push for the account that just signed out. Deliberately
+      // awaited before signOut, while the user still has write access to
+      // their own profile document.
+      if (effectiveUid) await disablePushNotifications(effectiveUid);
+
       await firebaseSignOut(auth);
       setGoogleAccessToken(null);
       // HI-11 fix: no sessionStorage entry to clear

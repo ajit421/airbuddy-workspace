@@ -240,5 +240,14 @@ The bell icon in the navbar shows unread in-app notifications. Notifications are
 - A task's status is updated
 - A new announcement is posted
 - A work partner is added to one of your tasks
+- A roadmap task assigned to you is due tomorrow, or is already overdue
 
 Click any notification to mark it as read. Use **Mark all read** to clear the badge.
+
+### Push notifications
+
+The first time you sign in, your browser asks for permission to show notifications. Allow it and you will also receive alerts **while the app is closed** — new task assignments, status changes, announcements, and a daily reminder each morning for anything due the next day.
+
+Each device is registered separately, so allowing it on your laptop does not cover your phone; sign in there and allow it too. Signing out removes that device, which matters on a shared computer. If you decline, nothing breaks — you simply see notifications only in the bell while the app is open.
+
+Web push is unavailable in a few browsers (notably older Safari and most in-app browsers such as the one inside LinkedIn or Instagram). Open the workspace in Chrome, Edge, Firefox, or Safari 16.4+ if you want alerts while it is closed.

@@ -78,6 +78,23 @@ Add your Firebase Hosting domain to the authorized origins list in Google Cloud 
 
 > **Requires the Blaze (pay-as-you-go) Firebase plan.** Cloud Functions are not available on the free Spark plan.
 
+The functions are written against the **v2 API** and run on **Node 22** in the `asia-south1` region.
+
+### Before the first deploy
+
+Set the Gemini secret. `functions.config()` was removed in `firebase-functions` v7 and no longer works:
+
+```bash
+npx firebase-tools functions:secrets:set GEMINI_API_KEY
+```
+
+Deploy rules and indexes first — the roadmap deadline cron queries an index that must already exist:
+
+```bash
+npx firebase-tools deploy --only firestore:rules
+npx firebase-tools deploy --only firestore:indexes
+npx firebase-tools deploy --only storage
+```
 
 ### Deploying Functions
 
@@ -88,14 +105,34 @@ cd ..
 npx firebase-tools deploy --only functions
 ```
 
+The first deploy enables Cloud Build, Artifact Registry, Cloud Scheduler and Eventarc on the project. Expect several minutes and a confirmation prompt.
+
 ### Deployed Functions
 
 | Function | Type | Trigger |
 |---|---|---|
-| `onTaskCreate` | Firestore | Document created in `tasks/{taskId}` |
-| `onTaskUpdate` | Firestore | Document updated in `tasks/{taskId}` |
+| `onTaskCreate` | Firestore | Document created in `tasks/{taskId}` — pushes to assignees |
+| `onTaskUpdate` | Firestore | Document updated in `tasks/{taskId}` — pushes on status change only |
 | `onAnnouncementCreate` | Firestore | Document created in `announcements/{id}` |
-| `onDueDateApproach` | Scheduled | Daily at 09:00 AM Eastern Time |
+| `onDueDateApproach` | Scheduled | Daily at **09:00 Asia/Kolkata** — tasks due tomorrow |
+| `roadmapDeadlineCheck` | Scheduled | Daily at **09:15 Asia/Kolkata** — roadmap tasks due tomorrow or overdue |
+| `onRoadmapTaskWrite` | Firestore | Task written under a roadmap node — recomputes node progress |
+| `onRoadmapNodeProgressChange` | Firestore | Roadmap node written — propagates progress to ancestors |
+| `onRoadmapNodeHistory` | Firestore | Roadmap node written — writes the audit history entry |
+| `onRoadmapTaskHistory` | Firestore | Roadmap task written — writes the audit history entry |
+| `askGemini` | Callable | Unused by the web app, which calls `/api/gemini` on Vercel |
+
+The roadmap **History** tab is populated by the two history triggers and records changes from the deploy forward only — existing nodes will show an empty log until they are next edited.
+
+### Push notifications
+
+Background push needs all of these in place:
+
+1. `VITE_FIREBASE_VAPID_KEY` set in `.env` **and** in the Vercel project settings.
+2. `public/firebase-messaging-sw.js` shipped with the build (it is, automatically).
+3. The functions above deployed.
+
+Each browser registers its own device token on `users/{uid}.fcmTokens` at sign-in and removes it at sign-out. Tokens that stop working are pruned automatically.
 
 ### Monitoring Functions
 

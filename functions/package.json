@@ -1,20 +1,24 @@
 {
   "name": "functions",
   "version": "1.0.0",
-  "description": "",
+  "description": "AirBuddy WorkSpace Cloud Functions — push notifications, roadmap rollup, audit history, deadline crons",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "logs": "firebase functions:log",
+    "deploy": "firebase deploy --only functions",
+    "test": "node --test"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@google/genai": "^1.44.0",
-    "firebase-admin": "^14.1.0",
-    "firebase-functions": "^7.1.1"
+    "firebase-admin": "^14.2.0",
+    "firebase-functions": "^7.3.2"
   },
   "engines": {
-    "node": "18"
+    "node": "22"
   }
 }

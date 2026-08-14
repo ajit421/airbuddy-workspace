@@ -1,9 +1,15 @@
 /**
  * Notification Service
  * ─────────────────────────────────────────────────────────────────
- * Since we're on Firebase Spark (free tier) and Cloud Functions
- * require Blaze, we write notifications client-side to Firestore
- * AND fire a browser Web Notification immediately for instant alerts.
+ * In-app notifications: written client-side to Firestore so the Navbar bell
+ * picks them up in real time, plus an immediate browser Web Notification for
+ * the acting user's own session.
+ *
+ * This is the *in-app* channel and it is deliberately still client-written.
+ * Background push (delivered when the tab is closed) is a separate channel
+ * owned by Cloud Functions — see functions/fcm.js for the sender and
+ * src/services/pushService.js for device registration. A user with the app
+ * open normally sees the bell entry; a user with it closed gets the push.
  *
  * Firestore path: notifications/{uid}/items/{notifId}
  * ─────────────────────────────────────────────────────────────────
@@ -27,7 +33,7 @@ export const requestBrowserNotifPermission = async () => {
 /**
  * Fire an instant browser notification (foreground alert).
  */
-const fireBrowserNotif = (title, body, icon = '/icon-192.png') => {
+const fireBrowserNotif = (title, body, icon = '/airbuddyin_logo.png') => {
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'granted') return;
     try {
