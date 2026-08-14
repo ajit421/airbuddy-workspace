@@ -121,7 +121,16 @@ Every file in [src/services/](src/services/) follows the same contract, and new 
 
 **Work partners are stored twice** ([src/services/collaborationService.js](src/services/collaborationService.js)): `workPartners` (array of rich objects, what the UI renders) and `workPartnerUids` (flat string array, what rules can actually test — CEL cannot query into an array of maps). Both must be updated in the same `updateDoc` via `arrayUnion`/`arrayRemove`. Never render `workPartnerUids`.
 
-Composite indexes live in [firestore.indexes.json](firestore.indexes.json) — 7 of them, all for roadmap queries (`parentId+isArchived+order`, `ancestorIds` array-contains, collectionGroup `tasks` and `history`). A new roadmap query almost certainly needs an entry there.
+Composite indexes live in [firestore.indexes.json](firestore.indexes.json) — 8 of them, mostly roadmap queries (`parentId+isArchived+order`, `ancestorIds` array-contains, collectionGroup `tasks` and `history`). A new roadmap query almost certainly needs an entry there.
+
+**`fieldOverrides` in that file is destructive — read this before touching it.** `firebase deploy --only firestore:indexes` treats the array as the *complete* set of single-field overrides for the project: anything live but absent from the file is **deleted**. Adding one entry therefore silently drops every other field's exemption. That is exactly how it went wrong once — adding a `tasks.dueDate` override removed the `tasks.assignedTo` `COLLECTION_GROUP`/`CONTAINS` exemption, and the `collectionGroup('tasks').where('assignedTo','array-contains',uid)` listener in `TaskContext` started failing with `failed-precondition` in production. Before editing the array, list what is actually live (`npx firebase-tools firestore:indexes`, or the Firestore Admin API `collectionGroups/{cg}/fields?filter=indexConfig.usesAncestorConfig:false`) and restate all of it.
+
+Two related traps in the same area:
+
+- A **composite** index does not serve a single-field `array-contains` query. Index 5 (`assignedTo + status`) looks like it covers the `assignedTo`-only listener; it does not — that needs its own `CONTAINS` single-field index.
+- Automatic single-field indexes are **`COLLECTION`-scoped only**. Any `collectionGroup()` query filtering on a single field needs an explicit `COLLECTION_GROUP` entry, and declaring one replaces the automatic `COLLECTION` ones, so restate those too.
+
+Symptom to recognise: `The query requires a COLLECTION_GROUP_CONTAINS index` in the browser console. The `TaskContext` listener degrades gracefully (`setRoadmapAssignedTasks([])`, `setLoading(false)`), so the Dashboard renders and only roadmap tasks whose root-`tasks` mirror write failed go missing — quiet enough to survive a casual look.
 
 `firestore.rules.roadmap.draft` at the repo root is a superseded draft — the live rules are in `firestore.rules`. Don't edit the draft.
 
