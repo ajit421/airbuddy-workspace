@@ -82,8 +82,10 @@ function RoadmapNodeCard({
       {/* Main card content */}
       <div className="flex-1 flex flex-col gap-2.5 px-3 py-3 min-w-0">
 
-        {/* Header row */}
-        <div className="flex items-start gap-2">
+        {/* Header row. flex-wrap + a title min-width on purpose: the badges are
+            flex-shrink-0, so on a phone they used to squeeze the title down to
+            roughly ten characters. Now they drop to their own line instead. */}
+        <div className="flex items-start gap-2 flex-wrap">
 
           {/* Expand / collapse chevron */}
           <button
@@ -112,10 +114,11 @@ function RoadmapNodeCard({
           {/* Title */}
           <button
             onClick={() => onSelect && onSelect(node)}
-            className="flex-1 text-left min-w-0"
+            className="flex-1 text-left min-w-[12rem]"
           >
             <h3 className={`
-              font-semibold text-sm leading-snug line-clamp-2 transition-colors
+              leading-snug line-clamp-2 transition-colors
+              ${isRoot ? 'font-bold text-[0.95rem]' : 'font-semibold text-sm'}
               ${isSelected ? 'text-orange' : 'text-text-primary group-hover:text-orange'}
             `}>
               {node.title}
@@ -132,7 +135,7 @@ function RoadmapNodeCard({
           </button>
 
           {/* Badges */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto">
             <PriorityBadge priority={node.priority} />
             <StatusBadge   status={node.status} />
           </div>
@@ -165,38 +168,52 @@ function RoadmapNodeCard({
           )}
         </div>
 
-        {/* Progress + due date row */}
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            <ProgressBar progress={node.progress} />
-          </div>
-          <span className="text-xs text-text-muted font-medium flex-shrink-0 w-8 text-right">
-            {node.progress ?? 0}%
-          </span>
-        </div>
+        {/* Meta row — due date, child count and progress on one line.
+            These used to be two stacked rows with the date floating on its own,
+            which left every card tall and mostly empty. */}
+        <div className="flex items-center gap-x-3 gap-y-2 flex-wrap">
 
-        {/* Footer: due date + child count */}
-        <div className="flex items-center justify-between text-xs">
-          <span className={`${dueDateColor} font-medium`}>
-            {node.dueDate ? formatDate(node.dueDate) : ''}
-            {dueDateLabel && node.dueDate && (
-              <span className="ml-1.5 text-text-muted font-normal">({dueDateLabel})</span>
-            )}
-          </span>
+          {/* Due date chip, tinted by urgency */}
+          {node.dueDate && (
+            <span
+              className={`
+                inline-flex items-center gap-1.5 flex-shrink-0 rounded-md border border-borderLight
+                bg-background px-2 py-1 text-xs font-medium ${dueDateColor}
+              `}
+              title={dueDateLabel || undefined}
+            >
+              <svg className="w-3 h-3 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M8 7V3m8 4V3M3 11h18M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              {formatDate(node.dueDate)}
+              {dueDateLabel && (
+                <span className="text-text-muted font-normal">· {dueDateLabel}</span>
+              )}
+            </span>
+          )}
+
+          {/* Child count */}
           {hasChildren && (
-            <span className="text-text-muted flex items-center gap-1">
+            <span className="flex-shrink-0 text-xs text-text-muted flex items-center gap-1">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M3 7h18M3 12h18M3 17h18" />
               </svg>
-              {node.childCount ?? 0} child {node.childCount === 1 ? 'node' : 'nodes'}
+              {node.childCount ?? 0} {node.childCount === 1 ? 'sub-node' : 'sub-nodes'}
             </span>
           )}
-          {isRoot && (
-            <span className="text-text-muted text-[10px] uppercase tracking-wide font-medium">
-              depth 0
+
+          {/* Progress — pushed to the right edge, never narrower than legible */}
+          <div className="flex items-center gap-2 flex-1 min-w-[7rem] max-w-[16rem] ml-auto">
+            <ProgressBar progress={node.progress} className="flex-1" />
+            <span className={`
+              text-xs font-semibold tabular-nums flex-shrink-0 w-9 text-right
+              ${(node.progress ?? 0) > 0 ? 'text-text-secondary' : 'text-text-muted'}
+            `}>
+              {node.progress ?? 0}%
             </span>
-          )}
+          </div>
         </div>
       </div>
     </div>

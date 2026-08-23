@@ -32,6 +32,7 @@ vi.mock('firebase/firestore', () => {
 
 vi.mock('./firebase', () => ({ db: {} }));
 
+import { onSnapshot } from 'firebase/firestore';
 import {
   createRoadmapTask,
   updateRoadmapTask,
@@ -204,6 +205,52 @@ describe('subscribeToRoadmapTasks', () => {
     const unsub = subscribeToRoadmapTasks('', vi.fn(), vi.fn());
     expect(typeof unsub).toBe('function');
     expect(() => unsub()).not.toThrow();
+  });
+
+  /**
+   * Sort order: the Tasks tab reads top-to-bottom in deadline order, so the
+   * snapshot callback sorts by dueDate ascending. Drive the callback that
+   * subscribeToRoadmapTasks handed to the mocked onSnapshot with a fake snapshot.
+   */
+  describe('sort order', () => {
+    const emit = (docs) => {
+      const onData = vi.fn();
+      subscribeToRoadmapTasks('node-abc', onData, vi.fn());
+      const snapshotCallback = onSnapshot.mock.calls.at(-1)[1];
+      snapshotCallback({
+        docs: docs.map((d) => ({ id: d.id, data: () => d })),
+      });
+      return onData.mock.calls.at(-1)[0].map((t) => t.id);
+    };
+
+    const task = (id, dueDate, createdAtMs = 0) => ({
+      id,
+      dueDate,
+      createdAt: { toMillis: () => createdAtMs },
+    });
+
+    it('orders tasks by dueDate ascending', () => {
+      expect(emit([
+        task('late',  new Date('2026-12-05')),
+        task('early', new Date('2026-08-29')),
+        task('mid',   new Date('2026-10-17')),
+      ])).toEqual(['early', 'mid', 'late']);
+    });
+
+    it('places tasks without a dueDate last', () => {
+      expect(emit([
+        task('undated', null),
+        task('dated',   new Date('2027-06-01')),
+      ])).toEqual(['dated', 'undated']);
+    });
+
+    it('falls back to createdAt for equal dueDates', () => {
+      const same = new Date('2026-10-17');
+      expect(emit([
+        task('second', same, 2000),
+        task('first',  same, 1000),
+      ])).toEqual(['first', 'second']);
+    });
   });
 });
 

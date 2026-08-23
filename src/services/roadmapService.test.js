@@ -29,6 +29,7 @@ vi.mock('./firebase', () => ({ db: {} }));
 // ── Import AFTER mocks ───────────────────────────────────────────────────────
 import {
   computeHierarchy,
+  sortNodesByDueDate,
   createNode,
   updateNode,
   archiveNode,
@@ -312,6 +313,62 @@ describe('deleteNode', () => {
     await deleteNode('child-node');
     const parentUpdate = updateDoc.mock.calls.find((c) => c[1]?.childCount !== undefined);
     expect(parentUpdate[1].childCount).toBe(1);
+  });
+});
+
+// ─── sortNodesByDueDate ──────────────────────────────────────────────────────
+describe('sortNodesByDueDate', () => {
+  const node = (id, dueDate, order = 0) => ({ id, dueDate, order });
+
+  it('orders dated nodes by dueDate ascending', () => {
+    const out = sortNodesByDueDate([
+      node('c', new Date('2026-12-05')),
+      node('a', new Date('2026-08-29')),
+      node('b', new Date('2026-10-24')),
+    ]);
+    expect(out.map((n) => n.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('accepts Firestore Timestamp, Date and string dueDates alike', () => {
+    const out = sortNodesByDueDate([
+      node('str', '2026-11-14'),
+      node('ts',  { toDate: () => new Date('2026-09-26') }),
+      node('date', new Date('2026-10-03')),
+    ]);
+    expect(out.map((n) => n.id)).toEqual(['ts', 'date', 'str']);
+  });
+
+  it('sinks nodes without a dueDate below every dated node', () => {
+    const out = sortNodesByDueDate([
+      node('undated', null),
+      node('dated',   new Date('2027-01-01')),
+    ]);
+    expect(out.map((n) => n.id)).toEqual(['dated', 'undated']);
+  });
+
+  it('sinks an unparseable dueDate too', () => {
+    const out = sortNodesByDueDate([
+      node('junk',  'not-a-date'),
+      node('dated', new Date('2026-08-29')),
+    ]);
+    expect(out.map((n) => n.id)).toEqual(['dated', 'junk']);
+  });
+
+  it('falls back to order for equal dates and for undated nodes', () => {
+    const same = new Date('2026-10-17');
+    const out = sortNodesByDueDate([
+      node('second', same, 2),
+      node('first',  same, 1),
+      node('late',   null, 5),
+      node('early',  null, 4),
+    ]);
+    expect(out.map((n) => n.id)).toEqual(['first', 'second', 'early', 'late']);
+  });
+
+  it('does not mutate the input array', () => {
+    const input = [node('b', new Date('2026-12-01')), node('a', new Date('2026-01-01'))];
+    sortNodesByDueDate(input);
+    expect(input.map((n) => n.id)).toEqual(['b', 'a']);
   });
 });
 

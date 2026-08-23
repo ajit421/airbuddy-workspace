@@ -6,6 +6,7 @@ import {
 import { db } from './firebase';
 import { z } from 'zod';
 import { recomputeNodeRollup } from './roadmapService';
+import { toDate } from '../utils/dateHelpers';
 
 /**
  * roadmapTaskService.js
@@ -57,7 +58,7 @@ const snapToArray = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
 /**
  * Subscribe to all tasks under a roadmap node.
- * Results sorted by createdAt ascending (client-side).
+ * Results sorted by dueDate ascending (client-side); undated tasks last.
  *
  * @param {string}   nodeId
  * @param {function} onData   - Called with task array
@@ -75,10 +76,22 @@ export function subscribeToRoadmapTasks(nodeId, onData, onError) {
   return onSnapshot(
     q,
     (snap) => {
+      // Sorted by dueDate ascending so the Tasks tab reads top-to-bottom in
+      // deadline order, matching sortNodesByDueDate in roadmapService. Tasks
+      // with no dueDate sink to the bottom; createdAt is the tiebreak.
       const tasks = snapToArray(snap).sort((a, b) => {
-        const ta = a.createdAt?.toMillis?.() ?? 0;
-        const tb = b.createdAt?.toMillis?.() ?? 0;
-        return ta - tb;
+        const due = (t) => {
+          const d = toDate(t?.dueDate);
+          return d && !isNaN(d) ? d.getTime() : null;
+        };
+        const created = (t) => t.createdAt?.toMillis?.() ?? 0;
+        const da = due(a);
+        const dbb = due(b);
+        if (da === null && dbb === null) return created(a) - created(b);
+        if (da === null) return 1;
+        if (dbb === null) return -1;
+        if (da !== dbb) return da - dbb;
+        return created(a) - created(b);
       });
       onData(tasks);
     },

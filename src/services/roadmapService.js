@@ -4,6 +4,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { z } from 'zod';
+import { toDate } from '../utils/dateHelpers';
 
 /**
  * roadmapService.js
@@ -14,7 +15,8 @@ import { z } from 'zod';
  *  - Zod validation at every write boundary.
  *  - serverTimestamp() for createdAt / updatedAt — never new Date().
  *  - subscribeToX(onData, onError) pattern returning unsubscribe fn.
- *  - Client-side sort by order; no orderBy() to avoid composite index per query.
+ *  - Client-side sort by dueDate ascending; no orderBy() to avoid a composite
+ *    index per query. See sortNodesByDueDate for the undated-node tiebreak.
  *  - Error prefix: [roadmapService] functionName: in console.error
  */
 
@@ -57,7 +59,38 @@ export const RoadmapNodeSchema = z.object({
 
 // Helpers
 const snapToArray = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-const sortByOrder = (nodes) => [...nodes].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+/**
+ * Sort nodes by dueDate ascending — soonest deadline at the top.
+ *
+ * Nodes were previously ordered by the `order` field, which is only the
+ * insertion counter set at create time, so a list of siblings appeared in the
+ * sequence someone happened to add them rather than in timeline order.
+ *
+ * A node with no dueDate (or an unparseable one) has no position on a timeline,
+ * so it sinks below every dated node instead of being treated as epoch 0.
+ * `order` is the tiebreak for equal dates and for the undated group, which
+ * keeps the sort stable across snapshots.
+ *
+ * Exported for unit testing (same pattern as computeHierarchy).
+ *
+ * @param {Array<object>} nodes
+ * @returns {Array<object>} new sorted array — the input is not mutated
+ */
+export const sortNodesByDueDate = (nodes) => {
+  const millis = (node) => {
+    const d = toDate(node?.dueDate);
+    return d && !isNaN(d) ? d.getTime() : null;
+  };
+  return [...nodes].sort((a, b) => {
+    const ma = millis(a);
+    const mb = millis(b);
+    if (ma === null && mb === null) return (a.order ?? 0) - (b.order ?? 0);
+    if (ma === null) return 1;
+    if (mb === null) return -1;
+    if (ma !== mb) return ma - mb;
+    return (a.order ?? 0) - (b.order ?? 0);
+  });
+};
 
 /**
  * Compute hierarchy fields for a new child node from its parent.
@@ -98,7 +131,7 @@ export function subscribeToChildren(parentId, onData, onError) {
   );
   return onSnapshot(
     q,
-    (snap) => onData(sortByOrder(snapToArray(snap))),
+    (snap) => onData(sortNodesByDueDate(snapToArray(snap))),
     (err) => {
       console.error('[roadmapService] subscribeToChildren:', err);
       if (onError) onError(err);

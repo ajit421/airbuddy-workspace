@@ -25,6 +25,17 @@ import { subscribeToChildren } from '../../services/roadmapService';
 const ROW_HEIGHT = 168;   // px per level, drives both layout + SVG path scale
 const X_CYCLE    = [22, 50, 78, 50]; // percent positions the path winds through
 
+// Geometry shared by the layout and the connecting SVG path. The path used to
+// be built from ROW_HEIGHT alone while the nodes were laid out at
+// `i * ROW_HEIGHT + PATH_TOP`, and its viewBox height (count * ROW_HEIGHT) did
+// not match the element height (containerHeight) under
+// preserveAspectRatio="none" — so the dotted line was pushed down by PATH_TOP
+// and then stretched a few percent, missing every level circle by 50-100px.
+// Both now derive from the same two numbers.
+const PATH_TOP  = 48;    // px from container top to the first node's row box
+const CIRCLE_R  = 36;    // half of the sm:4.5rem level circle — its centre offset
+const FOOT_ROOM = 96;    // extra height below the last row for the finish marker
+
 const PRIORITY_STARS = { critical: 3, high: 2, medium: 1, low: 1 };
 
 const STATUS_THEME = {
@@ -47,9 +58,9 @@ const STATUS_THEME = {
     text:   'text-status-danger',
   },
   pending: {
-    ring:   'from-border to-borderLight',
+    ring:   'from-surfaceHover to-surface',
     glow:   '',
-    border: 'border-border',
+    border: 'border-borderLight',
     text:   'text-text-muted',
   },
 };
@@ -58,13 +69,19 @@ function xFor(index) {
   return X_CYCLE[index % X_CYCLE.length];
 }
 
-/** Smooth vertical S-curve through node centers, scaled to fill the container. */
+/** Centre point of level `i`, in the same coordinate space as the container. */
+function centerFor(index) {
+  return { x: xFor(index), y: index * ROW_HEIGHT + PATH_TOP + CIRCLE_R };
+}
+
+/**
+ * Smooth vertical S-curve through the first `count` level centres.
+ * y values are container pixels, so the SVG viewBox height must equal the
+ * container height (1:1 on the y axis) for the curve to land on the circles.
+ */
 function buildPathD(count) {
   if (count < 2) return '';
-  const pts = Array.from({ length: count }, (_, i) => ({
-    x: xFor(i),
-    y: i * ROW_HEIGHT + ROW_HEIGHT / 2,
-  }));
+  const pts = Array.from({ length: count }, (_, i) => centerFor(i));
   let d = `M ${pts[0].x} ${pts[0].y}`;
   for (let i = 1; i < pts.length; i++) {
     const prev = pts[i - 1];
@@ -120,12 +137,26 @@ export default function RoadmapJourneyView({
       (sum, n) => sum + (n.status === 'completed' ? (PRIORITY_STARS[n.priority] ?? 1) : 0),
       0
     );
-    const currentIndex = activeNodes.findIndex((n) => n.status === 'in-progress');
+    // "You are here" marks the level being worked on. With nothing in progress
+    // it used to mark nothing at all (findIndex → -1), which is the normal state
+    // for a fresh milestone. Fall back to the first level that is not finished —
+    // and since children are now sorted by dueDate, that is the nearest deadline.
+    const inProgress   = activeNodes.findIndex((n) => n.status === 'in-progress');
+    const currentIndex = inProgress !== -1
+      ? inProgress
+      : activeNodes.findIndex((n) => n.status !== 'completed');
     return { total, completed, avgProgress, stars, currentIndex };
   }, [activeNodes]);
 
   const pathD = useMemo(() => buildPathD(activeNodes.length), [activeNodes.length]);
-  const containerHeight = Math.max(activeNodes.length, 1) * ROW_HEIGHT + 96;
+  // Solid overlay for the stretch already walked — every completed level plus
+  // the one currently in progress, so the trail visibly ends at "You are here".
+  const travelledCount = Math.min(
+    activeNodes.length,
+    Math.max(stats.completed, stats.currentIndex + 1)
+  );
+  const travelledD = useMemo(() => buildPathD(travelledCount), [travelledCount]);
+  const containerHeight = Math.max(activeNodes.length, 1) * ROW_HEIGHT + FOOT_ROOM;
 
   if (nodes.length === 0) return null;
 
@@ -222,18 +253,31 @@ export default function RoadmapJourneyView({
         {/* Decorative connecting path */}
         <svg
           className="absolute inset-0 w-full h-full pointer-events-none"
-          viewBox={`0 0 100 ${activeNodes.length * ROW_HEIGHT}`}
+          viewBox={`0 0 100 ${containerHeight}`}
           preserveAspectRatio="none"
-          style={{ top: 48 }}
         >
+          {/* Road ahead */}
           <path
             d={pathD}
             fill="none"
             stroke="#30363D"
-            strokeWidth="1.2"
-            strokeDasharray="1.5 2.5"
+            strokeWidth="1.8"
+            strokeDasharray="2 3"
+            strokeLinecap="round"
             vectorEffect="non-scaling-stroke"
           />
+          {/* Ground already covered */}
+          {travelledCount > 1 && (
+            <path
+              d={travelledD}
+              fill="none"
+              stroke="#F97316"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              opacity="0.55"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
         </svg>
 
         {/* Level nodes */}
@@ -243,7 +287,7 @@ export default function RoadmapJourneyView({
             node={node}
             index={i}
             x={xFor(i)}
-            top={i * ROW_HEIGHT + 48}
+            top={i * ROW_HEIGHT + PATH_TOP}
             isCurrent={i === stats.currentIndex}
             isSelected={selectedId === node.id}
             onSelect={onSelect}
@@ -257,7 +301,7 @@ export default function RoadmapJourneyView({
         {/* Finish trophy */}
         <div
           className="absolute flex flex-col items-center gap-1"
-          style={{ left: `${xFor(activeNodes.length)}%`, top: activeNodes.length * ROW_HEIGHT + 56, transform: 'translate(-50%, 0)' }}
+          style={{ left: `${xFor(activeNodes.length)}%`, top: activeNodes.length * ROW_HEIGHT + PATH_TOP + 8, transform: 'translate(-50%, 0)' }}
         >
           <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 ${
             stats.completed === stats.total && stats.total > 0
@@ -295,8 +339,11 @@ function JourneyNode({ node, index, x, top, isCurrent, isSelected, onSelect, onD
       className="absolute flex flex-col items-center gap-2 group"
       style={{ left: `${x}%`, top, transform: 'translate(-50%, 0)', width: 200 }}
     >
+      {/* Absolutely positioned on purpose: in the flex flow this badge pushed the
+          level circle down by its own height, so the current node no longer sat
+          on the connecting path. */}
       {isCurrent && (
-        <span className="mb-1 px-2 py-0.5 rounded-full bg-orange text-white text-[10px] font-bold uppercase tracking-wide animate-pulse-slow">
+        <span className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full bg-orange text-white text-[10px] font-bold uppercase tracking-wide animate-pulse-slow shadow-glow">
           You are here
         </span>
       )}
@@ -308,7 +355,7 @@ function JourneyNode({ node, index, x, top, isCurrent, isSelected, onSelect, onD
           relative w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] rounded-full flex items-center justify-center
           bg-gradient-to-br ${theme.ring} border-[3px] ${isSelected ? 'border-white/70' : theme.border}
           ${theme.glow} transition-transform duration-200 hover:scale-105
-          ${isCurrent ? 'scale-110' : ''} ${isPending ? 'opacity-70' : ''}
+          ${isCurrent ? 'scale-110 ring-2 ring-orange/40 ring-offset-2 ring-offset-background' : ''}
         `}
         title={node.title}
       >
@@ -327,7 +374,9 @@ function JourneyNode({ node, index, x, top, isCurrent, isSelected, onSelect, onD
               d="M5 3l14 9-14 9V3z" />
           </svg>
         ) : (
-          <span className="text-white font-bold text-lg">{index + 1}</span>
+          <span className={`font-bold text-lg ${isPending ? 'text-text-secondary' : 'text-white'}`}>
+            {index + 1}
+          </span>
         )}
 
         {/* Progress ring */}
