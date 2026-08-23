@@ -7,7 +7,7 @@ import TaskCard from '../shared/TaskCard';
 import { PriorityBadge, StatusBadge } from '../shared/TaskCard';
 import TaskDetailModal from '../Calendar/TaskDetailModal';
 import SelfTaskModal from './SelfTaskModal';
-import { getDueDateColor, formatDate } from '../../utils/dateHelpers';
+import { getDueDateColor, formatDate, toLocalDateString } from '../../utils/dateHelpers';
 import TaskFilterBar from './TaskFilterBar';
 import { useTaskFilters } from '../../hooks/useTaskFilters';
 // HRMS Dashboard Widget — attendance punch service
@@ -159,17 +159,28 @@ export default function EmployeeDashboard() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Default custom range = last 30 days (pre-fill)
-  useEffect(() => {
-    if (timeFilter === 'custom' && !customRange.start && !customRange.end) {
+  /**
+   * Switch to the custom range, pre-filling the last 30 days the first time.
+   *
+   * This was an effect keyed on `timeFilter`, which meant a setState in an
+   * effect body (an extra render) reacting to a state change the click handler
+   * had just made — the "you might not need an effect" case. Doing it in the
+   * handler is the same behaviour in one render.
+   *
+   * The dates also used `toISOString().split('T')[0]`, which formats the *UTC*
+   * day: for an IST user before 05:30 both ends of the range came out a day
+   * early. toLocalDateString formats the local calendar day.
+   */
+  const handleCustomRangeClick = () => {
+    setTimeFilter('custom');
+    setShowCustomPicker((prev) => !prev);
+    setCustomRange((prev) => {
+      if (prev.start || prev.end) return prev;
       const end = new Date();
       const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
-      setCustomRange({
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0],
-      });
-    }
-  }, [timeFilter]);
+      return { start: toLocalDateString(start), end: toLocalDateString(end) };
+    });
+  };
 
   // ME-4 fix: wrap filter + stats in useMemo — only re-computes when tasks,
   // timeFilter, or customRange changes. Modal toggles and filter bar state
@@ -287,7 +298,7 @@ export default function EmployeeDashboard() {
             {/* Custom date range button */}
             <div className="relative" ref={customPickerRef}>
               <button
-                onClick={() => { setTimeFilter('custom'); setShowCustomPicker(prev => !prev); }}
+                onClick={handleCustomRangeClick}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
                   timeFilter === 'custom'
                     ? 'bg-orange text-white shadow-sm'

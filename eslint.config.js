@@ -75,6 +75,25 @@ export default defineConfig([
       globals: globals.node,
     },
   },
+  // Node.js globals for the local admin-SDK utilities in scripts/.
+  // These are gitignored, run under plain Node with serviceAccountKey.json, and
+  // use process.argv / process.exit — under the browser globals above every one
+  // of those was a no-undef error, which made `npm run lint` exit non-zero even
+  // though the app itself was clean. Linted rather than ignored (unlike dist/
+  // and functions/) precisely because they run against production Firestore with
+  // admin privileges, where a typo is expensive.
+  {
+    files: ['scripts/**/*.{js,cjs,mjs}'],
+    languageOptions: {
+      globals: globals.node,
+    },
+    rules: {
+      // `try { x = await getUserByEmail(e) } catch {}` — "no such user" is the
+      // expected outcome these scripts probe for, so the empty catch is the
+      // intent, not an oversight.
+      'no-empty': ['error', { allowEmptyCatch: true }],
+    },
+  },
   // Service workers in public/ run in a ServiceWorkerGlobalScope, not a window,
   // and are loaded as classic scripts (importScripts, not import). Declared here
   // rather than with an /* eslint-env */ comment, which flat config ignores and

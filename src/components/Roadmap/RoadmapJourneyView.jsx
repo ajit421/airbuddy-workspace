@@ -104,24 +104,34 @@ export default function RoadmapJourneyView({
   // Each entry {id, title} represents one level of "entered" a milestone's
   // own sub-quests. The last entry's children are subscribed to live.
   const [drillStack, setDrillStack] = useState([]);
-  const [drillChildren, setDrillChildren] = useState(null); // null = loading
-  const currentParent = drillStack[drillStack.length - 1] ?? null;
+  // Snapshot tagged with the level it belongs to: { parentId, children }.
+  // Tagging it means "is this data for the level I'm showing?" is derived on
+  // render instead of reset with a setState in the effect body — the effect now
+  // only subscribes, and switching levels can't leave the previous level's
+  // children on screen for a frame.
+  const [drillData, setDrillData] = useState(null);
+  const currentParent   = drillStack[drillStack.length - 1] ?? null;
+  const currentParentId = currentParent?.id ?? null;
 
   useEffect(() => {
-    if (!currentParent) {
-      setDrillChildren(null);
-      return;
-    }
-    setDrillChildren(null); // show loading state while switching levels
+    if (!currentParentId) return;
     const unsub = subscribeToChildren(
-      currentParent.id,
-      (children) => setDrillChildren(children),
-      () => setDrillChildren([])
+      currentParentId,
+      (children) => setDrillData({ parentId: currentParentId, children }),
+      ()         => setDrillData({ parentId: currentParentId, children: [] })
     );
     return unsub;
-  }, [currentParent?.id]);
+  }, [currentParentId]);
 
-  const activeNodes = currentParent ? (drillChildren ?? []) : nodes;
+  // null = this level's first snapshot has not arrived yet.
+  const drillChildren = drillData?.parentId === currentParentId
+    ? drillData.children
+    : null;
+
+  const activeNodes = useMemo(
+    () => (currentParentId ? (drillChildren ?? []) : nodes),
+    [currentParentId, drillChildren, nodes]
+  );
 
   const handleDrillIn  = (node) => setDrillStack((s) => [...s, { id: node.id, title: node.title }]);
   const handleDrillTo  = (index) => setDrillStack((s) => s.slice(0, index + 1));
