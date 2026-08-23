@@ -62,14 +62,21 @@ const snapToArray = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 /**
  * Sort nodes by dueDate ascending — soonest deadline at the top.
  *
- * Nodes were previously ordered by the `order` field, which is only the
- * insertion counter set at create time, so a list of siblings appeared in the
- * sequence someone happened to add them rather than in timeline order.
+ * Siblings used to be ordered by the `order` field alone. That looked like an
+ * insertion counter but nothing ever writes it: `createNode` defaults it to 0
+ * and no caller passes a value, so every node carries `order: 0` and the
+ * comparator was a no-op. Sibling nodes therefore rendered in raw Firestore
+ * snapshot order (effectively document-ID order) — the "random" ordering.
  *
- * A node with no dueDate (or an unparseable one) has no position on a timeline,
- * so it sinks below every dated node instead of being treated as epoch 0.
- * `order` is the tiebreak for equal dates and for the undated group, which
- * keeps the sort stable across snapshots.
+ * Tiebreak chain, applied in order:
+ *   1. dueDate ascending. A node with no dueDate (or an unparseable one) has no
+ *      position on a timeline, so it sinks below every dated node rather than
+ *      being treated as epoch 0.
+ *   2. `order` — still honoured so a future manual-ordering feature works
+ *      without touching this function, but a no-op on today's data.
+ *   3. title, then id — the tiebreak that actually decides things now. Without
+ *      it, undated siblings (a milestone with no dueDate set, for instance) fall
+ *      back to document-ID order, which is arbitrary and can shift.
  *
  * Exported for unit testing (same pattern as computeHierarchy).
  *
@@ -81,14 +88,18 @@ export const sortNodesByDueDate = (nodes) => {
     const d = toDate(node?.dueDate);
     return d && !isNaN(d) ? d.getTime() : null;
   };
+  const tiebreak = (a, b) =>
+    (a.order ?? 0) - (b.order ?? 0) ||
+    (a.title ?? '').localeCompare(b.title ?? '') ||
+    (a.id ?? '').localeCompare(b.id ?? '');
+
   return [...nodes].sort((a, b) => {
     const ma = millis(a);
     const mb = millis(b);
-    if (ma === null && mb === null) return (a.order ?? 0) - (b.order ?? 0);
+    if (ma === null && mb === null) return tiebreak(a, b);
     if (ma === null) return 1;
     if (mb === null) return -1;
-    if (ma !== mb) return ma - mb;
-    return (a.order ?? 0) - (b.order ?? 0);
+    return (ma - mb) || tiebreak(a, b);
   });
 };
 

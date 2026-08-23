@@ -365,6 +365,43 @@ describe('sortNodesByDueDate', () => {
     expect(out.map((n) => n.id)).toEqual(['first', 'second', 'early', 'late']);
   });
 
+  /**
+   * `order` is 0 on every real document (createNode defaults it and no caller
+   * passes one), so title is the tiebreak that actually decides the order of
+   * undated siblings — e.g. root milestones with no dueDate set. Without it
+   * they fall back to arbitrary document-ID order.
+   */
+  it('orders undated nodes by title when order is uniformly 0', () => {
+    const out = sortNodesByDueDate([
+      { id: 'n3', title: 'Drone Motor (200-unit)', order: 0, dueDate: null },
+      { id: 'n1', title: 'Ceiling Fan Motor',      order: 0, dueDate: null },
+      { id: 'n2', title: 'AC Outdoor Fan Motor',   order: 0, dueDate: null },
+    ]);
+    expect(out.map((n) => n.title)).toEqual([
+      'AC Outdoor Fan Motor',
+      'Ceiling Fan Motor',
+      'Drone Motor (200-unit)',
+    ]);
+  });
+
+  it('breaks an exact date + title tie on id so the order never shifts', () => {
+    const same = new Date('2026-09-05');
+    const twice = () => sortNodesByDueDate([
+      { id: 'zz', title: 'Same', order: 0, dueDate: same },
+      { id: 'aa', title: 'Same', order: 0, dueDate: same },
+    ]).map((n) => n.id);
+    expect(twice()).toEqual(['aa', 'zz']);
+    expect(twice()).toEqual(twice());
+  });
+
+  it('still puts a dated node above an undated one whatever the titles', () => {
+    const out = sortNodesByDueDate([
+      { id: 'a', title: 'AAA', order: 0, dueDate: null },
+      { id: 'z', title: 'ZZZ', order: 0, dueDate: new Date('2026-12-01') },
+    ]);
+    expect(out.map((n) => n.id)).toEqual(['z', 'a']);
+  });
+
   it('does not mutate the input array', () => {
     const input = [node('b', new Date('2026-12-01')), node('a', new Date('2026-01-01'))];
     sortNodesByDueDate(input);

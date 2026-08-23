@@ -85,13 +85,16 @@ export function subscribeToRoadmapTasks(nodeId, onData, onError) {
           return d && !isNaN(d) ? d.getTime() : null;
         };
         const created = (t) => t.createdAt?.toMillis?.() ?? 0;
+        // createdAt is a serverTimestamp, so it is null on the local echo of a
+        // just-created doc; title keeps that moment deterministic too.
+        const tiebreak = () =>
+          (created(a) - created(b)) || (a.title ?? '').localeCompare(b.title ?? '');
         const da = due(a);
         const dbb = due(b);
-        if (da === null && dbb === null) return created(a) - created(b);
+        if (da === null && dbb === null) return tiebreak();
         if (da === null) return 1;
         if (dbb === null) return -1;
-        if (da !== dbb) return da - dbb;
-        return created(a) - created(b);
+        return (da - dbb) || tiebreak();
       });
       onData(tasks);
     },

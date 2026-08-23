@@ -10,6 +10,25 @@ export const toDate = (value) => {
   return new Date(value);
 };
 
+/**
+ * 'YYYY-MM-DD' for the *local* calendar day.
+ *
+ * Deliberately not `toISOString().slice(0, 10)`: that formats the UTC day, so
+ * for any UTC+ user in the first hours of their day it returns yesterday's date
+ * (an IST user at 00:15 is 18:45 UTC the day before). That bug already broke
+ * attendance punch-in matching once — hrmsService has carried its own copy of
+ * this ever since, and now delegates here.
+ */
+export const toLocalDateString = (value = new Date()) => {
+  const d = toDate(value);
+  if (!d || isNaN(d)) return '';
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0'),
+  ].join('-');
+};
+
 export const formatDate = (value, fmt = 'MMM d, yyyy') => {
   const d = toDate(value);
   if (!d || isNaN(d)) return 'N/A';

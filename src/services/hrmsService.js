@@ -21,6 +21,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { z } from 'zod';
+import { toLocalDateString } from '../utils/dateHelpers';
 
 // ─── Collection reference ────────────────────────────────────────────────────
 const USERS_COLLECTION = 'users';
@@ -170,13 +171,9 @@ const attendancePath = (uid) => collection(db, 'attendance', uid, 'records');
 // toISOString().slice(0,10) produces a UTC date, which is wrong for UTC+
 // timezones (e.g. IST users at 00:15 IST → 18:45 UTC previous day).
 // This helper always returns the date in the browser's local timezone.
-function getLocalDateString(date = new Date()) {
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0'),
-  ].join('-'); // 'YYYY-MM-DD' in local timezone
-}
+// Single implementation now lives in utils/dateHelpers; kept as a local alias so
+// the call sites below read the same as before.
+const getLocalDateString = (date = new Date()) => toLocalDateString(date);
 
 // ─── recordPunch ─────────────────────────────────────────────────────────────
 /**
