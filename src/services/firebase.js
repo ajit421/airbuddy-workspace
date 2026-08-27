@@ -20,7 +20,20 @@ export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 
-// googleProvider.addScope('https://www.googleapis.com/auth/calendar');
+// ── DO NOT add OAuth scopes to this provider ─────────────────────────────────
+// googleProvider is the provider signInWithPopup() uses, so any scope added
+// here becomes part of the *sign-in* request. A Calendar scope was added here
+// once; Calendar is a sensitive scope, and because this OAuth app is not
+// verified by Google every team member's login was interrupted by a full-page
+// "Google hasn't verified this app" / "Access blocked" warning. The feature was
+// rolled back for that reason alone.
+//
+// Google Calendar sync now runs entirely server-side in functions/calendar.js,
+// using a service account with Workspace domain-wide delegation: the super
+// admin consents once for the whole domain, so no employee is ever prompted and
+// login stays exactly as it is today. Nothing in the browser needs a Google API
+// scope — if you find yourself wanting one, add it to the Cloud Function
+// instead.
 
 // Cloud Messaging lives in src/services/pushService.js.
 //

@@ -3,7 +3,6 @@ import {
   onAuthStateChanged,
   signInWithPopup,
   signOut as firebaseSignOut,
-  GoogleAuthProvider,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../services/firebase';
@@ -21,12 +20,12 @@ export const AuthProvider = ({ children }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [effectiveUid, setEffectiveUid] = useState(null);
   const [loading, setLoading] = useState(true);
-  // HI-11 fix: Google OAuth token stored in memory only (no sessionStorage).
-  // sessionStorage is readable by XSS payloads; keeping the token in React state
-  // limits its exposure to the current JS execution context.
-  // The token is re-acquired on page refresh via refreshGoogleToken() if needed.
-  const [googleAccessToken, setGoogleAccessToken] = useState(null);
-  
+  // No Google OAuth access token is kept here any more. It used to be held in
+  // memory (HI-11 fix — never sessionStorage, which XSS can read) for the
+  // Calendar API, but the browser no longer touches any Google API: calendar
+  // sync moved into functions/calendar.js. Removing it also removes the
+  // popup-for-permissions path that used to interrupt sign-in with a warning
+  // screen.
   const [isEmployeeView, setIsEmployeeView] = useState(false);
   const [authError, setAuthError] = useState(null);
 
@@ -157,13 +156,12 @@ export const AuthProvider = ({ children }) => {
   const signInWithGoogle = async () => {
     setAuthError(null);
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        setGoogleAccessToken(credential.accessToken);
-        // HI-11 fix: no longer persisting to sessionStorage
-      }
-      return result;
+      // No OAuth access token is read out of the result on purpose. The
+      // provider carries no API scopes (see src/services/firebase.js), so the
+      // token could only ever grant basic profile access, and Google Calendar
+      // sync runs server-side in functions/calendar.js. Keeping a token here
+      // invited the popup-for-permissions flow that broke login.
+      return await signInWithPopup(auth, googleProvider);
     } catch (error) {
       console.error('Login failed:', error);
       let errorMessage = 'Sign-in failed. Please try again.';
@@ -193,28 +191,10 @@ export const AuthProvider = ({ children }) => {
       if (effectiveUid) await disablePushNotifications(effectiveUid);
 
       await firebaseSignOut(auth);
-      setGoogleAccessToken(null);
-      // HI-11 fix: no sessionStorage entry to clear
     } catch (error) {
       console.error('Sign out failed:', error);
       setAuthError('Failed to sign out properly.');
     }
-  };
-
-  // ── Refresh Google OAuth token silently (called on Calendar 401) ─────────────
-  const refreshGoogleToken = async () => {
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        setGoogleAccessToken(credential.accessToken);
-        // HI-11 fix: token stored in memory only
-        return credential.accessToken;
-      }
-    } catch (err) {
-      console.warn('Could not refresh Google token:', err);
-    }
-    return null;
   };
 
   const clearAuthError = () => setAuthError(null);
@@ -227,7 +207,7 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider value={{
       user, userProfile, effectiveUid, loading, signInWithGoogle, signOut,
       isAdmin, realIsAdmin, isEmployeeView, toggleEmployeeView,
-      authError, clearAuthError, googleAccessToken, refreshGoogleToken
+      authError, clearAuthError
     }}>
       {children}
       {authError && (

@@ -35,8 +35,6 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=sender_id
 VITE_FIREBASE_APP_ID=app_id
 VITE_FIREBASE_MEASUREMENT_ID=measurement_id
 VITE_FIREBASE_VAPID_KEY=vapid_key
-VITE_GOOGLE_CLIENT_ID=client_id
-VITE_GOOGLE_CALENDAR_API_KEY=calendar_api_key
 ```
 
 For the Vercel Serverless Function, set this in your Vercel project dashboard:

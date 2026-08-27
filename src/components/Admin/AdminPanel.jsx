@@ -4,7 +4,6 @@ import { formatDate } from '../../utils/dateHelpers';
 import { PriorityBadge, StatusBadge, ProgressBar } from '../shared/TaskCard';
 import { PRIORITY_OPTIONS, STATUS_OPTIONS, MODULE_OPTIONS } from '../../utils/permissions';
 import { sendNotification } from '../../services/notificationService';
-import { addTaskToGoogleCalendar } from '../../services/googleCalendarService';
 // HI-5 + NEW-1 fix: ALL Firestore access goes through the service layer
 import { createAdminTask, deleteTask, subscribeToAdminTasks } from '../../services/taskService';
 import { createAnnouncement, deleteAnnouncement, subscribeToAnnouncements } from '../../services/announcementService';
@@ -76,7 +75,7 @@ const TeamOverview = ({ users, allTasks }) => {
 
 // ─── Assign Task Form ────────────────────────────────────────
 const AssignTask = ({ users }) => {
-  const { userProfile, googleAccessToken } = useAuth();
+  const { userProfile } = useAuth();
   const [form, setForm] = useState({
     title: '', description: '', module: MODULE_OPTIONS[0],
     priority: 'medium', status: 'pending', progress: 0,
@@ -108,31 +107,24 @@ const AssignTask = ({ users }) => {
       await createAdminTask(form, userProfile?.uid);
       setSuccess('Task assigned successfully!');
 
-      // Sync task to Google Calendar (admin's calendar)
-      const calTaskObj = {
-        title: form.title,
-        description: form.description,
-        module: form.module,
-        priority: form.priority,
-        startDate: form.startDate ? new Date(form.startDate) : new Date(),
-        dueDate: form.dueDate ? new Date(form.dueDate) : new Date(),
-      };
-      const assigneeNames = form.assignedTo
-        .map(uid => users.find(u => u.uid === uid)?.name || 'Team Member')
-        .join(', ');
-      const calEvent = await addTaskToGoogleCalendar(googleAccessToken, calTaskObj, assigneeNames);
-      const eventLink = calEvent?.htmlLink || null;
+      // Google Calendar is not touched from here. This block used to call
+      // addTaskToGoogleCalendar() with the *admin's* own access token, so the
+      // event landed in the admin's calendar rather than the assignees' — the
+      // API cannot write to somebody else's calendar from a browser token at
+      // all. The onTaskCreate trigger in functions/calendar.js now impersonates
+      // each assignee through domain-wide delegation and writes into their own
+      // calendar, without anybody being asked for permission.
 
-      // Notify each assigned employee (with calendar link if available)
+      // Notify each assigned employee
       await Promise.all(
         form.assignedTo
           .filter(uid => uid !== userProfile?.uid)
           .map(uid => sendNotification(
             uid,
             'New Task Assigned',
-            `"${form.title}" has been assigned to you.${eventLink ? ' Check your Google Calendar.' : ''}`,
+            `"${form.title}" has been assigned to you. It is on your Google Calendar too.`,
             'task_assigned',
-            eventLink,
+            null,
             userProfile?.uid   // CR-6: senderUid required by Firestore rule
           ))
       );

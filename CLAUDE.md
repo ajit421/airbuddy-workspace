@@ -44,7 +44,7 @@ npx firebase-tools emulators:exec --only functions "echo ok"
 
 Emulator ports ([firebase.json](firebase.json)): functions 5001, firestore 8080, storage 9199, auth 9099, pubsub 8085, UI 4000.
 
-`.env` (gitignored) holds `VITE_FIREBASE_*` (including `VITE_FIREBASE_VAPID_KEY`, which web push needs), `VITE_GOOGLE_CLIENT_ID`, `VITE_GOOGLE_CALENDAR_API_KEY`, and `FIREBASE_SERVICE_ACCOUNT`. Every `VITE_*` value must also exist in the Vercel project settings — the browser bundle is built there, so a key that is only in the local `.env` works in `npm run dev` and silently disables the feature in production.
+`.env` (gitignored) holds `VITE_FIREBASE_*` (including `VITE_FIREBASE_VAPID_KEY`, which web push needs) and `FIREBASE_SERVICE_ACCOUNT`. `VITE_GOOGLE_CLIENT_ID` and `VITE_GOOGLE_CALENDAR_API_KEY` are **dead** — nothing in `src/` reads them since Calendar sync moved server-side; they can be deleted from `.env` and from Vercel. Every `VITE_*` value must also exist in the Vercel project settings — the browser bundle is built there, so a key that is only in the local `.env` works in `npm run dev` and silently disables the feature in production.
 
 ## The three tiers
 
@@ -69,7 +69,9 @@ Layering inside `src/`: components -> `hooks/` -> `services/` -> Firestore. Comp
 
 **3. `isAdmin` vs `realIsAdmin`.** Admins can toggle "employee view" (`toggleEmployeeView`). `isAdmin` is the *effective* role — what UI, `AdminRoute`, and `TaskContext` query shape all use. `realIsAdmin` is the actual role, used only to decide whether to show the toggle. Rules know nothing about the toggle, so an admin in employee view still has admin write power at the database level.
 
-The Google OAuth access token (Calendar scope) is deliberately kept **in React state only**, never `sessionStorage` (XSS hardening, `HI-11`). It is lost on refresh; on a Calendar `401`, call `refreshGoogleToken()`, which re-runs the popup. Note the Calendar scope is currently commented out in [src/services/firebase.js](src/services/firebase.js), so the token may not carry Calendar permission.
+**The browser holds no Google OAuth access token, and `googleProvider` must never be given a scope.** There used to be a `googleAccessToken` in `AuthContext` (React state only, never `sessionStorage` — XSS hardening, `HI-11`) plus a `refreshGoogleToken()` that re-opened the popup on a Calendar `401`. All of it is gone, along with `googleCalendarService.js` and `googleCalendar.js`.
+
+The reason is a rollback that already happened once: adding `googleProvider.addScope('https://www.googleapis.com/auth/calendar')` puts a **sensitive** scope into the `signInWithPopup()` request, and because this OAuth app is not verified by Google, every team member's *login* was interrupted by a full-page "Google hasn't verified this app" / "Access blocked" warning. The feature was disabled for that reason alone. A browser token also cannot write to anybody else's calendar, so the old `addTaskToGoogleCalendar(googleAccessToken, ...)` call in `AdminPanel` put assigned work on the *admin's* calendar. See "Google Calendar sync" below.
 
 ## Provider tree and route scoping
 
@@ -156,7 +158,7 @@ Calendar dedup interacts with the mirror: `getRoadmapCalendarEvents()` returns a
 
 ## Cloud Functions
 
-Ten functions, all **v2** (`firebase-functions` 7, whose root export *is* the v2 namespace — `functions.firestore.document` and `functions.pubsub.schedule` do not exist there, which is why the original v1 code threw at module load and nothing could deploy). Runtime is Node 22, `maxInstances: 10`, set once via `setGlobalOptions` in [functions/index.js](functions/index.js).
+Fourteen functions, all **v2** (`firebase-functions` 7, whose root export *is* the v2 namespace — `functions.firestore.document` and `functions.pubsub.schedule` do not exist there, which is why the original v1 code threw at module load and nothing could deploy). Runtime is Node 22, `maxInstances: 10`, set once via `setGlobalOptions` in [functions/index.js](functions/index.js).
 
 **The region split is deliberate — do not "tidy" it into one region.**
 
@@ -169,9 +171,13 @@ Both crons carry an explicit `region: 'asia-south1'` in their own options, overr
 
 | Function | Trigger | Does |
 |---|---|---|
-| `onTaskCreate` | `tasks/{id}` created | Push to assignees (skips the creator) |
-| `onTaskUpdate` | `tasks/{id}` updated | Push on **status change only**; skips `updatedBy` when present |
-| `onAnnouncementCreate` | `announcements/{id}` created | Push to every registered device |
+| `onTaskCreate` | `tasks/{id}` created | Push to assignees (skips the creator) + one Google Calendar event per assignee |
+| `onTaskUpdate` | `tasks/{id}` updated | Bell + push on a status change **or a reschedule** (a due-date change used to be silent); skips `updatedBy` when present. Calendar sync runs before those guards, so a retitle moves the event too |
+| `onTaskDelete` | `tasks/{id}` deleted | Removes the task's calendar events from every assignee's calendar |
+| `onAnnouncementCreate` | `announcements/{id}` created | Push to every registered device + an all-day Calendar entry for the whole team |
+| `onAnnouncementDelete` | `announcements/{id}` deleted | Removes those Calendar entries |
+| `onRoadmapNodeCalendar` | `roadmapNodes/{n}` written | Milestone Calendar events for the node's assignees, **plus** bell + push for newly added assignees — also silent before |
+| `onLeaveCalendar` | `leaves/{id}` written | An approved leave on the applicant's Calendar, **plus** the bell + push for an approval or rejection — which used to be silent |
 | `onDueDateApproach` | cron 09:00 IST | Bell entry + push for root tasks due tomorrow |
 | `roadmapDeadlineCheck` | cron 09:15 IST | Bell entry + push for roadmap tasks due tomorrow / overdue |
 | `onRoadmapTaskWrite` | `roadmapNodes/{n}/tasks/{t}` written | Node progress rollup (transaction) |
@@ -192,9 +198,165 @@ Two cost guards worth knowing before you change a query:
 - `roadmapDeadlineCheck`'s overdue scan is bounded to `OVERDUE_LOOKBACK_DAYS` (30). Without a lower bound it re-reads and re-notifies about *every* task that has ever slipped, every single day.
 - `onDueDateApproach` filters `status !== 'completed'` **in memory** rather than in the query. Combining that with a `dueDate` range means two inequality fields, which needs its own composite index and `orderBy` — not worth it for one day's worth of tasks.
 
+## Google Calendar sync
+
+Everything the app notifies people about and shows on its own Calendar page also
+lands on the relevant person's Google Calendar, the same way push notifications
+reach them — [functions/calendar.js](functions/calendar.js)
+plus the pure half in [functions/calendarEvent.js](functions/calendarEvent.js).
+There is **no client involvement at all**: no button, no scope, no popup, no
+`gapi`.
+
+**Why it is server-side, and why that is not negotiable.** The browser version
+was built first and rolled back. `googleProvider.addScope('.../auth/calendar')`
+puts a sensitive scope into the `signInWithPopup()` request, and an OAuth app
+Google has not verified gets its *login* interrupted by a full-page "Google
+hasn't verified this app" / "Access blocked" warning — for the whole team. On top
+of that a browser token can only write to the calendar of whoever is signed in,
+so `AdminPanel` passing `googleAccessToken` put work assigned to somebody else on
+the *admin's* calendar. Both problems disappear with delegation. The team's
+standing requirement is that signing out and back in shows no Google warning
+whatsoever, so **never put a scope back on `googleProvider`** — the comment in
+[src/services/firebase.js](src/services/firebase.js) says the same thing at the
+call site.
+
+**How impersonation works.** A service account holds Workspace **domain-wide
+delegation** for `https://www.googleapis.com/auth/calendar.events` (least
+privilege — it can write events but cannot create or delete calendars),
+authorised once by the super admin in admin.google.com → Security → Access and
+data control → API controls → Domain wide delegation. `calendar.js` builds a
+`JWT` with `subject: '<employee>@airbuddy.in'` and writes to that person's
+`primary` calendar. The consent is org-level, so individual employees are never
+prompted, and sync works with their browser closed. The service-account JSON
+lives in the `CALENDAR_SA_KEY` secret (`functions:secrets:set`), not in
+`functions.config()`.
+
+**What syncs, and to whom.** The web Calendar page draws three sources (tasks,
+leaves, roadmap milestones); all three sync, plus announcements:
+
+| Record | Goes to | Trigger |
+|---|---|---|
+| `tasks/{id}` | assignees **and work partners** | `onTaskCreate` / `onTaskUpdate` / `onTaskDelete` |
+| `roadmapNodes/{id}` | the milestone's `assignedTo` | `onRoadmapNodeCalendar` |
+| `leaves/{id}` | the applicant, once `status == 'approved'` | `onLeaveCalendar` |
+| `announcements/{id}` | every Workspace account | `onAnnouncementCreate` / `onAnnouncementDelete` |
+
+Work partners are included because a partnered task already shows on their
+Dashboard and in the Work Partner drawer — the calendar was the one place the
+work was invisible to them. Only the leave *applicant* gets a leave event: admins
+see everybody's leave on the app's Calendar page, but mirroring the whole team's
+time off into an admin's personal calendar would bury their own days. Milestones
+with no assignee, and nodes that are archived or undated, sync to nobody — they
+still appear on the app's Calendar page.
+
+The two deadline crons (`onDueDateApproach`, `roadmapDeadlineCheck`) deliberately
+create **no** calendar entries. The event for the task already carries reminders a
+day and an hour ahead, so a cron-created entry would be a duplicate of a
+reminder the calendar is already going to fire.
+
+Things worth knowing before changing any of it:
+
+- **Only `@airbuddy.in` accounts sync.** Delegation cannot impersonate an
+  external `allowed_emails` collaborator, and asking such a user for consent
+  individually would bring the warning screen back — so they are skipped with a
+  log line. `WORKSPACE_DOMAIN` in `calendarEvent.js` is the single check.
+- **`calendarEventIds: { uid: eventId }` on the task** is how an edit or delete
+  finds the right event in each person's calendar. It is written with the Admin
+  SDK, which bypasses rules, so `firestore.rules` needs no entry for it.
+- **That write-back re-fires the same trigger, so the anti-loop guard matters.**
+  `fieldsChanged(before, after, fields)` only reports a change for the entity's
+  own field list — `SYNCED_FIELDS` for tasks, `NODE_SYNCED_FIELDS` for nodes,
+  `LEAVE_SYNCED_FIELDS` for leaves. `calendarEventIds` is deliberately in none of
+  them; add it and the trigger loops. Timestamps are compared by value and arrays
+  element-wise — two `Timestamp` objects for the same instant are never `===`,
+  and `assignedTo` is a fresh array on every snapshot, so a naive comparison
+  would call the API on every write.
+- **`progress` is not in `NODE_SYNCED_FIELDS`, and must not be.** The Phase 8
+  rollup rewrites it on every task tick anywhere below a node, and
+  `onRoadmapNodeCalendar` fires on each of those writes. The node event shows
+  `status` instead. For the same reason the event description carries no progress
+  percentage — it would be permanently stale.
+- **`onRoadmapNodeCalendar` is a separate trigger from
+  `onRoadmapNodeProgressChange` / `onRoadmapNodeHistory` on purpose.** Those two
+  are load-bearing for the rollup and the audit trail; a Calendar API call has no
+  business being able to slow down or throw inside either. `calendarEventIds` is
+  in neither `NODE_TRACKED_FIELDS` nor `SYSTEM_FIELDS`, so the write-back also
+  produces no History-tab noise.
+- **Node and leave sync are `onDocumentWritten`, not create/update/delete.**
+  Eligibility there is a *state*, not an event: a leave becomes calendar-worthy
+  when it is approved and stops being so if that is undone; a node stops being
+  worthy when it is archived or loses its last assignee. One reconciling handler
+  per write is simpler than three that have to agree, and `reconcile()` in
+  `calendar.js` is that handler for all four entity types.
+- **Calendar sync runs before the early returns** in both task triggers. In
+  `onTaskCreate` that is because a self-created personal task has nobody to push
+  to (the creator is the only assignee) but still belongs on their calendar; in
+  `onTaskUpdate` because a reschedule sends no push yet must move the event.
+- **All-day `end.date` is exclusive.** A task due on the 20th needs `end.date` =
+  the 21st, or Google renders the event as ending on the 19th.
+- **All-day reminder offsets are counted from midnight, and that is the trap.**
+  `reminders.overrides[].minutes` counts back from the event *start*, which for an
+  all-day event is 00:00. So the obvious-looking `{ minutes: 60 }` fires at 23:00
+  the night before and `{ minutes: 1440 }` fires at midnight — both while everyone
+  is asleep, which is exactly why the first version of this felt silent even
+  though reminders were set. 15 hours before midnight is 09:00 the previous
+  morning, so the offsets are `900`, `2340` and `5220` (`NINE_AM_DAY_BEFORE` and
+  friends in `calendarEvent.js`), all landing at 09:00 IST alongside the 09:00
+  cron push. Do not "tidy" them into round day multiples.
+  [src/services/calendarReminders.server.test.js](src/services/calendarReminders.server.test.js)
+  asserts every offset is `minutes % 1440 === 900` precisely so that tidying
+  fails the build.
+- **Every event carries an `email` reminder as well as popups.** Email is the one
+  channel that still arrives when a user has denied browser notification
+  permission and has the app closed — the team's standing requirement is that
+  nothing happens silently.
+- **The announcement event is timed, not all-day.** It is a 15-minute slot at the
+  moment of posting with a 0-minute popup and email, so the reminder fires
+  immediately. As an all-day entry, "0 minutes" would have meant midnight —
+  hours late, or a day early for anything posted after 00:00. It is also
+  `transparency: 'transparent'`, so it does not mark anyone busy.
+- **A leave event has no reminders at all**, deliberately: a day off is not a
+  to-do. The *approval* is what needs announcing, and that is a bell entry plus a
+  push from `onLeaveCalendar`.
+- **Dates go through `istDateString()`** in [functions/time.js](functions/time.js),
+  for the same reason the client uses `toLocalDateString()`: a UTC
+  `toISOString().slice(0, 10)` puts a task created at 23:40 IST on the previous
+  day. The old client service had exactly that bug.
+- **Roadmap tasks are covered by the mirror, not by a second trigger.**
+  `onDocumentCreated('tasks/{taskId}')` does not match the
+  `roadmapNodes/{n}/tasks/{t}` subcollection, so the root-`tasks` mirror written
+  by `roadmapTaskService` is what produces the calendar event — exactly one per
+  task. The flip side is that a failed (best-effort) mirror write also means no
+  calendar event.
+- **Nothing here can fail a task write.** Every entry point wraps its work in
+  try/catch and logs; a broken or unset secret degrades to "no calendar events".
+  A missing delegation is reported with a one-line hint naming the console page
+  and the scope to add.
+- The pure half is unit-tested from `src/` through `createRequire`
+  ([src/services/calendarEvent.server.test.js](src/services/calendarEvent.server.test.js)),
+  the same arrangement `roadmapService.server.js` uses — keep `calendarEvent.js`
+  free of firebase-admin and network access so that keeps working.
+
 ## Notifications
 
-Two independent channels. They are **not** redundant and neither replaces the other: the bell is what a user with the app open sees, push is what reaches a user whose tab is closed.
+**Three** channels now, and none is redundant: the bell is what a user with the
+app open sees, push is what reaches a user whose tab is closed, and the Google
+Calendar reminder is what fires later at 09:00 IST (see "Google Calendar sync").
+
+[functions/notify.js](functions/notify.js) is the single server-side entry point —
+`notifyUsers(uids, { title, body, type })` writes the bell entries and sends the
+push together, so the two cannot drift. Before it existed, each cron wrote its own
+bell document inline, and three things happened **completely silently**: a task
+being rescheduled, a leave being approved or rejected, and somebody being put on
+a roadmap milestone. All three now notify.
+
+**A new notification type has to be added in three places** — the enum in
+[firestore.rules](firestore.rules), `NOTIF_TYPES` in `functions/notify.js`, and
+`NOTIF_ICON_MAP` in [src/components/shared/Navbar.jsx](src/components/shared/Navbar.jsx)
+(a missing icon silently falls back to a grey circle). `SERVER_NOTIF_TYPES` in
+[src/services/notificationService.js](src/services/notificationService.js) documents
+the ones only the server writes: `task_rescheduled`, `leave_status`,
+`roadmap_node_assigned`.
 
 **In-app (client-written).** `notifications/{uid}/items`, written by [src/services/notificationService.js](src/services/notificationService.js), read by the Navbar bell, plus a foreground browser `Notification` for the acting user's own session. Rules constrain creation tightly (`CR-6`): `senderUid` **must** equal `getEffectiveUid()`, `read` must be `false`, `type` must be one of eleven enum values, `title` <= 200 and `message` <= 500 chars. Passing the wrong `senderUid` — or omitting it — is the usual cause of a silently rejected notification. Use `ROADMAP_NOTIF_TYPES` and the existing helpers rather than raw strings; adding a new type means editing the enum list in `firestore.rules` too. The two crons write here as well, with `senderUid: 'system'` — legal because the Admin SDK bypasses rules entirely.
 

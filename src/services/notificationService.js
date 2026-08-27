@@ -101,6 +101,21 @@ export const notifyUsers = async (uids = [], senderUid, title, message, type = '
  * Exported constant — use these values instead of raw strings to prevent typos.
  * Matches the `type` field written to Firestore and read by Navbar's icon map.
  */
+/**
+ * Types written by the Cloud Functions in functions/notify.js rather than by the
+ * client. Listed here so the enum in firestore.rules, the icon map in Navbar.jsx
+ * and this file stay in step — all three have to know about a new type.
+ *
+ * Each of these three events used to happen with no notification at all: a task
+ * being rescheduled, a leave being approved or rejected, and somebody being put
+ * on a roadmap milestone.
+ */
+export const SERVER_NOTIF_TYPES = {
+  TASK_RESCHEDULED:      'task_rescheduled',
+  LEAVE_STATUS:          'leave_status',
+  ROADMAP_NODE_ASSIGNED: 'roadmap_node_assigned',
+};
+
 export const ROADMAP_NOTIF_TYPES = {
   TASK_ASSIGNED:         'roadmap_task_assigned',
   MILESTONE_COMPLETED:   'roadmap_milestone_completed',

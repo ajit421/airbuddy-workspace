@@ -72,7 +72,10 @@ Clicking any task card opens a full-screen modal with:
 - A **Todo List** checklist for breaking the task into steps (see below)
 - A **Work Partners** section for collaborative tasks
 - A **GitHub-style collaboration timeline** showing all commits, status changes, and partner additions
-- An **"Add to My Google Calendar"** button for syncing to your personal calendar
+- Tasks appear on your **Google Calendar automatically** — no button to press, no permission to grant. Work partners get the event too, and it follows any edit or reschedule
+- Approved leave, roadmap milestones assigned to you, and announcements land there as well, so the calendar alone tells you everything even if you never open the app
+- **Reminders arrive at 09:00**, by popup and by email — the morning before a task is due, and up to four mornings before a milestone. An announcement alerts you the moment it is posted
+- Nothing happens quietly any more: a task being **rescheduled**, a **leave decision**, and being **assigned to a milestone** all notify you now. Each one reaches you three ways — the in-app bell, a push notification, and a Google Calendar reminder
 
 ### Todo List (task checklist)
 
@@ -108,7 +111,7 @@ A table showing all team members with their task counts, work partner counts, co
 
 ### Assign Task
 
-A form to create and assign tasks to one or more team members. On submission, the task is written to Firestore, synced to the admin's Google Calendar, and in-app notifications are sent to all assignees.
+A form to create and assign tasks to one or more team members. On submission the task is written to Firestore, in-app notifications are sent to all assignees, and a Cloud Function puts the task on each assignee's own Google Calendar.
 
 ### Task Monitor
 

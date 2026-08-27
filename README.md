@@ -36,7 +36,7 @@ AirBuddy WorkSpace is a full-stack SPA (Single Page Application) that enables ae
 | **Routing** | React Router DOM v7 |
 | **Backend / Database** | Firebase (Auth, Firestore, Cloud Messaging) |
 | **AI Assistant API** | Google Gemini 2.5 Flash Lite (`@google/genai`) |
-| **Calendar Integration** | Google Calendar REST API v3 |
+| **Calendar Integration** | Google Calendar REST API v3 (server-side, Workspace domain-wide delegation) |
 | **Serverless API** | Vercel Serverless Functions (`/api/`) |
 | **Cloud Functions** | Firebase Cloud Functions v2 (`firebase-functions` 7, Node 22, `asia-south1`) |
 | **Push Notifications** | Firebase Cloud Messaging + service worker (`public/firebase-messaging-sw.js`) |
@@ -51,7 +51,7 @@ AirBuddy WorkSpace is a full-stack SPA (Single Page Application) that enables ae
 ### 🔐 Authentication
 - **Google OAuth Sign-In** via Firebase Authentication with popup flow.
 - Google OAuth access token is captured at sign-in and persisted in `sessionStorage` for the calendar scope (`https://www.googleapis.com/auth/calendar`).
-- Automatic token refresh if a Google Calendar API call returns a `401`.
+- No Google API token is held in the browser at all — Calendar sync runs in Cloud Functions.
 - First-time login automatically creates a user profile in Firestore with the `employee` role.
 - Auth error toast notifications rendered inline within `AuthContext`.
 
@@ -79,7 +79,7 @@ Route guards (`ProtectedRoute`, `AdminRoute`) enforce access at the router level
 1. **Team Overview** — table of all team members with task counts and completion rates.
 2. **Assign Task** — form to create and assign tasks to one or more employees. On submission:
    - Creates task in Firestore (`isAdminTask: true`).
-   - Syncs event to admin's Google Calendar.
+   - A Cloud Function puts the task on each assignee's own Google Calendar.
    - Sends in-app notifications to all assignees.
 3. **Task Monitor** — searchable, filterable table of all tasks with delete capability.
 4. **Announcements** — create/delete announcements with priority levels and optional meeting links; sends notifications to all team members.
@@ -97,7 +97,7 @@ Route guards (`ProtectedRoute`, `AdminRoute`) enforce access at the router level
 - Employees can update their own **progress** (0–100% slider) and **status**.
 - Admins can edit all fields.
 - **Todo List** — a per-task checklist with full CRUD (add, check/uncheck, inline edit, delete), stored in the task's `todos` array. Open to admins, the creator, assignees, and work partners; read-only for everyone else. Shows a `done/total` counter and percentage, kept deliberately separate from the task's own progress value. Mutations run in a Firestore transaction so concurrent edits can't be lost, and the same section appears in the Work Partner task drawer.
-- **"Add to My Google Calendar"** button to sync the task to the user's personal calendar.
+- Tasks reach the assignee's Google Calendar automatically — nothing to click, no permission prompt.
 
 ### 🤖 AI Assistant (AirBuddy AI)
 - Floating chat widget powered by **Google Gemini 2.5 Flash Lite**.
@@ -181,8 +181,7 @@ Work_flow/
 │   ├── services/
 │   │   ├── firebase.js        # Firebase app init, FCM, Auth, Firestore exports
 │   │   ├── gemini.js          # Gemini API client (calls /api/gemini)
-│   │   ├── googleCalendar.js  # Google Calendar helpers (legacy)
-│   │   ├── googleCalendarService.js  # addTaskToGoogleCalendar() REST call
+│   │   ├── functions/calendar.js  # addTaskToGoogleCalendar() REST call
 │   │   └── notificationService.js    # sendNotification(), requestBrowserNotifPermission()
 │   │
 │   ├── hooks/
@@ -247,7 +246,7 @@ graph LR
         AuthContext["AuthContext\n(Google OAuth Token)"]
         TaskContext["TaskContext\n(Firestore Listener)"]
         AIAssistant["AI Assistant\n(services/gemini.js)"]
-        CalendarSync["Google Calendar Sync\n(googleCalendarService.js)"]
+        CalendarSync["Google Calendar Sync\n(functions/calendar.js)"]
     end
 
     subgraph VERCEL ["⚡ Vercel — Serverless"]
@@ -389,9 +388,10 @@ VITE_FIREBASE_APP_ID=
 VITE_FIREBASE_MEASUREMENT_ID=
 VITE_FIREBASE_VAPID_KEY=
 
-# Google Calendar (OAuth via Firebase Google Sign-In)
-VITE_GOOGLE_CLIENT_ID=
-VITE_GOOGLE_CALENDAR_API_KEY=
+# Google Calendar needs nothing here — sync runs in Cloud Functions via the
+# CALENDAR_SA_KEY secret (see src/docs/deployment.md). Never add a Calendar
+# OAuth scope to the browser: it makes Google interrupt every login with an
+# "unverified app" warning.
 ```
 
 For the **Vercel Serverless Function** (`/api/gemini`), set in your Vercel project dashboard:
@@ -447,12 +447,15 @@ In the [Firebase Console](https://console.firebase.google.com/project/airbuddy-w
    npx firebase-tools deploy --only firestore:rules
    ```
 
-### 3. Enable Google Calendar API
+### 3. Enable Google Calendar Sync (optional)
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services** → **Library**.
-2. Search for **Google Calendar API** and **Enable** it.
-3. In **Credentials**, create an OAuth 2.0 Client ID (Web Application), add `http://localhost:5173` to authorized origins.
-4. Copy the client ID into `.env` as `VITE_GOOGLE_CLIENT_ID`.
+Calendar sync is server-side and needs no browser configuration. Setup is a
+service account plus Workspace domain-wide delegation, done once by a super
+admin — the step-by-step list is in [src/docs/deployment.md](src/docs/deployment.md).
+
+Do not create a browser OAuth client for it, and never add a Calendar scope to
+`googleProvider`: Calendar is a sensitive scope, so on an unverified app it makes
+Google interrupt every team member's **login** with an "unverified app" warning.
 
 ### 4. Run the Development Server
 

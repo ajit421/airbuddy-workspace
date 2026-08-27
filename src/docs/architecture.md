@@ -12,7 +12,7 @@ This document describes the technical architecture of AirBuddy WorkSpace — the
 | Routing | React Router DOM | 7 |
 | Backend / Database | Firebase (Auth, Firestore, FCM) | Latest |
 | AI Assistant | Google Gemini 2.5 Flash Lite | via `@google/genai` |
-| Calendar Integration | Google Calendar REST API | v3 |
+| Calendar Integration | Google Calendar REST API v3, server-side only (Cloud Functions + domain-wide delegation) | v3 |
 | Serverless API | Vercel Serverless Functions | Latest |
 | Cloud Functions | Firebase Cloud Functions (Node.js) | Latest |
 | Charts | Chart.js + react-chartjs-2 | Latest |
@@ -47,7 +47,7 @@ Two global context providers manage shared state:
 - Handles Google OAuth sign-in, sign-out, and token refresh
 - Implements the invite-only whitelist gate (`allowed_emails` collection check)
 - Resolves secondary email accounts to primary UIDs via `user_email_map`
-- Exposes: `user`, `userProfile`, `effectiveUid`, `isAdmin`, `googleAccessToken`
+- Exposes: `user`, `userProfile`, `effectiveUid`, `isAdmin` (no Google OAuth token — the browser never calls a Google API)
 
 **`TaskContext`** (`src/context/TaskContext.jsx`)
 - Maintains a real-time Firestore subscription to tasks
@@ -71,7 +71,7 @@ Two global context providers manage shared state:
 
 1. Admin submits the Assign Task form in the Admin Panel
 2. Task document is written to `tasks/` with `isAdminTask: true`
-3. `addTaskToGoogleCalendar()` creates an all-day event on the admin's Google Calendar via the REST API
+3. The `onTaskCreate` Cloud Function creates an all-day event on **each assignee's own** Google Calendar, impersonating them via domain-wide delegation
 4. `sendNotification()` writes a notification document to `notifications/{uid}/items/` for each assignee
 5. Firebase Cloud Function `onTaskCreate` fires, reads FCM tokens from user profiles, and sends push notifications via `admin.messaging().sendToDevice()`
 

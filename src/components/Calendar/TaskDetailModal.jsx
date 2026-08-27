@@ -7,7 +7,6 @@ import { PriorityBadge, StatusBadge, ProgressBar } from '../shared/TaskCard';
 import { formatDate, getDueDateLabel, getDueDateColor, isOverdue } from '../../utils/dateHelpers';
 import { canEditTask, canUpdateProgress } from '../../utils/permissions';
 import { notifyUsers } from '../../services/notificationService';
-import { addTaskToGoogleCalendar } from '../../services/googleCalendarService';
 import { recordStatusChange, recordProgressUpdate } from '../../services/collaborationService';
 import { updateRoadmapTask } from '../../services/roadmapTaskService';
 import WorkPartnersSection from '../WorkPartner/WorkPartnersSection';
@@ -108,14 +107,12 @@ function CompletionDialog({ onConfirm, onCancel, saving }) {
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function TaskDetailModal({ task, onClose }) {
-  const { userProfile, googleAccessToken, refreshGoogleToken } = useAuth();
+  const { userProfile } = useAuth();
   const [progress, setProgress] = useState(task?.progress || 0);
   const [saving, setSaving] = useState(false);
   const [isExtending, setIsExtending] = useState(false);
   const [newDueDate, setNewDueDate] = useState('');
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
-  const [calendarSyncing, setCalendarSyncing] = useState(false);
-  const [calendarSynced, setCalendarSynced] = useState(false);
 
   // ── Edit Task state ──────────────────────────────────────────────────────────
   const [isEditing, setIsEditing] = useState(false);
@@ -503,39 +500,13 @@ export default function TaskDetailModal({ task, onClose }) {
             </div>
           )}
 
-          {/* Add to Google Calendar */}
-          <div className="pt-3 border-t border-border">
-            {calendarSynced ? (
-              <div className="flex items-center gap-2 text-sm text-green-400">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Added to Google Calendar!
-              </div>
-            ) : (
-              <button
-                onClick={async () => {
-                  setCalendarSyncing(true);
-                  // Use existing token or silently refresh it
-                  let token = googleAccessToken;
-                  if (!token) {
-                    token = await refreshGoogleToken();
-                  }
-                  const ev = await addTaskToGoogleCalendar(token, task, userProfile?.name);
-                  setCalendarSyncing(false);
-                  if (ev) setCalendarSynced(true);
-                  else alert('Could not add to Google Calendar. Please sign out and sign in again with Google to grant calendar access.');
-                }}
-                disabled={calendarSyncing}
-                className="flex items-center gap-2 text-sm font-semibold text-blue-400 hover:text-blue-300 transition-colors"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 18H5V9h14v13zM7 11h5v5H7z" />
-                </svg>
-                {calendarSyncing ? 'Adding...' : 'Add to My Google Calendar'}
-              </button>
-            )}
-          </div>
+          {/* There is deliberately no "Add to Google Calendar" button here.
+              Events are created, updated and removed automatically by the task
+              triggers in functions/calendar.js, so the user has nothing to do.
+              The button that used to sit here called refreshGoogleToken(),
+              which re-opened the Google OAuth popup and told users to sign out
+              and sign in again to grant calendar access — precisely the flow
+              that got the whole team a Google warning screen at login. */}
 
           {/* Timestamps and Actions */}
           <div className="pt-4 border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">

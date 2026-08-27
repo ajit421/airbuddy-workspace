@@ -13,7 +13,6 @@ import TaskDetailModal from './TaskDetailModal';
 import ListView from './ListView';
 import { getMyLeaves, getAllLeaves } from '../../services/hrmsService';
 import { useRoadmapCalendarEvents } from '../../hooks/useRoadmapCalendarEvents';
-import { addMilestoneToGoogleCalendar } from '../../services/googleCalendarService';
 
 const localizer = dateFnsLocalizer({
   format,
@@ -144,7 +143,7 @@ function LeaveInfoPanel({ leave, onClose }) {
 }
 
 // ─── Roadmap Event Info Panel (lightweight, like LeaveInfoPanel) ───────────────
-function RoadmapEventPanel({ node, onClose, onSyncGCal, syncing }) {
+function RoadmapEventPanel({ node, onClose }) {
   if (!node) return null;
 
   const STATUS_COLORS = {
@@ -237,30 +236,6 @@ function RoadmapEventPanel({ node, onClose, onSyncGCal, syncing }) {
           )}
         </div>
 
-        {/* Google Calendar sync — only for depth 0/1 */}
-        {node.syncEligible && (
-          <div className="mt-5 pt-4 border-t border-border">
-            <button
-              onClick={onSyncGCal}
-              disabled={syncing}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-teal-500/10 border border-teal-500/30 text-teal-400 hover:bg-teal-500/20 transition-colors text-sm font-medium disabled:opacity-50"
-            >
-              {syncing ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-teal-400/40 border-t-teal-400 rounded-full animate-spin" />
-                  Syncing…
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 18H5V9h14v13zM7 11h5v5H7z" />
-                  </svg>
-                  Add to Google Calendar
-                </>
-              )}
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -269,13 +244,12 @@ function RoadmapEventPanel({ node, onClose, onSyncGCal, syncing }) {
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function CalendarView() {
   const { tasks, loading, allUsers } = useTasks();
-  const { isAdmin, effectiveUid, accessToken } = useAuth();
+  const { isAdmin, effectiveUid } = useAuth();
   const [view, setView] = useState(Views.MONTH);
   const [date, setDate] = useState(new Date());
   const [selectedTask,  setSelectedTask]  = useState(null);
   const [selectedLeave, setSelectedLeave] = useState(null);
   const [selectedNode,  setSelectedNode]  = useState(null);  // Phase 15: roadmap event
-  const [gcalSyncing,   setGcalSyncing]   = useState(false); // Phase 15: sync spinner
   const [showList, setShowList] = useState(false);
 
   // Phase 15: roadmap calendar events
@@ -399,22 +373,6 @@ export default function CalendarView() {
   };
 
   // ── Google Calendar sync for roadmap milestone ────────────────────────────────
-  const handleSyncMilestone = async () => {
-    if (!selectedNode || !accessToken) return;
-    setGcalSyncing(true);
-    try {
-      const result = await addMilestoneToGoogleCalendar(accessToken, selectedNode);
-      if (result) {
-        alert(`Milestone "${selectedNode.title}" added to Google Calendar!`);
-        setSelectedNode(null);
-      } else {
-        alert('Could not sync to Google Calendar. Make sure you are signed in with Google.');
-      }
-    } finally {
-      setGcalSyncing(false);
-    }
-  };
-
   // ── Loading state ─────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -561,8 +519,6 @@ export default function CalendarView() {
         <RoadmapEventPanel
           node={selectedNode}
           onClose={() => setSelectedNode(null)}
-          onSyncGCal={handleSyncMilestone}
-          syncing={gcalSyncing}
         />
       )}
     </div>

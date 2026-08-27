@@ -17,7 +17,6 @@ Import with: `import { useAuth } from './context/AuthContext'`
 | `realIsAdmin` | `boolean` | True if the user's actual role is admin (ignores preview toggle) |
 | `isEmployeeView` | `boolean` | True when admin is previewing the employee perspective |
 | `loading` | `boolean` | True while the auth state is being resolved |
-| `googleAccessToken` | `string \| null` | Google OAuth access token for Calendar API calls |
 | `authError` | `string \| null` | The current authentication error message, if any |
 
 ### Methods
@@ -26,7 +25,6 @@ Import with: `import { useAuth } from './context/AuthContext'`
 |---|---|---|
 | `signInWithGoogle` | `() => Promise<UserCredential>` | Opens Google OAuth popup and signs the user in |
 | `signOut` | `() => Promise<void>` | Signs the user out and clears the session token |
-| `refreshGoogleToken` | `() => Promise<string \| null>` | Re-opens the Google OAuth popup to get a fresh access token |
 | `clearAuthError` | `() => void` | Clears the `authError` state |
 | `toggleEmployeeView` | `() => void` | Toggles the admin's employee preview mode |
 
@@ -187,22 +185,25 @@ const { members, loading, error, refreshAttendance } = useTeamMembers();
 // Call refreshAttendance(uid) lazily when a profile card is opened
 ```
 
-## googleCalendarService
+## Google Calendar sync
 
-Import from: `import { addTaskToGoogleCalendar } from './services/googleCalendarService'`
+There is no client-side Calendar service any more. Cloud Functions in
+`functions/calendar.js` impersonate each person through Workspace domain-wide
+delegation and write into their own calendar:
 
-### `addTaskToGoogleCalendar(accessToken, task, userName?)`
+| Record | Goes to |
+|---|---|
+| Task | assignees and work partners |
+| Roadmap milestone | the milestone's assignees |
+| Approved leave | the applicant |
+| Announcement | the whole team, as an all-day informational entry |
 
-Creates an all-day Google Calendar event for a task using the Google Calendar REST API v3.
+Everything the app shows on its Calendar page is covered, so a team member who
+never opens the app still has their full schedule. Events follow edits, move when
+a date changes, and disappear when the record is deleted or a person is taken off
+it.
 
-```javascript
-const event = await addTaskToGoogleCalendar(
-  googleAccessToken,
-  task,
-  'Susanta Sethy'
-);
-// Returns the created event object, or null on failure
-// event.htmlLink contains the Google Calendar URL
-```
+Nothing in the browser calls a Google API, and `googleProvider` carries no OAuth
+scopes — a Calendar scope there would make every team member's login show
+Google's "unverified app" warning. Do not add one.
 
-The event includes priority-based color coding (Red for high, Yellow for medium, Teal for low) and reminders at 24 hours and 1 hour before the due date.

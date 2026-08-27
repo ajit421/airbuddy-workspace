@@ -1,7 +1,7 @@
 {
   "name": "functions",
   "version": "1.0.0",
-  "description": "AirBuddy WorkSpace Cloud Functions — push notifications, roadmap rollup, audit history, deadline crons",
+  "description": "AirBuddy WorkSpace Cloud Functions - push notifications, Google Calendar sync, roadmap rollup, audit history, deadline crons",
   "main": "index.js",
   "scripts": {
     "serve": "firebase emulators:start --only functions",
@@ -16,7 +16,8 @@
   "dependencies": {
     "@google/genai": "^1.44.0",
     "firebase-admin": "^14.2.0",
-    "firebase-functions": "^7.3.2"
+    "firebase-functions": "^7.3.2",
+    "google-auth-library": "^10.9.1"
   },
   "engines": {
     "node": "22"

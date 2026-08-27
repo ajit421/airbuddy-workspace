@@ -25,15 +25,55 @@ npx firebase-tools use airbuddy-workspace
 npx firebase-tools deploy --only firestore:rules
 ```
 
-### 2. Enable Google Calendar API
+### 2. Set Up Google Calendar Sync
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services** → **Library**
-2. Search for **Google Calendar API** and click **Enable**
-3. Go to **Credentials** → **Create Credentials** → **OAuth 2.0 Client ID**
-4. Select **Web application** and add these authorized origins:
-   - `http://localhost:5173`
-   - Your production Vercel domain
-5. Copy the Client ID into your `.env` file as `VITE_GOOGLE_CLIENT_ID`
+Calendar sync runs **server-side**, in the task Cloud Functions. A service
+account impersonates each employee through Google Workspace domain-wide
+delegation, so nobody is ever asked for permission and sign-in is untouched.
+
+> Do **not** create a browser OAuth client for this and do **not** add a Calendar
+> scope to `googleProvider` in `src/services/firebase.js`. Calendar is a
+> sensitive scope; on an app Google has not verified, that scope interrupts every
+> team member's *login* with a full-page "Google hasn't verified this app" /
+> "Access blocked" warning. This is why the feature was rolled back once already.
+
+Requires Workspace **super admin** access for the domain.
+
+1. **Create the service account.** [Google Cloud Console](https://console.cloud.google.com/)
+   → **IAM & Admin** → **Service Accounts** → **Create service account**. Name it
+   something like `calendar-sync`. No project roles are needed — it authenticates
+   as employees, not as itself. Open it and copy the **Unique ID** (a 21-digit
+   number); that is the "Client ID" the Admin console asks for.
+2. **Enable the API.** **APIs & Services** → **Library** → *Google Calendar API*
+   → **Enable**.
+3. **Authorize domain-wide delegation.** [admin.google.com](https://admin.google.com)
+   → **Security** → **Access and data control** → **API controls** → *Domain wide
+   delegation* → **Manage Domain Wide Delegation** → **Add new**:
+   - **Client ID**: the Unique ID from step 1
+   - **OAuth scopes**: `https://www.googleapis.com/auth/calendar.events`
+   - **Authorize**
+
+   One scope only — `calendar.events` can write events but cannot create or
+   delete calendars. Propagation usually takes a few minutes.
+4. **Store the key as a secret.** On the service account → **Keys** → **Add key**
+   → **Create new key** → **JSON**. Then paste the whole file contents into:
+
+   ```bash
+   npx firebase-tools functions:secrets:set CALENDAR_SA_KEY
+   ```
+
+   The secret has to exist before the functions deploy, or the deploy fails.
+   Delete the downloaded JSON afterwards — it is a live credential.
+5. **Deploy.**
+
+   ```bash
+   cd functions && npm install && cd ..
+   npx firebase-tools deploy --only functions
+   ```
+
+To verify: create a task, then check the assignee's Google Calendar. If nothing
+appears, `npx firebase-tools functions:log --only onTaskCreate` names the reason —
+a missing delegation is logged with the exact console page and scope to fix.
 
 ### 3. Set Up FCM (Optional — Push Notifications)
 

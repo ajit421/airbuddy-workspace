@@ -43,5 +43,15 @@ serviceAccountKey.json
 *.serviceAccountKey.json
 **/serviceAccountKey.json
 
+# Google Cloud service-account keys download with a project-prefixed name
+# (e.g. workspace-airbuddy-a81f8c78e206.json), which the patterns above do not
+# catch. The Calendar sync key is one of these — it is a live credential that
+# can impersonate every employee's calendar, so a stray `git add .` must not be
+# able to pick it up. The key belongs in the CALENDAR_SA_KEY secret, never on
+# disk in the repo.
+workspace-airbuddy-*.json
+*-service-account*.json
+gcp-key*.json
+
 # Migration scripts (LO-10: moved to scripts/ — ignore scoped correctly)
 scripts/

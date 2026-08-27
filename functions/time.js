@@ -45,9 +45,30 @@ function istDayOffsetUtcMidnight(days, now = new Date()) {
   return new Date(istTodayUtcMidnight(now).getTime() + days * DAY_MS);
 }
 
+/**
+ * The Indian calendar date of an instant, as `YYYY-MM-DD`.
+ *
+ * Google Calendar all-day events take a bare date, and that date must be the
+ * one the employee would name. A UTC `toISOString().slice(0, 10)` is the wrong
+ * answer for the same reason it is wrong on the client (see
+ * src/utils/dateHelpers.js): a task created at 23:40 IST is still the previous
+ * day in UTC, so the event would land on the wrong day of the calendar.
+ *
+ * @param {Date} date
+ * @returns {string} `YYYY-MM-DD` in IST
+ */
+function istDateString(date) {
+  const shifted = new Date(date.getTime() + IST_OFFSET_MS);
+  const yyyy = shifted.getUTCFullYear();
+  const mm = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(shifted.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 module.exports = {
   IST_OFFSET_MS,
   DAY_MS,
   istTodayUtcMidnight,
   istDayOffsetUtcMidnight,
+  istDateString,
 };
