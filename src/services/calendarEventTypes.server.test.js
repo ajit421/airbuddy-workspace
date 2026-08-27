@@ -135,7 +135,7 @@ describe('buildLeaveEvent', () => {
 
   it('names the leave and marks it approved', () => {
     expect(buildLeaveEvent(leave, 'leave-1', APP_URL).summary)
-      .toBe('🌴 [AirBuddy] Sick leave (approved)');
+      .toBe('[AirBuddy] Sick leave (approved)');
   });
 
   it('covers the last day of the leave — end.date is exclusive', () => {

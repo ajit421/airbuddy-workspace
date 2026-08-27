@@ -224,22 +224,19 @@ export default function TaskDetailModal({ task, onClose }) {
         );
       }
 
-      // Notify all assignees about the progress update / completion
-      const recipients = task.assignedTo || [];
-      if (progress === 100 && commitMessage) {
+      // Notify assignees about a *progress-only* update.
+      //
+      // A status transition is deliberately NOT notified from here: onTaskUpdate
+      // does that server-side, with a bell entry and a push, and it reaches
+      // people whose browser is closed. Sending both put two identical rows in
+      // the bell for the common case where saving progress also flips the status
+      // (0 -> in-progress, 100 -> completed).
+      if (newStatus === prevStatus) {
         await notifyUsers(
-          recipients,
-          userProfile?.uid,
-          'Task Completed!',
-          `"${task.title}" has been marked complete by ${userProfile?.name || 'a teammate'}.`,
-          'task_completed'
-        );
-      } else {
-        await notifyUsers(
-          recipients,
+          task.assignedTo || [],
           userProfile?.uid,
           'Task Progress Updated',
-          `"${task.title}" is now at ${progress}% — ${progress > 0 ? 'in progress' : 'pending'}.`,
+          `"${task.title}" is now at ${progress}%.`,
           'task_updated'
         );
       }

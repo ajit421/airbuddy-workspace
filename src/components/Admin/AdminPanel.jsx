@@ -3,7 +3,6 @@ import { useAuth } from '../../context/AuthContext';
 import { formatDate } from '../../utils/dateHelpers';
 import { PriorityBadge, StatusBadge, ProgressBar } from '../shared/TaskCard';
 import { PRIORITY_OPTIONS, STATUS_OPTIONS, MODULE_OPTIONS } from '../../utils/permissions';
-import { sendNotification } from '../../services/notificationService';
 // HI-5 + NEW-1 fix: ALL Firestore access goes through the service layer
 import { createAdminTask, deleteTask, subscribeToAdminTasks } from '../../services/taskService';
 import { createAnnouncement, deleteAnnouncement, subscribeToAnnouncements } from '../../services/announcementService';
@@ -115,19 +114,15 @@ const AssignTask = ({ users }) => {
       // each assignee through domain-wide delegation and writes into their own
       // calendar, without anybody being asked for permission.
 
-      // Notify each assigned employee
-      await Promise.all(
-        form.assignedTo
-          .filter(uid => uid !== userProfile?.uid)
-          .map(uid => sendNotification(
-            uid,
-            'New Task Assigned',
-            `"${form.title}" has been assigned to you. It is on your Google Calendar too.`,
-            'task_assigned',
-            null,
-            userProfile?.uid   // CR-6: senderUid required by Firestore rule
-          ))
-      );
+      // Assignees are NOT notified from here. The onTaskCreate Cloud Function
+      // writes the bell entry and sends the push (functions/notify.js), and it
+      // skips task.createdBy exactly as this loop skipped userProfile.uid.
+      //
+      // This used to fire sendNotification() as well, which — once the function
+      // started writing bell entries too — put *two* identical "New Task
+      // Assigned" rows in every assignee's bell. Letting the server own it also
+      // makes the notification survive the admin closing the tab straight after
+      // hitting Assign.
       setForm({ title: '', description: '', module: MODULE_OPTIONS[0], priority: 'medium', status: 'pending', progress: 0, startDate: '', dueDate: '', assignedTo: [], links: [], attachments: [] });
       setTimeout(() => setSuccess(''), 5000);
     } catch (err) {
