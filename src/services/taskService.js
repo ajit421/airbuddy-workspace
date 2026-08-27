@@ -92,3 +92,60 @@ export function subscribeToAdminTasks(onData, onError) {
   );
 }
 
+
+/**
+ * Zod schema for a self-created personal task (the "New Personal Task" modal).
+ *
+ * Narrower than TaskFormSchema: an employee only picks title, description,
+ * priority and an optional due date — status/progress/assignee/isAdminTask are
+ * fixed by createPersonalTask below, not chosen in the form.
+ */
+const PersonalTaskFormSchema = z.object({
+  title:       z.string().trim().min(1, 'Task title is required'),
+  description: z.string().optional().default(''),
+  priority:    z.enum(['low', 'medium', 'high']),
+  dueDate:     z.string().or(z.date()).optional().nullable(),
+});
+
+/**
+ * Create a personal (self-assigned, non-admin) task.
+ *
+ * `uid` MUST be the effectiveUid from useAuth() — firestore.rules checks
+ * `createdBy == getEffectiveUid()` on create, and TaskContext's employee
+ * listener queries `assignedTo array-contains effectiveUid`, so a secondary
+ * mapped account passing its own user.uid would have the write rejected and
+ * the task would never appear on its Dashboard.
+ *
+ * @param {{title: string, description?: string, priority: string, dueDate?: string}} form
+ * @param {string} uid - effectiveUid of the creating user
+ * @returns {Promise<string>} Firestore document ID of the created task
+ */
+export async function createPersonalTask(form, uid) {
+  if (!uid) throw new Error('[taskService] createPersonalTask: uid is required');
+
+  const validatedForm = PersonalTaskFormSchema.parse(form);
+
+  try {
+    const docRef = await addDoc(collection(db, TASKS_COL), {
+      title:       validatedForm.title,
+      description: validatedForm.description ?? '',
+      priority:    validatedForm.priority,
+      status:      'pending',
+      progress:    0,
+      assignedTo:  [uid],
+      assignedBy:  uid,
+      createdBy:   uid,
+      isAdminTask: false, // personal task — see the create rule in firestore.rules
+      startDate:   new Date(),
+      dueDate:     validatedForm.dueDate
+        ? new Date(validatedForm.dueDate)
+        : new Date(Date.now() + 86400000), // default: tomorrow
+      createdAt:   serverTimestamp(),
+      updatedAt:   serverTimestamp(),
+    });
+    return docRef.id;
+  } catch (err) {
+    console.error('[taskService] createPersonalTask:', err);
+    throw err;
+  }
+}

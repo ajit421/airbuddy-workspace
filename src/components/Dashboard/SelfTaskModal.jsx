@@ -1,47 +1,60 @@
-import { useState } from 'react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../services/firebase';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { createPersonalTask } from '../../services/taskService';
 import Modal from '../shared/Modal';
 
+const EMPTY_FORM = {
+  title: '',
+  description: '',
+  dueDate: '',
+  priority: 'medium',
+};
+
 export default function SelfTaskModal({ isOpen, onClose }) {
-  const { userProfile } = useAuth();
+  // effectiveUid, not userProfile.uid: firestore.rules checks
+  // `createdBy == getEffectiveUid()` on create and TaskContext queries
+  // `assignedTo array-contains effectiveUid`.
+  const { effectiveUid } = useAuth();
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    title: '',
-    description: '',
-    dueDate: '',
-    priority: 'medium',
-  });
+  const [saveError, setSaveError] = useState('');
+  const [form, setForm] = useState(EMPTY_FORM);
+
+  /**
+   * Reset the form every time the modal opens.
+   *
+   * This component stays mounted while closed (`if (!isOpen) return null` only
+   * skips the render), so without this the previous task's title/description
+   * survived the close. Re-opening "New Personal Task" showed the task that had
+   * just been created instead of a blank form: the user could not start a new
+   * one without reloading the page, and re-submitting the pre-filled form
+   * created duplicate copies of the same task. Matches RoadmapTaskModal.
+   */
+  useEffect(() => {
+    if (isOpen) {
+      setForm(EMPTY_FORM);
+      setSaveError('');
+      setSaving(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Guard the submit itself, not just the button: Enter in a text input can
+    // fire submit again before the disabled state has rendered.
+    if (saving) return;
     if (!form.title.trim()) return;
-    
+
     setSaving(true);
+    setSaveError('');
     try {
-      await addDoc(collection(db, 'tasks'), {
-        title: form.title,
-        description: form.description,
-        priority: form.priority,
-        status: 'pending',
-        progress: 0,
-        // Assign to self
-        assignedTo: [userProfile.uid],
-        assignedBy: userProfile.uid,
-        createdBy: userProfile.uid,
-        isAdminTask: false, // Indicates this is a self-created task
-        startDate: new Date(),
-        dueDate: form.dueDate ? new Date(form.dueDate) : new Date(Date.now() + 86400000), // default to tomorrow
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      await createPersonalTask(form, effectiveUid);
+      setForm(EMPTY_FORM);
       onClose();
     } catch (err) {
       console.error('Failed to create personal task:', err);
-      alert('Failed to create task. Please try again.');
+      setSaveError(err?.message || 'Failed to create task. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -104,6 +117,12 @@ export default function SelfTaskModal({ isOpen, onClose }) {
             </select>
           </div>
         </div>
+
+        {saveError && (
+          <p className="text-sm text-status-danger bg-status-danger/10 border border-status-danger/30 rounded-lg px-3 py-2">
+            {saveError}
+          </p>
+        )}
 
         <div className="pt-4 flex justify-end gap-3 border-t border-border">
           <button type="button" onClick={onClose} className="btn-secondary text-sm">

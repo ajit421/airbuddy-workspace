@@ -5,6 +5,7 @@
  * Firestore calls are mocked via vi.mock — no real database needed.
  */
 import { describe, it, expect, vi } from 'vitest';
+import { addDoc } from 'firebase/firestore';
 
 // Mock firebase/firestore so tests don't need a real Firestore connection
 vi.mock('firebase/firestore', () => ({
@@ -24,7 +25,7 @@ vi.mock('../services/firebase', () => ({
 }));
 
 // Import AFTER mocks are set up
-import { createAdminTask, deleteTask } from '../services/taskService';
+import { createAdminTask, createPersonalTask, deleteTask } from '../services/taskService';
 
 const validForm = {
   title:       'Test Task',
@@ -88,5 +89,49 @@ describe('taskService.deleteTask', () => {
 
   it('should throw when taskId is null', async () => {
     await expect(deleteTask(null)).rejects.toThrow('[taskService] deleteTask: taskId is required');
+  });
+});
+
+describe('taskService.createPersonalTask', () => {
+  const personalForm = {
+    title:       'Update monthly report',
+    description: 'Optional details',
+    priority:    'medium',
+    dueDate:     '2026-09-01',
+  };
+
+  it('creates a self-assigned, non-admin task keyed on the given uid', async () => {
+    addDoc.mockClear();
+    const id = await createPersonalTask(personalForm, 'eff-uid');
+    expect(id).toBe('mock-task-id');
+
+    const written = addDoc.mock.calls.at(-1)[1];
+    expect(written.assignedTo).toEqual(['eff-uid']);
+    expect(written.createdBy).toBe('eff-uid');   // firestore.rules create check
+    expect(written.isAdminTask).toBe(false);
+    expect(written.status).toBe('pending');
+    expect(written.progress).toBe(0);
+    expect(written.createdAt).toBe('SERVER_TIMESTAMP');
+  });
+
+  it('defaults the due date to tomorrow when none is picked', async () => {
+    addDoc.mockClear();
+    await createPersonalTask({ ...personalForm, dueDate: '' }, 'eff-uid');
+    const written = addDoc.mock.calls.at(-1)[1];
+    expect(written.dueDate.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('throws when uid is missing (mapped account with no effectiveUid yet)', async () => {
+    await expect(createPersonalTask(personalForm, undefined)).rejects.toThrow(
+      '[taskService] createPersonalTask: uid is required'
+    );
+  });
+
+  it('throws when the title is blank or whitespace only', async () => {
+    await expect(createPersonalTask({ ...personalForm, title: '   ' }, 'eff-uid')).rejects.toThrow();
+  });
+
+  it('throws when the priority is not one of low/medium/high', async () => {
+    await expect(createPersonalTask({ ...personalForm, priority: 'ultra' }, 'eff-uid')).rejects.toThrow();
   });
 });
