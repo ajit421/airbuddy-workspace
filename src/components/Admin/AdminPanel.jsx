@@ -4,7 +4,7 @@ import { formatDate } from '../../utils/dateHelpers';
 import { PriorityBadge, StatusBadge, ProgressBar } from '../shared/TaskCard';
 import { PRIORITY_OPTIONS, STATUS_OPTIONS, MODULE_OPTIONS } from '../../utils/permissions';
 // HI-5 + NEW-1 fix: ALL Firestore access goes through the service layer
-import { createAdminTask, deleteTask, subscribeToAdminTasks } from '../../services/taskService';
+import { createAdminTask, deleteTask, subscribeToAdminTasks, syncAllCalendars } from '../../services/taskService';
 import { createAnnouncement, deleteAnnouncement, subscribeToAnnouncements } from '../../services/announcementService';
 import { subscribeToAllUsers } from '../../services/teamMembersService';
 
@@ -205,6 +205,34 @@ const TaskMonitor = ({ allTasks }) => {
   const [filter, setFilter] = useState({ status: 'all', search: '' });
   const [deleting, setDeleting] = useState(null);
   const [error, setError] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState('');
+
+  /**
+   * Create any Google Calendar event that is missing.
+   *
+   * The calendar triggers only fire on writes, so the whole backlog that
+   * existed before calendar sync was deployed had no events. The
+   * dailyCalendarReconcile cron fixes that every morning; this button is for
+   * when you do not want to wait — after a bulk import, or after fixing
+   * somebody's email address.
+   */
+  const handleSyncCalendars = async () => {
+    setSyncing(true);
+    setSyncResult('');
+    setError('');
+    try {
+      const r = await syncAllCalendars();
+      const made = (r?.tasks || 0) + (r?.nodes || 0) + (r?.leaves || 0);
+      setSyncResult(made === 0
+        ? 'Everything was already on the team’s calendars — nothing to add.'
+        : `Added ${made} calendar event(s): ${r.tasks} task, ${r.nodes} milestone, ${r.leaves} leave.`);
+    } catch (err) {
+      setError(err.message || 'Calendar sync failed.');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const filtered = allTasks.filter(t => {
     const s = filter.status === 'all' || t.status === filter.status;
@@ -228,6 +256,28 @@ const TaskMonitor = ({ allTasks }) => {
 
   return (
     <div className="space-y-4">
+      {/* Google Calendar backfill */}
+      <div className="card p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex-1">
+          <p className="text-sm font-semibold text-text-primary">Google Calendar sync</p>
+          <p className="text-xs text-text-muted mt-0.5">
+            Tasks, milestones and approved leave reach each person&rsquo;s own calendar
+            automatically. Runs every morning; press this to catch up now.
+          </p>
+        </div>
+        <button
+          onClick={handleSyncCalendars}
+          disabled={syncing}
+          className="btn-secondary text-xs whitespace-nowrap disabled:opacity-50"
+        >
+          {syncing ? 'Syncing…' : 'Sync now'}
+        </button>
+      </div>
+      {syncResult && (
+        <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-400 text-sm">
+          {syncResult}
+        </div>
+      )}
       {error && <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">{error}</div>}
       <div className="flex gap-3 flex-wrap">
         <input className="input-field flex-1 min-w-[180px]" placeholder="🔍 Search tasks..." value={filter.search} onChange={e => setFilter(p => ({ ...p, search: e.target.value }))} />

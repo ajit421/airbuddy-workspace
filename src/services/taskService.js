@@ -3,7 +3,8 @@ import {
   query, orderBy, onSnapshot,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import app, { db } from './firebase';
 import { z } from 'zod';
 
 const TASKS_COL = 'tasks';
@@ -146,6 +147,33 @@ export async function createPersonalTask(form, uid) {
     return docRef.id;
   } catch (err) {
     console.error('[taskService] createPersonalTask:', err);
+    throw err;
+  }
+}
+
+/**
+ * Ask the server to create any Google Calendar event that is missing.
+ *
+ * The calendar triggers only fire on writes, so anything created before calendar
+ * sync existed — or whose create call failed — has no event and never would.
+ * This runs the same reconcile the `dailyCalendarReconcile` cron runs, on demand.
+ *
+ * Idempotent: a record that already has an event is skipped without an API call,
+ * so pressing the button twice is harmless.
+ *
+ * The callable is admin-only and lives in `asia-south2`, the same region as the
+ * Firestore triggers — the region has to be passed explicitly or the SDK looks
+ * for it in us-central1.
+ *
+ * @returns {Promise<{tasks:number, nodes:number, leaves:number, skipped:number}>}
+ */
+export async function syncAllCalendars() {
+  try {
+    const callable = httpsCallable(getFunctions(app, 'asia-south2'), 'syncAllCalendars');
+    const { data } = await callable({});
+    return data;
+  } catch (err) {
+    console.error('[taskService] syncAllCalendars:', err);
     throw err;
   }
 }

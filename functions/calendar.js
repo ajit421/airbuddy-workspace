@@ -67,6 +67,7 @@ const {
   syncedFieldsChanged,
   isNodeCalendarEligible,
   isLeaveCalendarEligible,
+  toDate: toDateValue,
 } = require('./calendarEvent');
 
 /**
@@ -610,8 +611,129 @@ async function syncAnnouncementDeleted(rawKey, announcementId, announcement) {
   }
 }
 
+// ─── Backfill / reconcile-everything ─────────────────────────────────────────
+
+/**
+ * How far back a backfill reaches. Everything due within this window (and
+ * everything in the future) is synced; older work is skipped so nobody's
+ * personal calendar fills up with months of finished history.
+ */
+const BACKFILL_LOOKBACK_DAYS = 60;
+
+/**
+ * Create any calendar event that *should* exist but does not.
+ *
+ * The triggers only fire on writes, so a record created before this feature
+ * existed — or one whose create call failed, or whose roadmap mirror write was
+ * lost — has no event and never will. This walks the current state and fills
+ * those gaps.
+ *
+ * Idempotent by construction: `reconcile()` is called with `patch: false`, so a
+ * recipient who already has an event id is left completely alone and costs no
+ * API call. Running this twice in a row does nothing the second time.
+ *
+ * @param {string} rawKey  CALENDAR_SA_KEY value
+ * @returns {Promise<{tasks:number, nodes:number, leaves:number, skipped:number}>}
+ *   counts of events actually created
+ */
+async function backfillAll(rawKey) {
+  const result = { tasks: 0, nodes: 0, leaves: 0, skipped: 0 };
+
+  const key = parseServiceAccount(rawKey);
+  if (!key) return result;
+
+  const appUrl = APP_URL.value();
+  const cutoff = new Date(Date.now() - BACKFILL_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const withinWindow = (value) => {
+    const date = toDateValue(value);
+    return date ? date.getTime() >= cutoff.getTime() : false;
+  };
+
+  /** One record: create whatever is missing, write the ids back. */
+  const ensure = async (collection, docId, recipients, existing, event, label) => {
+    const missing = recipients.filter((uid) => !existing[uid]);
+    if (missing.length === 0) return 0;
+
+    const emails = await getSyncableEmails(missing);
+    if (emails.size === 0) return 0;
+
+    const updates = await reconcile({
+      key, label, emails, recipients: missing, removed: [], existing: {}, event, patch: false,
+    });
+    await writeBack(collection, docId, updates);
+    return Object.keys(updates).length;
+  };
+
+  // ── Tasks ──────────────────────────────────────────────────────────────────
+  try {
+    const snap = await db.collection('tasks').get();
+    for (const doc of snap.docs) {
+      const task = doc.data() || {};
+      if (!withinWindow(task.dueDate) && !withinWindow(task.startDate)) {
+        result.skipped += 1;
+        continue;
+      }
+      const recipients = taskRecipients(task);
+      if (recipients.length === 0) continue;
+      result.tasks += await ensure(
+        'tasks', doc.id, recipients, storedIds(task),
+        buildEvent(task, doc.id, appUrl), `backfill task ${doc.id}`,
+      );
+    }
+  } catch (err) {
+    logger.error('[calendar] backfill tasks failed:', err);
+  }
+
+  // ── Roadmap milestones ─────────────────────────────────────────────────────
+  try {
+    const snap = await db.collection('roadmapNodes').get();
+    for (const doc of snap.docs) {
+      const node = doc.data() || {};
+      if (!isNodeCalendarEligible(node)) continue;
+      if (!withinWindow(node.dueDate)) {
+        result.skipped += 1;
+        continue;
+      }
+      result.nodes += await ensure(
+        'roadmapNodes', doc.id, normalizeAssignees(node.assignedTo), storedIds(node),
+        buildNodeEvent(node, doc.id, appUrl), `backfill node ${doc.id}`,
+      );
+    }
+  } catch (err) {
+    logger.error('[calendar] backfill roadmapNodes failed:', err);
+  }
+
+  // ── Approved leaves ────────────────────────────────────────────────────────
+  try {
+    const snap = await db.collection('leaves').where('status', '==', 'approved').get();
+    for (const doc of snap.docs) {
+      const leave = doc.data() || {};
+      if (!isLeaveCalendarEligible(leave) || !leave.uid) continue;
+      if (!withinWindow(leave.endDate) && !withinWindow(leave.startDate)) {
+        result.skipped += 1;
+        continue;
+      }
+      result.leaves += await ensure(
+        'leaves', doc.id, [leave.uid], storedIds(leave),
+        buildLeaveEvent(leave, doc.id, appUrl), `backfill leave ${doc.id}`,
+      );
+    }
+  } catch (err) {
+    logger.error('[calendar] backfill leaves failed:', err);
+  }
+
+  logger.info(
+    `[calendar] backfill created ${result.tasks} task, ${result.nodes} milestone, `
+    + `${result.leaves} leave event(s); ${result.skipped} record(s) outside the `
+    + `${BACKFILL_LOOKBACK_DAYS}-day window`,
+  );
+  return result;
+}
+
 module.exports = {
   CALENDAR_SCOPE,
+  BACKFILL_LOOKBACK_DAYS,
+  backfillAll,
   parseServiceAccount,
   syncTaskCreated,
   syncTaskUpdated,

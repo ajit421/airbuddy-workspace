@@ -409,6 +409,62 @@ exports.onDueDateApproach = onSchedule(
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Calendar backfill / self-healing reconcile
+//
+// The task, node and leave triggers only fire on *writes*. Anything created
+// before calendar sync was deployed therefore has no event and never would —
+// which is exactly what happened on day one: the whole backlog was invisible in
+// everybody's Google Calendar while new tasks synced fine.
+//
+// backfillAll() walks the current state and creates only what is missing. It is
+// idempotent (a record that already has an event id costs no API call), so it is
+// safe to run on a schedule as well as on demand. Running daily also heals a
+// failed API call, a lost roadmap mirror write, and an event somebody deleted by
+// hand.
+// ─────────────────────────────────────────────────────────────────────────────
+
+exports.dailyCalendarReconcile = onSchedule(
+  {
+    schedule: '30 7 * * *',      // 07:30 IST — before the 09:00 reminder wave
+    timeZone: 'Asia/Kolkata',
+    region: 'asia-south1',       // Cloud Scheduler has no asia-south2 presence
+    secrets: [CALENDAR_SA_KEY],
+    timeoutSeconds: 540,
+  },
+  async () => {
+    const result = await calendar.backfillAll(CALENDAR_SA_KEY.value());
+    logger.info('[dailyCalendarReconcile] done', result);
+  },
+);
+
+// Same thing on demand, from the Admin Panel button. Admin-only: the callable
+// runs with the Admin SDK, which bypasses security rules, so the role has to be
+// checked here explicitly.
+exports.syncAllCalendars = onCall({ secrets: [CALENDAR_SA_KEY], timeoutSeconds: 540 }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Sign in to run a calendar sync.');
+  }
+
+  const uid = request.auth.uid;
+  let role = null;
+  try {
+    const snap = await db.collection('users').doc(uid).get();
+    role = snap.exists ? (snap.data() || {}).role : null;
+  } catch (err) {
+    logger.error('[syncAllCalendars] could not read the caller profile:', err);
+    throw new HttpsError('internal', 'Could not verify your permissions.');
+  }
+
+  if (role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Only an admin can run a calendar sync.');
+  }
+
+  logger.info(`[syncAllCalendars] triggered by ${uid}`);
+  const result = await calendar.backfillAll(CALENDAR_SA_KEY.value());
+  return result;
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Callable: askGemini
 // ─────────────────────────────────────────────────────────────────────────────
 // The SPA calls POST /api/gemini on Vercel instead of this callable. It is kept

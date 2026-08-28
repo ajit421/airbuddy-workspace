@@ -294,7 +294,7 @@ function buildLeaveEvent(leave, leaveId, appUrl) {
   const type = leave.type ? `${leave.type} leave` : 'Leave';
 
   return {
-    summary: `🌴 [AirBuddy] ${type.charAt(0).toUpperCase()}${type.slice(1)} (approved)`,
+    summary: `[AirBuddy] ${type.charAt(0).toUpperCase()}${type.slice(1)} (approved)`,
     description: [
       leave.reason ? `📋 ${leave.reason}` : '',
       `📊 Status: ${leave.status || 'approved'}`,

@@ -158,7 +158,7 @@ Calendar dedup interacts with the mirror: `getRoadmapCalendarEvents()` returns a
 
 ## Cloud Functions
 
-Fourteen functions, all **v2** (`firebase-functions` 7, whose root export *is* the v2 namespace — `functions.firestore.document` and `functions.pubsub.schedule` do not exist there, which is why the original v1 code threw at module load and nothing could deploy). Runtime is Node 22, `maxInstances: 10`, set once via `setGlobalOptions` in [functions/index.js](functions/index.js).
+Sixteen functions, all **v2** (`firebase-functions` 7, whose root export *is* the v2 namespace — `functions.firestore.document` and `functions.pubsub.schedule` do not exist there, which is why the original v1 code threw at module load and nothing could deploy). Runtime is Node 22, `maxInstances: 10`, set once via `setGlobalOptions` in [functions/index.js](functions/index.js).
 
 **The region split is deliberate — do not "tidy" it into one region.**
 
@@ -180,6 +180,8 @@ Both crons carry an explicit `region: 'asia-south1'` in their own options, overr
 | `onLeaveCalendar` | `leaves/{id}` written | An approved leave on the applicant's Calendar, **plus** the bell + push for an approval or rejection — which used to be silent |
 | `onDueDateApproach` | cron 09:00 IST | Bell entry + push for root tasks due tomorrow |
 | `roadmapDeadlineCheck` | cron 09:15 IST | Bell entry + push for roadmap tasks due tomorrow / overdue |
+| `dailyCalendarReconcile` | cron 07:30 IST | Creates any Calendar event that is missing — the backfill, run daily |
+| `syncAllCalendars` | callable, admin-only | The same reconcile on demand, behind the Admin Panel's **Sync now** button |
 | `onRoadmapTaskWrite` | `roadmapNodes/{n}/tasks/{t}` written | Node progress rollup (transaction) |
 | `onRoadmapNodeProgressChange` | `roadmapNodes/{n}` written | Ancestor progress propagation |
 | `onRoadmapNodeHistory` / `onRoadmapTaskHistory` | same paths | Audit-history writes |
@@ -253,6 +255,25 @@ The two deadline crons (`onDueDateApproach`, `roadmapDeadlineCheck`) deliberatel
 create **no** calendar entries. The event for the task already carries reminders a
 day and an hour ahead, so a cron-created entry would be a duplicate of a
 reminder the calendar is already going to fire.
+
+**Triggers only fire on writes, so a backfill is mandatory.** Anything created
+before this feature was deployed has no calendar event and never would — on day one
+the entire task backlog was invisible in everybody's Google Calendar while new tasks
+synced correctly, which read as "the feature does not work". `backfillAll()` in
+`calendar.js` walks the current state and creates only what is missing;
+`dailyCalendarReconcile` (07:30 IST, before the 09:00 reminder wave) runs it every
+morning and `syncAllCalendars` exposes it to the Admin Panel button. It is
+idempotent — a record that already has an event id costs no API call — and bounded
+to `BACKFILL_LOOKBACK_DAYS` (60) so nobody's calendar fills with finished history.
+Running it daily also heals a failed API call, a lost roadmap mirror write, and an
+event somebody deleted by hand.
+
+**Half the team is on gmail, and they cannot be synced at all.** `users` currently
+holds 5 `@airbuddy.in` accounts and 4 gmail ones. Domain-wide delegation can only
+impersonate Workspace accounts, so tasks assigned to the gmail four produce no
+calendar event — `getSyncableEmails()` skips them with a log line. This is not a
+bug to fix in code: either those people get `@airbuddy.in` accounts, or the sync
+has to fall back to attendee invitations for them.
 
 Things worth knowing before changing any of it:
 
