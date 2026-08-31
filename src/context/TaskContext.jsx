@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { collection, collectionGroup, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from './AuthContext';
-import { subscribeToAssignedNodes } from '../services/roadmapService';
+import { subscribeToAssignedNodes, subscribeToAllAssignedNodes } from '../services/roadmapService';
 
 const TaskContext = createContext(null);
 
@@ -51,19 +51,22 @@ export const TaskProvider = ({ children }) => {
 
     let unsubTasks = () => {};
 
-    // Roadmap milestones assigned to this user. Runs for every role: `assignedTo`
-    // on a roadmapNode is a real work assignment and an admin can be on the
-    // receiving end of one just as an employee can. Independent of the isAdmin
-    // branch below because the admin `tasks` query is company-wide while this is
-    // always scoped to the viewer.
-    const unsubAssignedNodes = subscribeToAssignedNodes(
-      effectiveUid,
-      (nodes) => setAssignedNodes(nodes),
-      (err) => {
-        console.error('Roadmap node listener (assignedTo) error:', err);
-        setAssignedNodes([]);
-      }
-    );
+    // Roadmap milestones — `assignedTo` on a roadmapNode is a real work
+    // assignment, and nothing on the task path can see it.
+    //
+    // Scoped exactly like the `tasks` query below it: an employee gets their own
+    // milestones, an admin gets every assigned one. The admin breadth is not
+    // cosmetic — the Dashboard's admin-only employee filter narrows the viewer's
+    // own list by `assignedTo`, so with a viewer-scoped listener, filtering by a
+    // teammate showed nothing because their milestones were never loaded.
+    const onNodes = (nodes) => setAssignedNodes(nodes);
+    const onNodesError = (err) => {
+      console.error('Roadmap node listener (assignedTo) error:', err);
+      setAssignedNodes([]);
+    };
+    const unsubAssignedNodes = isAdmin
+      ? subscribeToAllAssignedNodes(onNodes, onNodesError)
+      : subscribeToAssignedNodes(effectiveUid, onNodes, onNodesError);
 
     if (isAdmin) {
       // Admin: fetch all tasks
@@ -174,11 +177,12 @@ export const TaskProvider = ({ children }) => {
   // week" must read, or an assigned milestone stays invisible in exactly the
   // place the person looks for their work.
   //
-  // Purely additive, deliberately with no role branch: for an employee `tasks`
-  // is already their own work, and for an admin it stays the company-wide list
-  // it has always been, with any milestone they are personally on added to it.
-  // Narrowing the admin list here would silently change every count on their
-  // Dashboard, which is not what this fix is for.
+  // Purely additive and deliberately without a role branch of its own — the
+  // breadth difference already happened upstream, in which node listener ran.
+  // For an employee this is their own work; for an admin it is the company-wide
+  // task list plus every assigned milestone, which is what makes the employee
+  // filter able to find a teammate's milestone. Narrowing the admin list here
+  // would silently change every count on their Dashboard.
   const myWorkItems = useMemo(() => {
     if (assignedNodes.length === 0) return tasks;
     const ids = new Set(tasks.map(t => t.id));

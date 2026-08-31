@@ -303,6 +303,47 @@ export function subscribeToAssignedNodes(uid, onData, onError) {
 }
 
 /**
+ * Subscribe to every milestone that is assigned to somebody — the admin-side
+ * counterpart of subscribeToAssignedNodes.
+ *
+ * The Dashboard's employee filter is admin-only and works by filtering the
+ * viewer's own work list by `assignedTo`. With a viewer-scoped node listener an
+ * admin loads only their *own* milestones, so filtering by "Archit Jain" could
+ * never surface a milestone assigned to Archit — it was simply not in the
+ * array being filtered. That mirrors how `tasks` already behaves: the admin
+ * branch of TaskContext queries the whole `tasks` collection rather than one
+ * person's, and milestones have to be company-wide for the same reason.
+ *
+ * Filters on `isArchived` only — the same single-field equality query
+ * useRoadmapCalendarEvents already runs, so it needs no composite index.
+ * Unassigned milestones are dropped client-side: a node nobody owns is roadmap
+ * structure, not somebody's work, and would only inflate the admin's counters.
+ *
+ * @param {function} onData   - Called with an array of task-shaped work items
+ * @param {function} [onError]
+ * @returns {function} unsubscribe
+ */
+export function subscribeToAllAssignedNodes(onData, onError) {
+  const q = query(
+    collection(db, ROADMAP_NODES_COL),
+    where('isArchived', '==', false),
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const assigned = snapToArray(snap).filter(
+        (n) => Array.isArray(n.assignedTo) && n.assignedTo.length > 0
+      );
+      onData(sortNodesByDueDate(assigned).map(nodeToWorkItem));
+    },
+    (err) => {
+      console.error('[roadmapService] subscribeToAllAssignedNodes:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+/**
  * Update a milestone the way its assignee is allowed to: progress, status and
  * a completion note. Nothing else.
  *

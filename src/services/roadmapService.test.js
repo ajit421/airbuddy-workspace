@@ -40,6 +40,7 @@ import {
   recomputeNodeRollup,
   nodeToWorkItem,
   subscribeToAssignedNodes,
+  subscribeToAllAssignedNodes,
   updateNodeAsAssignee,
   NODE_ASSIGNEE_WRITABLE_FIELDS,
 } from './roadmapService';
@@ -733,5 +734,48 @@ describe('updateNodeAsAssignee', () => {
     await updateNodeAsAssignee('node-1', { progress: 50 }, 'uid-a');
     const payload = updateDoc.mock.calls.at(-1)[1];
     expect(Object.keys(payload).sort()).toEqual(['progress', 'updatedAt', 'updatedBy']);
+  });
+});
+
+describe('subscribeToAllAssignedNodes (admin breadth)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // The Dashboard's admin-only employee filter narrows the viewer's own work
+  // list by assignedTo. With a viewer-scoped node listener an admin loaded only
+  // their own milestones, so filtering by a teammate could never surface that
+  // teammate's milestone — it was not in the array being filtered.
+  it('filters on isArchived only, so no composite index is needed', () => {
+    subscribeToAllAssignedNodes(vi.fn());
+    expect(where).toHaveBeenCalledTimes(1);
+    expect(where).toHaveBeenCalledWith('isArchived', '==', false);
+  });
+
+  it('returns milestones assigned to anyone, not just the viewer', () => {
+    const onData = vi.fn();
+    subscribeToAllAssignedNodes(onData);
+    const cb = onSnapshot.mock.calls.at(-1)[1];
+    cb({
+      docs: [
+        { id: 'theirs', data: () => ({ title: 'Theirs', assignedTo: ['uid-a', 'uid-b'], dueDate: new Date('2026-01-01') }) },
+        { id: 'mine',   data: () => ({ title: 'Mine',   assignedTo: ['uid-me'],         dueDate: new Date('2026-02-01') }) },
+      ],
+    });
+    const emitted = onData.mock.calls.at(-1)[0];
+    expect(emitted.map((n) => n.title)).toEqual(['Theirs', 'Mine']);
+    expect(emitted.every((n) => n._source === 'roadmapNode')).toBe(true);
+  });
+
+  it('drops unassigned nodes — roadmap structure belongs to nobody', () => {
+    const onData = vi.fn();
+    subscribeToAllAssignedNodes(onData);
+    const cb = onSnapshot.mock.calls.at(-1)[1];
+    cb({
+      docs: [
+        { id: 'assigned',   data: () => ({ title: 'Assigned',   assignedTo: ['uid-a'] }) },
+        { id: 'unassigned', data: () => ({ title: 'Unassigned', assignedTo: [] }) },
+        { id: 'nofield',    data: () => ({ title: 'NoField' }) },
+      ],
+    });
+    expect(onData.mock.calls.at(-1)[0].map((n) => n.title)).toEqual(['Assigned']);
   });
 });
