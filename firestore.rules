@@ -383,6 +383,21 @@ service cloud.firestore {
       return assigned is list && uid in assigned;
     }
 
+    //   isRoadmapNodeParticipant(nodeData) — the node equivalent of
+    //   isTaskParticipantLocal: admin, creator, assignee or work partner.
+    //   A milestone is a work item in its own right now (it appears on its
+    //   assignees' Dashboard and opens the ordinary Task Details modal), so it
+    //   carries the same shared checklist and work-partner arrays a task does,
+    //   and needs the same set of people able to write them.
+    function isRoadmapNodeParticipant(nodeData) {
+      let uid      = getEffectiveUid();
+      let assigned = nodeData.get('assignedTo', []);
+      return isAdmin() ||
+             nodeData.get('createdBy', '') == uid ||
+             (assigned is list && uid in assigned) ||
+             (uid in nodeData.get('workPartnerUids', []));
+    }
+
     // ── roadmapNodes ─────────────────────────────────────────────────────────
     // Phase 4 §2–3:
     //   Read:   All whitelisted authenticated users can read all nodes
@@ -391,9 +406,17 @@ service cloud.firestore {
     //   Update: Admin — any field.
     //           Any other whitelisted user — rollup fields only (progress,
     //           childCompletedCount, status, updatedAt).
-    //           An *assignee* of the node — additionally completionNote and
-    //           updatedBy, so the person the milestone is assigned to can
-    //           actually finish it from their Dashboard. The milestone is
+    //           An *assignee* of the node — the fields the Task Details modal
+    //           writes: status, progress, completionNote, attachments, dueDate
+    //           (the Extend control) and isExtended, so the person the milestone
+    //           is assigned to can actually work and finish it from their
+    //           Dashboard exactly as they would an ordinary task.
+    //           A *participant* (admin, creator, assignee or work partner) —
+    //           the shared collaboration arrays: workPartners, workPartnerUids
+    //           and the todos checklist. Split from the assignee branch for the
+    //           same reason tasks split theirs: a work partner who is neither
+    //           assignee nor creator must still be able to tick off a checklist
+    //           item without gaining the right to change status or progress. The milestone is
     //           surfaced there by subscribeToAssignedNodes in
     //           src/services/roadmapService.js; without this branch that UI
     //           renders and every save is rejected, because the rollup
@@ -423,7 +446,14 @@ service cloud.firestore {
           isRoadmapNodeAssignee(resource.data) &&
           request.resource.data.diff(resource.data)
             .affectedKeys()
-            .hasOnly(['status', 'progress', 'completionNote', 'updatedBy', 'updatedAt'])
+            .hasOnly(['status', 'progress', 'completionNote', 'attachments',
+                      'dueDate', 'isExtended', 'updatedBy', 'updatedAt'])
+        ) ||
+        (
+          isRoadmapNodeParticipant(resource.data) &&
+          request.resource.data.diff(resource.data)
+            .affectedKeys()
+            .hasOnly(['workPartners', 'workPartnerUids', 'todos', 'updatedBy', 'updatedAt'])
         )
       );
       allow delete: if isAuthenticated() && isEmailAllowed() && isAdmin();
@@ -455,6 +485,31 @@ service cloud.firestore {
         );
 
         allow delete: if isAuthenticated() && isEmailAllowed() && isAdmin();
+      }
+
+      // ── events subcollection (collaboration timeline) ─────────────────────
+      // Schema and semantics are identical to tasks/{taskId}/events — the same
+      // collaborationService writes both, resolving the collection through
+      // src/utils/workItemRef.js. Participation is evaluated against the parent
+      // node document via get(), which costs one read per rule evaluation; that
+      // matches what isTaskParticipant(taskId) already does for tasks.
+      match /events/{eventId} {
+        allow read: if isAuthenticated() && isEmailAllowed()
+          && isRoadmapNodeParticipant(
+               get(/databases/$(database)/documents/roadmapNodes/$(nodeId)).data
+             );
+
+        // authorUid must equal the requesting user — no spoofing.
+        allow create: if isAuthenticated() && isEmailAllowed()
+          && isRoadmapNodeParticipant(
+               get(/databases/$(database)/documents/roadmapNodes/$(nodeId)).data
+             )
+          && request.resource.data.authorUid == getEffectiveUid();
+
+        allow update, delete: if isAuthenticated() && isEmailAllowed() && (
+          isAdmin() ||
+          resource.data.authorUid == getEffectiveUid()
+        );
       }
 
       // ── comments subcollection ────────────────────────────────────────────

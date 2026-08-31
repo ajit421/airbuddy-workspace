@@ -58,14 +58,20 @@ import {
 } from 'firebase/firestore';
 import { z } from 'zod';
 import { db } from './firebase';
-
-const TASKS_COL = 'tasks';
+import { workItemCollection, workItemId } from '../utils/workItemRef';
 
 /** Maximum characters allowed in a single todo item. */
 export const TODO_MAX_LENGTH = 500;
 
-/** Reference to a task document. */
-const taskDoc = (taskId) => doc(db, TASKS_COL, taskId);
+/**
+ * Reference to the work item that owns the todo list.
+ *
+ * Every function here takes `task` — the work item object, not just its id — so
+ * a roadmap milestone (`roadmapNodes/{id}`) gets the same checklist as an
+ * ordinary task (`tasks/{id}`). A bare id string still resolves to `tasks`, so
+ * older callers keep working.
+ */
+const taskDoc = (task) => doc(db, workItemCollection(task), workItemId(task));
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -159,16 +165,16 @@ export function getTodoStats(todos) {
  * props: the detail modal is handed a snapshot object captured at click time,
  * so props would go stale the moment anything is written.
  *
- * @param {string} taskId                              - Firestore task document ID
+ * @param {object|string} task - Work item (or a bare task id)
  * @param {(todos: Array<Object>) => void} onData       - Called with the normalized array
  * @param {(err: Error) => void} [onError]              - Optional error callback
  * @returns {() => void} Unsubscribe function
  */
-export function subscribeToTaskTodos(taskId, onData, onError) {
-  if (!taskId) throw new Error('[todoService] subscribeToTaskTodos: taskId is required');
+export function subscribeToTaskTodos(task, onData, onError) {
+  if (!task) throw new Error('[todoService] subscribeToTaskTodos: task is required');
 
   return onSnapshot(
-    taskDoc(taskId),
+    taskDoc(task),
     (snap) => onData(normalizeTodos(snap.exists() ? snap.data().todos : [])),
     (err) => {
       console.error('[todoService] subscribeToTaskTodos:', err);
@@ -184,13 +190,13 @@ export function subscribeToTaskTodos(taskId, onData, onError) {
  *
  * Uses arrayUnion so concurrent adds from different users both survive.
  *
- * @param {string} taskId
+ * @param {object|string} task - Work item (or a bare task id)
  * @param {string} text                                        - Raw user input; trimmed and validated
  * @param {{ uid: string, name?: string }} author              - Acting user (pass effectiveUid)
  * @returns {Promise<Object>} The item that was written
  */
-export async function addTodo(taskId, text, author) {
-  if (!taskId) throw new Error('[todoService] addTodo: taskId is required');
+export async function addTodo(task, text, author) {
+  if (!task) throw new Error('[todoService] addTodo: task is required');
 
   const item = TodoItemSchema.parse({
     id:              makeTodoId(),
@@ -205,7 +211,7 @@ export async function addTodo(taskId, text, author) {
   });
 
   try {
-    await updateDoc(taskDoc(taskId), {
+    await updateDoc(taskDoc(task), {
       todos:     arrayUnion(item),
       updatedAt: serverTimestamp(),
     });
@@ -223,22 +229,22 @@ export async function addTodo(taskId, text, author) {
  * transaction and writes the result back. Every non-append mutation goes
  * through here so a concurrent edit can never be lost.
  *
- * @param {string} taskId
+ * @param {object|string} task - Work item (or a bare task id)
  * @param {string} label                                     - Caller name, for error logs
  * @param {(todos: Array<Object>) => Array<Object>} mutate    - Pure; may throw to abort
  * @returns {Promise<Array<Object>>} The array that was written
  */
-async function mutateTodos(taskId, label, mutate) {
+async function mutateTodos(task, label, mutate) {
   try {
     return await runTransaction(db, async (tx) => {
-      const snap = await tx.get(taskDoc(taskId));
+      const snap = await tx.get(taskDoc(task));
       if (!snap.exists()) {
-        throw new Error(`[todoService] ${label}: task ${taskId} no longer exists`);
+        throw new Error(`[todoService] ${label}: ${workItemCollection(task)}/${workItemId(task)} no longer exists`);
       }
 
       const next = z.array(TodoItemSchema).parse(mutate(normalizeTodos(snap.data().todos)));
 
-      tx.update(taskDoc(taskId), { todos: next, updatedAt: serverTimestamp() });
+      tx.update(taskDoc(task), { todos: next, updatedAt: serverTimestamp() });
       return next;
     });
   } catch (err) {
@@ -252,19 +258,19 @@ async function mutateTodos(taskId, label, mutate) {
 /**
  * Rewrites the text of one todo item, leaving its done state and author intact.
  *
- * @param {string} taskId
+ * @param {object|string} task - Work item (or a bare task id)
  * @param {string} todoId
  * @param {string} text   - New text; trimmed and validated
  * @returns {Promise<Array<Object>>} The array that was written
  */
-export async function updateTodoText(taskId, todoId, text) {
-  if (!taskId) throw new Error('[todoService] updateTodoText: taskId is required');
+export async function updateTodoText(task, todoId, text) {
+  if (!task) throw new Error('[todoService] updateTodoText: task is required');
   if (!todoId) throw new Error('[todoService] updateTodoText: todoId is required');
 
   // Validate before opening the transaction so bad input costs no round trip.
   const cleanText = TodoTextSchema.parse(text);
 
-  return mutateTodos(taskId, 'updateTodoText', (current) => {
+  return mutateTodos(task, 'updateTodoText', (current) => {
     if (!current.some((t) => t.id === todoId)) {
       throw new Error(`[todoService] updateTodoText: todo ${todoId} not found`);
     }
@@ -281,16 +287,16 @@ export async function updateTodoText(taskId, todoId, text) {
  * The flip is computed from the server's current value inside the transaction,
  * so double-clicks and concurrent viewers can't desynchronise it.
  *
- * @param {string} taskId
+ * @param {object|string} task - Work item (or a bare task id)
  * @param {string} todoId
  * @param {{ uid: string, name?: string }} actor - Acting user (pass effectiveUid)
  * @returns {Promise<Array<Object>>} The array that was written
  */
-export async function toggleTodo(taskId, todoId, actor) {
-  if (!taskId) throw new Error('[todoService] toggleTodo: taskId is required');
+export async function toggleTodo(task, todoId, actor) {
+  if (!task) throw new Error('[todoService] toggleTodo: task is required');
   if (!todoId) throw new Error('[todoService] toggleTodo: todoId is required');
 
-  return mutateTodos(taskId, 'toggleTodo', (current) => {
+  return mutateTodos(task, 'toggleTodo', (current) => {
     const target = current.find((t) => t.id === todoId);
     if (!target) throw new Error(`[todoService] toggleTodo: todo ${todoId} not found`);
 
@@ -318,15 +324,15 @@ export async function toggleTodo(taskId, todoId, actor) {
  * deep-equal copy of the element, which is brittle for arrays of maps (same
  * reason collaborationService rewrites workPartners on removal).
  *
- * @param {string} taskId
+ * @param {object|string} task - Work item (or a bare task id)
  * @param {string} todoId
  * @returns {Promise<Array<Object>>} The array that was written
  */
-export async function deleteTodo(taskId, todoId) {
-  if (!taskId) throw new Error('[todoService] deleteTodo: taskId is required');
+export async function deleteTodo(task, todoId) {
+  if (!task) throw new Error('[todoService] deleteTodo: task is required');
   if (!todoId) throw new Error('[todoService] deleteTodo: todoId is required');
 
-  return mutateTodos(taskId, 'deleteTodo', (current) =>
+  return mutateTodos(task, 'deleteTodo', (current) =>
     current.filter((t) => t.id !== todoId)
   );
 }

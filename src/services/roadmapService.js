@@ -209,7 +209,8 @@ export function subscribeToNode(nodeId, onData, onError) {
  * account, which is exactly how the task-update rules bit us before.
  */
 export const NODE_ASSIGNEE_WRITABLE_FIELDS = [
-  'status', 'progress', 'completionNote', 'updatedBy', 'updatedAt',
+  'status', 'progress', 'completionNote', 'attachments',
+  'dueDate', 'isExtended', 'updatedBy', 'updatedAt',
 ];
 
 /**
@@ -360,9 +361,13 @@ export function subscribeToAllAssignedNodes(onData, onError) {
 export async function updateNodeAsAssignee(nodeId, data, editorUid) {
   if (!nodeId) throw new Error('[roadmapService] updateNodeAsAssignee: nodeId is required');
   const payload = { updatedBy: editorUid, updatedAt: serverTimestamp() };
-  if (data.progress !== undefined)       payload.progress       = data.progress;
-  if (data.status   !== undefined)       payload.status         = data.status;
-  if (data.completionNote !== undefined) payload.completionNote = data.completionNote;
+  // Copy only what the caller actually passed: hasOnly() in the rule fails the
+  // entire update for one key the assignee may not write, so an undefined field
+  // must be absent rather than present-and-undefined.
+  for (const field of NODE_ASSIGNEE_WRITABLE_FIELDS) {
+    if (field === 'updatedBy' || field === 'updatedAt') continue;
+    if (data[field] !== undefined) payload[field] = data[field];
+  }
   try {
     await updateDoc(doc(db, ROADMAP_NODES_COL, nodeId), payload);
   } catch (err) {

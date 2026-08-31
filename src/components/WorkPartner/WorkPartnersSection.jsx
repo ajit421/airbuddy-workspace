@@ -72,7 +72,7 @@ export default function WorkPartnersSection({ task, onPartnerAdded }) {
     setAddError(null);
     try {
       await addWorkPartner(
-        task.id,
+        task,
         { uid: selectedUser.uid, name: selectedUser.name, avatar: selectedUser.avatar || '' },
         { uid: userProfile.uid, name: userProfile.name, avatar: userProfile.avatar || '' }
       );
@@ -90,7 +90,7 @@ export default function WorkPartnersSection({ task, onPartnerAdded }) {
     setRemovingUid(partnerUid);
     setAddError(null);
     try {
-      await removeWorkPartner(task.id, partnerUid, task.workPartners);
+      await removeWorkPartner(task, partnerUid, task.workPartners);
       onPartnerAdded?.();
     } catch (err) {
       console.error('[WorkPartnersSection] removeWorkPartner failed:', err);

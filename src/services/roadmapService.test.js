@@ -722,9 +722,11 @@ describe('updateNodeAsAssignee', () => {
       'uid-a'
     );
     const payload = updateDoc.mock.calls.at(-1)[1];
-    expect(Object.keys(payload).sort()).toEqual(
-      [...NODE_ASSIGNEE_WRITABLE_FIELDS].sort()
-    );
+    // Every key written must be inside the carve-out — hasOnly() in the rule
+    // fails the whole update for one stray field.
+    for (const key of Object.keys(payload)) {
+      expect(NODE_ASSIGNEE_WRITABLE_FIELDS).toContain(key);
+    }
     expect(payload.progress).toBe(100);
     expect(payload.status).toBe('completed');
     expect(payload.updatedBy).toBe('uid-a');

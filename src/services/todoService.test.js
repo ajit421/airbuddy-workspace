@@ -160,8 +160,8 @@ describe('subscribeToTaskTodos', () => {
     expect(typeof unsub).toBe('function');
   });
 
-  it('throws when taskId is missing', () => {
-    expect(() => subscribeToTaskTodos('', vi.fn())).toThrow(/taskId is required/);
+  it('throws when the work item is missing', () => {
+    expect(() => subscribeToTaskTodos('', vi.fn())).toThrow(/task is required/);
   });
 
   it('passes the normalized array to onData', () => {
@@ -242,8 +242,8 @@ describe('addTodo', () => {
     expect(item.text).toHaveLength(TODO_MAX_LENGTH);
   });
 
-  it('throws when taskId is missing', async () => {
-    await expect(addTodo('', 'text', AUTHOR)).rejects.toThrow(/taskId is required/);
+  it('throws when the work item is missing', async () => {
+    await expect(addTodo('', 'text', AUTHOR)).rejects.toThrow(/task is required/);
   });
 
   it('tolerates a missing author without throwing', async () => {
@@ -330,7 +330,7 @@ describe('updateTodoText', () => {
   });
 
   it('throws when ids are missing', async () => {
-    await expect(updateTodoText('', 'a', 'x')).rejects.toThrow(/taskId is required/);
+    await expect(updateTodoText('', 'a', 'x')).rejects.toThrow(/task is required/);
     await expect(updateTodoText('task-1', '', 'x')).rejects.toThrow(/todoId is required/);
   });
 });
@@ -391,7 +391,7 @@ describe('toggleTodo', () => {
   });
 
   it('throws when ids are missing', async () => {
-    await expect(toggleTodo('', 'a', AUTHOR)).rejects.toThrow(/taskId is required/);
+    await expect(toggleTodo('', 'a', AUTHOR)).rejects.toThrow(/task is required/);
     await expect(toggleTodo('task-1', '', AUTHOR)).rejects.toThrow(/todoId is required/);
   });
 });
@@ -428,7 +428,7 @@ describe('deleteTodo', () => {
   });
 
   it('throws when ids are missing', async () => {
-    await expect(deleteTodo('', 'a')).rejects.toThrow(/taskId is required/);
+    await expect(deleteTodo('', 'a')).rejects.toThrow(/task is required/);
     await expect(deleteTodo('task-1', '')).rejects.toThrow(/todoId is required/);
   });
 

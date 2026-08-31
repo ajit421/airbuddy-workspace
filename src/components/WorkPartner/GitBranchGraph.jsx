@@ -357,7 +357,7 @@ export default function GitBranchGraph({ task, events = [], loading = false, onA
     setAddError(null);
     try {
       await addWorkPartner(
-        task.id,
+        task,
         { uid: sel.uid, name: sel.name, avatar: sel.avatar || '' },
         { uid: userProfile.uid, name: userProfile.name, avatar: userProfile.avatar || '' }
       );

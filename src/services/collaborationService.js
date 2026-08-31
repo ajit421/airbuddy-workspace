@@ -35,6 +35,7 @@
  */
 
 import { db } from './firebase';
+import { workItemCollection, workItemId } from '../utils/workItemRef';
 import {
   doc,
   collection,
@@ -50,10 +51,18 @@ import {
 // ─── Collection / doc helpers ─────────────────────────────────────────────────
 
 /** Reference to a task document. */
-const taskDoc = (taskId) => doc(db, 'tasks', taskId);
+/**
+ * References to the work item that owns the partners and timeline.
+ *
+ * These take `task` — the work item object, not just its id — so a roadmap
+ * milestone (`roadmapNodes/{id}`, tagged `_source: 'roadmapNode'`) gets the
+ * same work partners and activity feed as an ordinary task. A bare id string
+ * still resolves to `tasks`, keeping older callers working.
+ */
+const taskDoc = (task) => doc(db, workItemCollection(task), workItemId(task));
 
 /** Reference to the events sub-collection for a task. */
-const eventsCol = (taskId) => collection(db, 'tasks', taskId, 'events');
+const eventsCol = (task) => collection(db, workItemCollection(task), workItemId(task), 'events');
 
 // ─── 1. addWorkPartner ────────────────────────────────────────────────────────
 
@@ -65,7 +74,7 @@ const eventsCol = (taskId) => collection(db, 'tasks', taskId, 'events');
  * After the Firestore write succeeds, immediately posts a `partner_added`
  * timeline event so the change is reflected in the collaboration feed.
  *
- * @param {string} taskId
+ * @param {object|string} task - Work item (or a bare task id)
  *   Firestore task document ID.
  * @param {{ uid: string, name: string, avatar?: string }} newPartner
  *   The user being added as a work partner.
@@ -74,7 +83,7 @@ const eventsCol = (taskId) => collection(db, 'tasks', taskId, 'events');
  * @returns {Promise<void>}
  * @throws Will rethrow any Firestore error so the calling component can handle it.
  */
-export async function addWorkPartner(taskId, newPartner, addedByUser) {
+export async function addWorkPartner(task, newPartner, addedByUser) {
   // ── Build the rich partner object written to workPartners[] ──────────────
   const partnerObject = {
     uid:         newPartner.uid,
@@ -89,14 +98,14 @@ export async function addWorkPartner(taskId, newPartner, addedByUser) {
     // ── Step 1: Atomically update both parallel arrays ─────────────────────
     // arrayUnion is safe here: the partner object is new (caller should guard
     // against duplicates before calling this function).
-    await updateDoc(taskDoc(taskId), {
+    await updateDoc(taskDoc(task), {
       workPartners:    arrayUnion(partnerObject),   // rich array — UI reads this
       workPartnerUids: arrayUnion(newPartner.uid),  // flat array — rules read this
       updatedAt:       serverTimestamp(),
     });
 
     // ── Step 2: Post a timeline event for the addition ────────────────────
-    await addTimelineEvent(taskId, {
+    await addTimelineEvent(task, {
       type:         'partner_added',
       authorUid:    addedByUser.uid,
       authorName:   addedByUser.name,
@@ -108,7 +117,7 @@ export async function addWorkPartner(taskId, newPartner, addedByUser) {
       },
     });
   } catch (error) {
-    console.error(`[collaborationService] addWorkPartner failed (task: ${taskId}):`, error);
+    console.error(`[collaborationService] addWorkPartner failed (task: ${workItemCollection(task)}/${workItemId(task)}):`, error);
     throw error;
   }
 }
@@ -123,7 +132,7 @@ export async function addWorkPartner(taskId, newPartner, addedByUser) {
  *
  * No timeline event is posted for removals — only additions are recorded.
  *
- * @param {string} taskId
+ * @param {object|string} task - Work item (or a bare task id)
  *   Firestore task document ID.
  * @param {string} partnerUid
  *   UID of the Work Partner to remove.
@@ -133,20 +142,20 @@ export async function addWorkPartner(taskId, newPartner, addedByUser) {
  * @returns {Promise<void>}
  * @throws Will rethrow any Firestore error so the calling component can handle it.
  */
-export async function removeWorkPartner(taskId, partnerUid, currentWorkPartners) {
+export async function removeWorkPartner(task, partnerUid, currentWorkPartners) {
   try {
     // Filter the rich array — both arrays derive from this single source of truth
     const updatedPartners    = (currentWorkPartners || []).filter((p) => p.uid !== partnerUid);
     const updatedPartnerUids = updatedPartners.map((p) => p.uid);
 
     // Replace both arrays atomically in one updateDoc call
-    await updateDoc(taskDoc(taskId), {
+    await updateDoc(taskDoc(task), {
       workPartners:    updatedPartners,      // rich array without the removed partner
       workPartnerUids: updatedPartnerUids,   // flat array kept in sync
       updatedAt:       serverTimestamp(),
     });
   } catch (error) {
-    console.error(`[collaborationService] removeWorkPartner failed (task: ${taskId}, partner: ${partnerUid}):`, error);
+    console.error(`[collaborationService] removeWorkPartner failed (task: ${workItemCollection(task)}/${workItemId(task)}, partner: ${partnerUid}):`, error);
     throw error;
   }
 }
@@ -159,7 +168,7 @@ export async function removeWorkPartner(taskId, partnerUid, currentWorkPartners)
  * It is also exported so that `taskService.js` can post system events
  * (status_changed, progress_updated) from the progress-save flow.
  *
- * @param {string} taskId
+ * @param {object|string} task - Work item (or a bare task id)
  *   Parent task document ID.
  * @param {{
  *   type:         'partner_added' | 'status_changed' | 'progress_updated' | 'commit',
@@ -174,17 +183,17 @@ export async function removeWorkPartner(taskId, partnerUid, currentWorkPartners)
  *   The DocumentReference of the newly created event.
  * @throws Will rethrow any Firestore error.
  */
-export async function addTimelineEvent(taskId, eventData) {
+export async function addTimelineEvent(task, eventData) {
   const fullEventDoc = {
     ...eventData,
     createdAt: serverTimestamp(), // server-side timestamp for consistent ordering
   };
 
   try {
-    const ref = await addDoc(eventsCol(taskId), fullEventDoc);
+    const ref = await addDoc(eventsCol(task), fullEventDoc);
     return ref;
   } catch (error) {
-    console.error(`[collaborationService] addTimelineEvent failed (task: ${taskId}, type: ${eventData?.type}):`, error);
+    console.error(`[collaborationService] addTimelineEvent failed (task: ${workItemCollection(task)}/${workItemId(task)}, type: ${eventData?.type}):`, error);
     throw error;
   }
 }
@@ -203,7 +212,7 @@ export async function addTimelineEvent(taskId, eventData) {
  * always injects `serverTimestamp()`. No composite index is needed because
  * we use a single orderBy with no where() clause.
  *
- * @param {string}   taskId
+ * @param {object|string} task - Work item (or a bare task id)
  *   Parent task document ID.
  * @param {(events: Array<object>) => void} callback
  *   Called with the mapped event array every time Firestore data changes.
@@ -212,14 +221,14 @@ export async function addTimelineEvent(taskId, eventData) {
  *   permissions or network error.
  * @returns {() => void} Unsubscribe function — call in useEffect cleanup.
  */
-export function subscribeToTimeline(taskId, callback, onError) {
-  if (!taskId) {
-    // Guard: if taskId is undefined (e.g. new task not yet saved), return a no-op.
+export function subscribeToTimeline(task, callback, onError) {
+  if (!task) {
+    // Guard: if task is undefined (e.g. new task not yet saved), return a no-op.
     callback([]);
     return () => {};
   }
 
-  const q = query(eventsCol(taskId), orderBy('createdAt', 'desc'));
+  const q = query(eventsCol(task), orderBy('createdAt', 'desc'));
 
   const unsubscribe = onSnapshot(
     q,
@@ -239,7 +248,7 @@ export function subscribeToTimeline(taskId, callback, onError) {
       callback(events);
     },
     (error) => {
-      console.error(`[collaborationService] subscribeToTimeline error (task: ${taskId}):`, error);
+      console.error(`[collaborationService] subscribeToTimeline error (task: ${workItemCollection(task)}/${workItemId(task)}):`, error);
       if (typeof onError === 'function') onError(error);
     }
   );
@@ -253,7 +262,7 @@ export function subscribeToTimeline(taskId, callback, onError) {
  * Posts a manual commit event to the task timeline. Any task participant
  * (assignee, creator, or work partner) can post a commit.
  *
- * @param {string} taskId
+ * @param {object|string} task - Work item (or a bare task id)
  *   Firestore task document ID.
  * @param {{ uid: string, name: string, avatar?: string }} author
  *   Currently authenticated user (from `useAuth().userProfile`).
@@ -266,7 +275,7 @@ export function subscribeToTimeline(taskId, callback, onError) {
  * @returns {Promise<void>}
  * @throws {Error} If message is empty. Rethrows Firestore errors.
  */
-export async function postCommit(taskId, author, message, driveLink = null, driveLinkLabel = null) {
+export async function postCommit(task, author, message, driveLink = null, driveLinkLabel = null) {
   const trimmedMessage = (message || '').trim();
   if (!trimmedMessage) {
     throw new Error('Commit message cannot be empty.');
@@ -278,7 +287,7 @@ export async function postCommit(taskId, author, message, driveLink = null, driv
   };
 
   try {
-    await addTimelineEvent(taskId, {
+    await addTimelineEvent(task, {
       type:         'commit',
       authorUid:    author.uid,
       authorName:   author.name,
@@ -287,7 +296,7 @@ export async function postCommit(taskId, author, message, driveLink = null, driv
       metadata,
     });
   } catch (error) {
-    console.error(`[collaborationService] postCommit failed (task: ${taskId}):`, error);
+    console.error(`[collaborationService] postCommit failed (task: ${workItemCollection(task)}/${workItemId(task)}):`, error);
     throw error;
   }
 }
@@ -332,7 +341,7 @@ export const checkCanAddPartner = (task, currentUserUid) => {
  * Called by `taskService.updateTaskProgress` when the derived status
  * changes (e.g. pending → in-progress, in-progress → completed).
  *
- * @param {string} taskId
+ * @param {object|string} task - Work item (or a bare task id)
  *   Firestore task document ID.
  * @param {{ uid: string, name: string, avatar?: string }} author
  *   The user who triggered the status change.
@@ -343,11 +352,11 @@ export const checkCanAddPartner = (task, currentUserUid) => {
  * @returns {Promise<void>}
  * @throws Will rethrow any Firestore error.
  */
-export async function recordStatusChange(taskId, author, fromStatus, toStatus) {
+export async function recordStatusChange(task, author, fromStatus, toStatus) {
   const message = `Status changed from "${fromStatus}" to "${toStatus}".`;
 
   try {
-    await addTimelineEvent(taskId, {
+    await addTimelineEvent(task, {
       type:         'status_changed',
       authorUid:    author.uid,
       authorName:   author.name,
@@ -356,7 +365,7 @@ export async function recordStatusChange(taskId, author, fromStatus, toStatus) {
       metadata: { fromStatus, toStatus },
     });
   } catch (error) {
-    console.error(`[collaborationService] recordStatusChange failed (task: ${taskId}):`, error);
+    console.error(`[collaborationService] recordStatusChange failed (task: ${workItemCollection(task)}/${workItemId(task)}):`, error);
     throw error;
   }
 }
@@ -370,7 +379,7 @@ export async function recordStatusChange(taskId, author, fromStatus, toStatus) {
  * THROTTLE: Only posts if the absolute delta is ≥ 10 percentage points.
  * This prevents noisy micro-updates (e.g. 41% → 42%) from flooding the timeline.
  *
- * @param {string} taskId
+ * @param {object|string} task - Work item (or a bare task id)
  *   Firestore task document ID.
  * @param {{ uid: string, name: string, avatar?: string }} author
  *   The user who updated the progress.
@@ -381,14 +390,14 @@ export async function recordStatusChange(taskId, author, fromStatus, toStatus) {
  * @returns {Promise<void>} Resolves immediately (no-op) if delta < 10.
  * @throws Will rethrow any Firestore error.
  */
-export async function recordProgressUpdate(taskId, author, fromProgress, toProgress) {
+export async function recordProgressUpdate(task, author, fromProgress, toProgress) {
   // Throttle: skip small incremental updates to keep the timeline readable
   if (Math.abs(toProgress - fromProgress) < 10) return;
 
   const message = `Progress updated from ${fromProgress}% to ${toProgress}%.`;
 
   try {
-    await addTimelineEvent(taskId, {
+    await addTimelineEvent(task, {
       type:         'progress_updated',
       authorUid:    author.uid,
       authorName:   author.name,
@@ -397,7 +406,7 @@ export async function recordProgressUpdate(taskId, author, fromProgress, toProgr
       metadata: { fromProgress, toProgress },
     });
   } catch (error) {
-    console.error(`[collaborationService] recordProgressUpdate failed (task: ${taskId}):`, error);
+    console.error(`[collaborationService] recordProgressUpdate failed (task: ${workItemCollection(task)}/${workItemId(task)}):`, error);
     throw error;
   }
 }

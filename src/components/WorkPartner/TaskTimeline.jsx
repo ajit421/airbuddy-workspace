@@ -153,7 +153,10 @@ function TimelineSkeleton() {
 // ─── Main exported component ──────────────────────────────────────────────────
 export default function TaskTimeline({ taskId, task, compact = false }) {
   const { userProfile, isAdmin } = useAuth();
-  const { events, loading, error } = useTaskTimeline(taskId);
+  // The work item, not the bare id: a roadmap milestone keeps its timeline
+  // under roadmapNodes/{id}/events. Falls back to taskId for callers that
+  // still pass only an id.
+  const { events, loading, error } = useTaskTimeline(task ?? taskId);
 
   const [showCommitForm, setShowCommitForm] = useState(false);
   const [commitMessage, setCommitMessage]   = useState('');
@@ -171,7 +174,7 @@ export default function TaskTimeline({ taskId, task, compact = false }) {
     setPostError(null);
     try {
       await postCommit(
-        taskId,
+        task ?? taskId,
         { uid: userProfile.uid, name: userProfile.name, avatar: userProfile.avatar || '' },
         commitMessage,
         driveLink || null,

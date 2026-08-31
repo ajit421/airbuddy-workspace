@@ -11,12 +11,13 @@
  * RULES:
  *   - Never imports from 'firebase/firestore' directly.
  *   - All Firestore access goes through collaborationService.subscribeToTimeline.
- *   - The subscription is torn down and restarted whenever taskId changes.
+ *   - The subscription is torn down and restarted whenever the work item changes.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { useState, useEffect } from 'react';
 import { subscribeToTimeline } from '../services/collaborationService';
+import { workItemCollection, workItemId } from '../utils/workItemRef';
 
 /**
  * Real-time hook for a task's collaboration timeline events.
@@ -25,7 +26,7 @@ import { subscribeToTimeline } from '../services/collaborationService';
  * that is, reverse-chronological (newest first), because the underlying
  * Firestore query uses `orderBy('createdAt', 'desc')`.
  *
- * @param {string | null | undefined} taskId
+ * @param {object | string | null | undefined} task
  *   Firestore task document ID. Passing `null` or `undefined` is safe —
  *   the hook will immediately set `loading = false` and return an empty array.
  *
@@ -44,14 +45,18 @@ import { subscribeToTimeline } from '../services/collaborationService';
  *   error:   string | null
  * }}
  */
-export function useTaskTimeline(taskId) {
+export function useTaskTimeline(task) {
+  // Stable primitive key for the effect: `task` is a fresh object reference on
+  // every render, so depending on it directly would tear down and rebuild the
+  // snapshot listener continuously.
+  const docPath = workItemId(task) ? `${workItemCollection(task)}/${workItemId(task)}` : null;
   const [events, setEvents]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
 
   useEffect(() => {
-    // Guard: no taskId means nothing to subscribe to
-    if (!taskId) {
+    // Guard: no work item means nothing to subscribe to
+    if (!docPath) {
       setEvents([]);
       setLoading(false);
       setError(null);
@@ -64,7 +69,7 @@ export function useTaskTimeline(taskId) {
     setError(null);
 
     const unsubscribe = subscribeToTimeline(
-      taskId,
+      task,
       // ── Success callback ──────────────────────────────────────────────────
       (newEvents) => {
         setEvents(newEvents);
@@ -80,7 +85,7 @@ export function useTaskTimeline(taskId) {
 
     // Tear down the listener when taskId changes or the component unmounts
     return unsubscribe;
-  }, [taskId]);
+  }, [docPath]);
 
   return { events, loading, error };
 }

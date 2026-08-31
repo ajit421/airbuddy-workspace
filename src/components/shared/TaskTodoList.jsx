@@ -7,7 +7,9 @@
  *   Progress, Work Partners and Activity Feed sections.
  *
  * DATA:
- *   Real-time via useTaskTodos(task.id) -> todoService. The list is read from a
+ *   Real-time via useTaskTodos(task) -> todoService. The whole work item is passed,
+ *   not just its id, so a roadmap milestone resolves to roadmapNodes/{id} — see
+ *   src/utils/workItemRef.js. The list is read from a
  *   live listener on the task document rather than from the `task` prop, because
  *   the detail modal is handed a snapshot captured at click time.
  *
@@ -201,7 +203,7 @@ function TodoRow({ todo, canEdit, busy, onToggle, onStartEdit, onDelete }) {
 
 export default function TaskTodoList({ task }) {
   const { userProfile, effectiveUid } = useAuth();
-  const { todos, loading, error } = useTaskTodos(task?.id);
+  const { todos, loading, error } = useTaskTodos(task);
 
   const [newText, setNewText]     = useState('');
   const [adding, setAdding]       = useState(false);
@@ -234,7 +236,7 @@ export default function TaskTodoList({ task }) {
     setAdding(true);
     setWriteError(null);
     try {
-      await addTodo(task.id, text, actor);
+      await addTodo(task, text, actor);
       setNewText('');
     } catch (err) {
       setWriteError(friendlyError(err));
@@ -247,7 +249,7 @@ export default function TaskTodoList({ task }) {
     setPendingDone((prev) => ({ ...prev, [todo.id]: !todo.done }));
     setWriteError(null);
     try {
-      await toggleTodo(task.id, todo.id, actor);
+      await toggleTodo(task, todo.id, actor);
     } catch (err) {
       setWriteError(friendlyError(err));
     } finally {
@@ -260,7 +262,7 @@ export default function TaskTodoList({ task }) {
     setBusyId(todo.id);
     setWriteError(null);
     try {
-      await updateTodoText(task.id, todo.id, text);
+      await updateTodoText(task, todo.id, text);
       setEditingId(null);
     } catch (err) {
       setWriteError(friendlyError(err));
@@ -273,7 +275,7 @@ export default function TaskTodoList({ task }) {
     setBusyId(todo.id);
     setWriteError(null);
     try {
-      await deleteTodo(task.id, todo.id);
+      await deleteTodo(task, todo.id);
       if (editingId === todo.id) setEditingId(null);
     } catch (err) {
       setWriteError(friendlyError(err));

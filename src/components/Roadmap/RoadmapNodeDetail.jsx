@@ -5,22 +5,19 @@ import { canEditRoadmapStructure } from '../../utils/permissions';
 import { formatDate, getDueDateColor, getDueDateLabel } from '../../utils/dateHelpers';
 import { PriorityBadge, StatusBadge, ProgressBar } from '../shared/TaskCard';
 import RoadmapBreadcrumb      from './RoadmapBreadcrumb';
-import RoadmapTaskCard        from './RoadmapTaskCard';
-import RoadmapTaskModal       from './RoadmapTaskModal';
 import RoadmapCommentsTab     from './RoadmapCommentsTab';
 import RoadmapAttachmentsTab  from './RoadmapAttachmentsTab';
 import RoadmapHistoryLog      from './RoadmapHistoryLog';
-import { subscribeToRoadmapTasks } from '../../services/roadmapTaskService';
 import { subscribeToAllUsers }     from '../../services/teamMembersService';
 
 /**
  * RoadmapNodeDetail.jsx
  * Slide-in right-side panel shown when a roadmap node is selected.
- * Tabbed layout: Overview | Tasks | Comments | History.
+ * Tabbed layout: Overview | Comments | Attachments | History.
  *
  * Phase 11 scope:
  *  - Overview tab: full node metadata (breadcrumb, description, dates, assignees, progress, tags)
- *  - Tasks / Comments / History tabs: placeholder cards (implemented in Phases 12, 13, 17)
+ *  - Comments / Attachments / History tabs: implemented in Phases 12, 13, 17
  *
  * Props:
  *  - nodeId      {string}   Selected node ID
@@ -30,7 +27,12 @@ import { subscribeToAllUsers }     from '../../services/teamMembersService';
  *  - onNavigate  {function} Navigate to a different node by ID (breadcrumb clicks)
  */
 
-const TABS = ['Overview', 'Tasks', 'Comments', 'Attachments', 'History'];
+// 'Tasks' was removed deliberately: the roadmapNodes/{id}/tasks subcollection
+// is no longer how a milestone is broken down — child nodes are. A milestone
+// now behaves as a work item in its own right (it appears on its assignees'
+// Dashboard and opens the ordinary Task Details modal), so a second, parallel
+// notion of 'tasks under a node' only split the work in two places.
+const TABS = ['Overview', 'Comments', 'Attachments', 'History'];
 
 const STATUS_COLOR = {
   pending:       'text-yellow-400 bg-yellow-500/10 border-yellow-500/25',
@@ -176,9 +178,6 @@ export default function RoadmapNodeDetail({
         {activeTab === 'Overview' && (
           <OverviewTab node={node} dueDateColor={dueDateColor} dueDateLabel={dueDateLabel} hasChildren={hasChildren} allUsers={allUsers} />
         )}
-        {activeTab === 'Tasks' && (
-          <TasksTab nodeId={nodeId} node={node} />
-        )}
         {activeTab === 'Comments' && (
           <RoadmapCommentsTab nodeId={nodeId} />
         )}
@@ -300,138 +299,6 @@ function OverviewTab({ node, dueDateColor, dueDateLabel, hasChildren, allUsers =
           </MetaRow>
         </div>
       </section>
-    </div>
-  );
-}
-
-/* ── Tasks tab ──────────────────────────────────────────────────────────────── */
-function TasksTab({ nodeId, node }) {
-  const { userProfile }  = useAuth();
-  const isAdmin          = canEditRoadmapStructure(userProfile);
-
-  const [tasks,       setTasks]       = useState([]);
-  const [tasksLoading,setTasksLoading]= useState(true);
-  const [allUsers,    setAllUsers]    = useState([]);
-  const [modalOpen,   setModalOpen]   = useState(false);
-  const [editTask,    setEditTask]    = useState(null); // null = create, obj = edit
-
-  const unsubTasksRef = useRef(null);
-  const unsubUsersRef = useRef(null);
-
-  // Subscribe to tasks realtime
-  useEffect(() => {
-    if (!nodeId) return;
-    setTasksLoading(true);
-    unsubTasksRef.current = subscribeToRoadmapTasks(
-      nodeId,
-      (data) => { setTasks(data); setTasksLoading(false); },
-      (err)  => { console.error('[TasksTab] subscribeToRoadmapTasks:', err); setTasksLoading(false); }
-    );
-    return () => { unsubTasksRef.current?.(); };
-  }, [nodeId]);
-
-  // Subscribe to users (for assignee display names)
-  useEffect(() => {
-    unsubUsersRef.current = subscribeToAllUsers(
-      (users) => setAllUsers(users),
-      (err)   => console.error('[TasksTab] subscribeToAllUsers:', err)
-    );
-    return () => { unsubUsersRef.current?.(); };
-  }, []);
-
-  const handleEdit = (task) => { setEditTask(task); setModalOpen(true); };
-  const handleAdd  = ()     => { setEditTask(null); setModalOpen(true); };
-  const handleClose = ()    => { setModalOpen(false); setEditTask(null); };
-
-  // Task counts
-  const total     = tasks.length;
-  const completed = tasks.filter((t) => t.status === 'completed').length;
-
-  return (
-    <div className="flex flex-col h-full">
-      {/* Tasks tab header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border flex-shrink-0">
-        <span className="text-xs text-text-muted">
-          {total > 0 ? `${completed}/${total} completed` : 'No tasks yet'}
-        </span>
-        {isAdmin && (
-          <button
-            id="rm-tasks-add-btn"
-            onClick={handleAdd}
-            className="btn-primary h-7 text-xs"
-          >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Add Task
-          </button>
-        )}
-      </div>
-
-      {/* Task list */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {tasksLoading ? (
-          // Loading skeletons
-          [1, 2, 3].map((i) => (
-            <div key={i} className="h-20 bg-surfaceHover rounded-xl animate-pulse" />
-          ))
-        ) : tasks.length === 0 ? (
-          // Empty state
-          <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
-            <div className="w-12 h-12 rounded-full bg-orange-muted border border-orange/20 flex items-center justify-center">
-              <svg className="w-6 h-6 text-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-text-secondary text-sm font-medium">No tasks yet</p>
-              <p className="text-text-muted text-xs mt-1">
-                {isAdmin ? 'Add the first task to this milestone.' : 'No tasks have been assigned to this node yet.'}
-              </p>
-            </div>
-            {isAdmin && (
-              <button onClick={handleAdd} className="btn-primary text-xs">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add First Task
-              </button>
-            )}
-          </div>
-        ) : (
-          // Task cards
-          tasks.map((task) => (
-            <RoadmapTaskCard
-              key={task.id}
-              task={task}
-              nodeId={nodeId}
-              allUsers={allUsers}
-              onEdit={handleEdit}
-            />
-          ))
-        )}
-      </div>
-
-      {/* Progress summary bar (only when tasks exist) */}
-      {total > 0 && (
-        <div className="flex-shrink-0 px-4 py-2.5 border-t border-border">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wide">Task Progress</span>
-            <span className="text-[10px] text-text-muted ml-auto">{Math.round((completed / total) * 100)}%</span>
-          </div>
-          <ProgressBar progress={Math.round((completed / total) * 100)} />
-        </div>
-      )}
-
-      {/* Admin create/edit task modal */}
-      <RoadmapTaskModal
-        isOpen={modalOpen}
-        onClose={handleClose}
-        nodeId={nodeId}
-        nodeName={node?.title ?? ''}
-        task={editTask}
-      />
     </div>
   );
 }

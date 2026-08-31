@@ -6,24 +6,28 @@
  *   field on tasks/{taskId}). Handles loading state, error state, and cleanup.
  *
  * USAGE:
- *   const { todos, loading, error } = useTaskTodos(task.id);
+ *   const { todos, loading, error } = useTaskTodos(task);
  *
  * RULES:
  *   - Never imports from 'firebase/firestore' directly.
  *   - All Firestore access goes through todoService.subscribeToTaskTodos.
- *   - The subscription is torn down and restarted whenever taskId changes.
+ *   - The subscription is torn down and restarted whenever the work item changes.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { useState, useEffect } from 'react';
 import { subscribeToTaskTodos } from '../services/todoService';
+import { workItemCollection, workItemId } from '../utils/workItemRef';
 
 /**
  * Real-time hook for a task's todo checklist.
  *
- * @param {string | null | undefined} taskId
- *   Firestore task document ID. `null`/`undefined` is safe — the hook settles
- *   immediately with an empty list.
+ * @param {object | string | null | undefined} task
+ *   The work item — a task or a projected roadmap milestone — or a bare task
+ *   id. `null`/`undefined` is safe: the hook settles immediately with an empty
+ *   list. The effect is keyed on the resolved collection+id rather than on the
+ *   object itself, which is a fresh reference on every render and would
+ *   otherwise tear down and rebuild the listener continuously.
  *
  * @returns {{
  *   todos: Array<{
@@ -35,13 +39,15 @@ import { subscribeToTaskTodos } from '../services/todoService';
  *   error: string | null
  * }}
  */
-export function useTaskTodos(taskId) {
+export function useTaskTodos(task) {
+  // Stable primitive key for the effect — see the note on @param above.
+  const docPath = workItemId(task) ? `${workItemCollection(task)}/${workItemId(task)}` : null;
   const [todos, setTodos]     = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
 
   useEffect(() => {
-    if (!taskId) {
+    if (!docPath) {
       setTodos([]);
       setLoading(false);
       setError(null);
@@ -52,7 +58,7 @@ export function useTaskTodos(taskId) {
     setError(null);
 
     const unsubscribe = subscribeToTaskTodos(
-      taskId,
+      task,
       (next) => {
         setTodos(next);
         setLoading(false);
@@ -65,7 +71,7 @@ export function useTaskTodos(taskId) {
     );
 
     return unsubscribe;
-  }, [taskId]);
+  }, [docPath]);
 
   return { todos, loading, error };
 }
