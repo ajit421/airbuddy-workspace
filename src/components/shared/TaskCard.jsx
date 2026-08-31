@@ -4,6 +4,10 @@ import { useTasks } from '../../context/TaskContext';
 
 export const PriorityBadge = ({ priority }) => {
   const classes = {
+    // 'critical' only exists on roadmap nodes (RoadmapNodeSchema), which the
+    // Dashboard now renders alongside tasks. Without an entry it fell through
+    // to the bare `.badge` grey pill and read as "no priority".
+    critical: 'badge-high',
     high: 'badge-high',
     medium: 'badge-medium',
     low: 'badge-low',
@@ -17,6 +21,9 @@ export const StatusBadge = ({ status }) => {
     pending: 'badge-pending',
     'in-progress': 'badge-in-progress',
     completed: 'badge-completed',
+    // Roadmap-node statuses — see the note on PriorityBadge above.
+    blocked: 'badge-high',
+    archived: 'badge',
   }[status] || 'badge';
 
   return <span className={classes}>{status}</span>;
@@ -43,21 +50,36 @@ export default function TaskCard({ task, onClick }) {
       onClick={() => onClick && onClick(task)}
     >
       {/* Header */}
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="font-semibold text-sm text-text-primary line-clamp-2 flex-1">
-          {task.title}
-          {task.isAdminTask === false && (
-            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">
-              Self-Assigned
-            </span>
-          )}
-          {task._mirrorOf === 'roadmap' && (
-            <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange/10 text-orange border border-orange/20">
-              🗺 Admin Assigned · Roadmap
-            </span>
-          )}
-        </h3>
-        <PriorityBadge priority={task.priority} />
+      {/* The origin badges sit *below* the title, not inside it: the heading is
+          line-clamped to two lines, so a badge appended to a long title is
+          clipped away with the overflow — and roadmap milestone titles are full
+          sentences, which is exactly when the badge matters most. */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="font-semibold text-sm text-text-primary line-clamp-2 flex-1">
+            {task.title}
+          </h3>
+          <PriorityBadge priority={task.priority} />
+        </div>
+        {(task.isAdminTask === false || task._mirrorOf === 'roadmap' || task._source === 'roadmapNode') && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {task.isAdminTask === false && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                Self-Assigned
+              </span>
+            )}
+            {task._mirrorOf === 'roadmap' && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange/10 text-orange border border-orange/20">
+                🗺 Admin Assigned · Roadmap
+              </span>
+            )}
+            {task._source === 'roadmapNode' && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-500/10 text-teal-300 border border-teal-500/20">
+                🏁 Roadmap Milestone
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Module */}

@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { collection, collectionGroup, query, where, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from './AuthContext';
+import { subscribeToAssignedNodes } from '../services/roadmapService';
 
 const TaskContext = createContext(null);
 
@@ -18,6 +19,15 @@ export const TaskProvider = ({ children }) => {
   const [partnerTasks,  setPartnerTasks]  = useState(null);
   const [roadmapAssignedTasks, setRoadmapAssignedTasks] = useState(null);
 
+  // Roadmap milestones (roadmapNodes docs) assigned to this user, projected into
+  // task shape. Kept in its own slice and exposed separately rather than merged
+  // into `tasks`: the Calendar already draws every milestone through
+  // useRoadmapCalendarEvents, so folding these into `tasks` would render each
+  // assigned milestone twice there, and the Team page derives per-person task
+  // stats from `tasks` — which would then count milestones for the viewer only.
+  // The Dashboard does the merge explicitly instead.
+  const [assignedNodes, setAssignedNodes] = useState([]);
+
   useEffect(() => {
     if (!user || !effectiveUid) {
       setAllTasks([]);
@@ -25,6 +35,7 @@ export const TaskProvider = ({ children }) => {
       setAssignedTasks(null);
       setPartnerTasks(null);
       setRoadmapAssignedTasks(null);
+      setAssignedNodes([]);
       setLoading(false);
       return;
     }
@@ -39,6 +50,20 @@ export const TaskProvider = ({ children }) => {
     });
 
     let unsubTasks = () => {};
+
+    // Roadmap milestones assigned to this user. Runs for every role: `assignedTo`
+    // on a roadmapNode is a real work assignment and an admin can be on the
+    // receiving end of one just as an employee can. Independent of the isAdmin
+    // branch below because the admin `tasks` query is company-wide while this is
+    // always scoped to the viewer.
+    const unsubAssignedNodes = subscribeToAssignedNodes(
+      effectiveUid,
+      (nodes) => setAssignedNodes(nodes),
+      (err) => {
+        console.error('Roadmap node listener (assignedTo) error:', err);
+        setAssignedNodes([]);
+      }
+    );
 
     if (isAdmin) {
       // Admin: fetch all tasks
@@ -115,6 +140,7 @@ export const TaskProvider = ({ children }) => {
     return () => {
       unsubUsers();
       unsubTasks();
+      unsubAssignedNodes();
     };
   }, [user, isAdmin, effectiveUid]);
 
@@ -143,17 +169,33 @@ export const TaskProvider = ({ children }) => {
     return merged;
   }, [isAdmin, allTasks, assignedTasks, partnerTasks, roadmapAssignedTasks]);
 
-  const getTasksByStatus = (status) => tasks.filter(t => t.status === status);
+  // The viewer's work list: `tasks` plus the roadmap milestones assigned to
+  // them. This — not `tasks` — is what the Dashboard's counters and "due this
+  // week" must read, or an assigned milestone stays invisible in exactly the
+  // place the person looks for their work.
+  //
+  // Purely additive, deliberately with no role branch: for an employee `tasks`
+  // is already their own work, and for an admin it stays the company-wide list
+  // it has always been, with any milestone they are personally on added to it.
+  // Narrowing the admin list here would silently change every count on their
+  // Dashboard, which is not what this fix is for.
+  const myWorkItems = useMemo(() => {
+    if (assignedNodes.length === 0) return tasks;
+    const ids = new Set(tasks.map(t => t.id));
+    return [...tasks, ...assignedNodes.filter(n => !ids.has(n.id))];
+  }, [tasks, assignedNodes]);
+
+  const getTasksByStatus = (status) => myWorkItems.filter(t => t.status === status);
   const getUpcomingTasks = (days = 7) => {
     const cutoff = new Date(Date.now() + days * 86400000);
-    return tasks.filter(t => {
+    return myWorkItems.filter(t => {
       const due = t.dueDate?.toDate ? t.dueDate.toDate() : new Date(t.dueDate);
       return due <= cutoff && t.status !== 'completed';
     });
   };
 
   return (
-    <TaskContext.Provider value={{ tasks, allTasks, allUsers, loading, getTasksByStatus, getUpcomingTasks }}>
+    <TaskContext.Provider value={{ tasks, allTasks, allUsers, assignedNodes, myWorkItems, loading, getTasksByStatus, getUpcomingTasks }}>
       {children}
     </TaskContext.Provider>
   );

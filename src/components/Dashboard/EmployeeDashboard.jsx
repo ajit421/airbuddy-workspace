@@ -136,7 +136,11 @@ function QuickPunchWidget({ uid }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function EmployeeDashboard() {
-  const { tasks, loading, getUpcomingTasks, allUsers } = useTasks();
+  // myWorkItems, not tasks: it is `tasks` plus the roadmap milestones assigned
+  // to this user. A milestone lives in roadmapNodes, so none of the TaskContext
+  // task listeners can see it — without this an admin-assigned milestone shows
+  // on the assignee's Google Calendar and bell and on nobody's Dashboard.
+  const { myWorkItems: tasks, loading, getUpcomingTasks, allUsers } = useTasks();
   const { userProfile, isAdmin } = useAuth();
   const { viewMode } = useViewMode();
   const [selectedTask, setSelectedTask] = useState(null);
@@ -587,6 +591,11 @@ export default function EmployeeDashboard() {
                       {task._mirrorOf === 'roadmap' && (
                         <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange/10 text-orange border border-orange/20">
                           🗺 Admin Assigned · Roadmap
+                        </span>
+                      )}
+                      {task._source === 'roadmapNode' && (
+                        <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-500/10 text-teal-300 border border-teal-500/20">
+                          🏁 Roadmap Milestone
                         </span>
                       )}
                     </td>

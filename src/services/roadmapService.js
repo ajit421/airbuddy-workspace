@@ -200,6 +200,136 @@ export function subscribeToNode(nodeId, onData, onError) {
   );
 }
 
+/**
+ * Fields an assignee (non-admin) is allowed to write on a roadmap node.
+ *
+ * Mirrors the assignee carve-out added to the `roadmapNodes` update rule in
+ * firestore.rules. Keep the two lists identical — a field added here but not
+ * there is rejected in production while passing locally against an admin
+ * account, which is exactly how the task-update rules bit us before.
+ */
+export const NODE_ASSIGNEE_WRITABLE_FIELDS = [
+  'status', 'progress', 'completionNote', 'updatedBy', 'updatedAt',
+];
+
+/**
+ * Convert a roadmap node into the task-shaped object the Dashboard renders.
+ *
+ * A milestone assigned to somebody is work they own, but it lives in
+ * `roadmapNodes`, not in `tasks` — so none of the three TaskContext listeners
+ * (root tasks by assignedTo, root tasks by workPartnerUids, collectionGroup
+ * tasks by assignedTo) can ever see it. Before this existed, assigning a
+ * milestone to two people put it on their Google Calendar and rang their bell
+ * and then showed up on nobody's Dashboard, with no way to update it.
+ *
+ * The mapping is deliberately a *read-side projection*, not a mirror write like
+ * the one roadmapTaskService does for roadmap tasks: a mirror would produce a
+ * second Google Calendar event for every milestone (onRoadmapNodeCalendar
+ * already syncs the node itself) and would need a backfill for every node that
+ * already exists. A projection cannot drift and needs no deploy.
+ *
+ * `_source: 'roadmapNode'` is what every consumer keys off to route writes back
+ * to `roadmapNodes/{id}` instead of `tasks/{id}` — see TaskDetailModal.
+ *
+ * Pure function — exported for unit testing.
+ *
+ * @param {object} node - Raw roadmap node document (with `id`)
+ * @returns {object} Task-shaped work item
+ */
+export function nodeToWorkItem(node) {
+  return {
+    id:          node.id,
+    title:       node.title,
+    description: node.description ?? '',
+    status:      node.status   ?? 'pending',
+    priority:    node.priority ?? 'medium',
+    progress:    node.progress ?? 0,
+    assignedTo:  Array.isArray(node.assignedTo) ? node.assignedTo : [],
+    startDate:   node.startDate ?? null,
+    dueDate:     node.dueDate   ?? null,
+    completionNote: node.completionNote ?? null,
+    createdBy:   node.createdBy ?? '',
+    createdAt:   node.createdAt ?? null,
+    updatedAt:   node.updatedAt ?? null,
+    // Admin-assigned, so the Dashboard never labels it "Self-Assigned" and the
+    // detail modal never offers the delete button (deleting a milestone is a
+    // roadmap action — archiveNode — not a task action).
+    isAdminTask: true,
+    // Milestones have no work partners. An empty array rather than undefined so
+    // the filter hook and WorkPartner-derived lists treat it as "none" instead
+    // of having to null-check.
+    workPartnerUids: [],
+    workPartners:    [],
+    _source:        'roadmapNode',
+    roadmapNodeId:  node.id,
+    depth:          node.depth ?? 0,
+  };
+}
+
+/**
+ * Subscribe to the roadmap milestones assigned to one user.
+ *
+ * Single-field `array-contains` only: adding `where('isArchived','==',false)`
+ * would make this a composite (array-contains + equality) query needing a new
+ * entry in firestore.indexes.json, and that file's fieldOverrides array is
+ * destructive to edit. Archived nodes are filtered client-side instead, so this
+ * runs off the automatic COLLECTION-scoped array index with no deploy at all.
+ *
+ * @param {string}   uid      - effectiveUid of the viewer
+ * @param {function} onData   - Called with an array of task-shaped work items
+ * @param {function} [onError]
+ * @returns {function} unsubscribe
+ */
+export function subscribeToAssignedNodes(uid, onData, onError) {
+  if (!uid) {
+    onData([]);
+    return () => {};
+  }
+  const q = query(
+    collection(db, ROADMAP_NODES_COL),
+    where('assignedTo', 'array-contains', uid),
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const active = snapToArray(snap).filter((n) => n.isArchived !== true);
+      onData(sortNodesByDueDate(active).map(nodeToWorkItem));
+    },
+    (err) => {
+      console.error('[roadmapService] subscribeToAssignedNodes:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+/**
+ * Update a milestone the way its assignee is allowed to: progress, status and
+ * a completion note. Nothing else.
+ *
+ * updateNode() is the admin path and writes whatever it is handed; this one is
+ * scoped to NODE_ASSIGNEE_WRITABLE_FIELDS so a non-admin write can never be
+ * rejected wholesale for carrying one extra key alongside the allowed ones
+ * (`hasOnly` in the rule fails the *entire* update, not just the stray field).
+ *
+ * @param {string} nodeId
+ * @param {{progress?: number, status?: string, completionNote?: object|null}} data
+ * @param {string} editorUid - effectiveUid of the person updating
+ * @returns {Promise<void>}
+ */
+export async function updateNodeAsAssignee(nodeId, data, editorUid) {
+  if (!nodeId) throw new Error('[roadmapService] updateNodeAsAssignee: nodeId is required');
+  const payload = { updatedBy: editorUid, updatedAt: serverTimestamp() };
+  if (data.progress !== undefined)       payload.progress       = data.progress;
+  if (data.status   !== undefined)       payload.status         = data.status;
+  if (data.completionNote !== undefined) payload.completionNote = data.completionNote;
+  try {
+    await updateDoc(doc(db, ROADMAP_NODES_COL, nodeId), payload);
+  } catch (err) {
+    console.error('[roadmapService] updateNodeAsAssignee:', err);
+    throw err;
+  }
+}
+
 // CRUD
 
 /**

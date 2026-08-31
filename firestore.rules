@@ -374,6 +374,15 @@ service cloud.firestore {
       return assigned is list && uid in assigned;
     }
 
+    //   isRoadmapNodeAssignee(nodeData) — true if effectiveUid is in node.assignedTo.
+    //   Same shape as isRoadmapTaskAssignee, but for the node document itself:
+    //   a milestone can be assigned to people directly, without any task under it.
+    function isRoadmapNodeAssignee(nodeData) {
+      let uid      = getEffectiveUid();
+      let assigned = nodeData.get('assignedTo', []);
+      return assigned is list && uid in assigned;
+    }
+
     // ── roadmapNodes ─────────────────────────────────────────────────────────
     // Phase 4 §2–3:
     //   Read:   All whitelisted authenticated users can read all nodes
@@ -382,6 +391,15 @@ service cloud.firestore {
     //   Update: Admin — any field.
     //           Any other whitelisted user — rollup fields only (progress,
     //           childCompletedCount, status, updatedAt).
+    //           An *assignee* of the node — additionally completionNote and
+    //           updatedBy, so the person the milestone is assigned to can
+    //           actually finish it from their Dashboard. The milestone is
+    //           surfaced there by subscribeToAssignedNodes in
+    //           src/services/roadmapService.js; without this branch that UI
+    //           renders and every save is rejected, because the rollup
+    //           carve-out's hasOnly() fails the whole update the moment
+    //           completionNote or updatedBy rides along. Keep this list equal
+    //           to NODE_ASSIGNEE_WRITABLE_FIELDS in roadmapService.js.
     //
     //           The Phase 8 Cloud Function (onRoadmapTaskWrite) now owns this
     //           write authoritatively, but recomputeNodeRollup() in
@@ -400,7 +418,13 @@ service cloud.firestore {
         isAdmin() ||
         request.resource.data.diff(resource.data)
           .affectedKeys()
-          .hasOnly(['progress', 'childCompletedCount', 'status', 'updatedAt'])
+          .hasOnly(['progress', 'childCompletedCount', 'status', 'updatedAt']) ||
+        (
+          isRoadmapNodeAssignee(resource.data) &&
+          request.resource.data.diff(resource.data)
+            .affectedKeys()
+            .hasOnly(['status', 'progress', 'completionNote', 'updatedBy', 'updatedAt'])
+        )
       );
       allow delete: if isAuthenticated() && isEmailAllowed() && isAdmin();
 

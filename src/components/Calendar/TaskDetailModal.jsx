@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useAuth } from '../../context/AuthContext';
@@ -9,6 +10,7 @@ import { canEditTask, canUpdateProgress } from '../../utils/permissions';
 import { notifyUsers } from '../../services/notificationService';
 import { recordStatusChange, recordProgressUpdate } from '../../services/collaborationService';
 import { updateRoadmapTask } from '../../services/roadmapTaskService';
+import { updateNode, updateNodeAsAssignee } from '../../services/roadmapService';
 import WorkPartnersSection from '../WorkPartner/WorkPartnersSection';
 import TaskTimeline from '../WorkPartner/TaskTimeline';
 import TaskTodoList from '../shared/TaskTodoList';
@@ -107,7 +109,7 @@ function CompletionDialog({ onConfirm, onCancel, saving }) {
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function TaskDetailModal({ task, onClose }) {
-  const { userProfile } = useAuth();
+  const { userProfile, effectiveUid } = useAuth();
   const [progress, setProgress] = useState(task?.progress || 0);
   const [saving, setSaving] = useState(false);
   const [isExtending, setIsExtending] = useState(false);
@@ -121,6 +123,16 @@ export default function TaskDetailModal({ task, onClose }) {
 
   if (!task) return null;
 
+  // A roadmap milestone (roadmapNodes/{id}) projected into task shape by
+  // TaskContext. It renders like a task but every write has to go to
+  // `roadmapNodes/{id}` — writing to `tasks/{id}` would target a document that
+  // does not exist, and Firestore resolves an update of a missing document as
+  // an error while resolving a *delete* of one as success. That asymmetry is
+  // the same trap the roadmap-task delete bug sits in; route by _source rather
+  // than trusting the write to fail loudly.
+  const isMilestone = task._source === 'roadmapNode';
+  const isAdminRole = userProfile?.role === 'admin';
+
   const _canEdit = canEditTask(task, userProfile);
   const canUpdate = canUpdateProgress(task, userProfile);
   const _overdue = isOverdue(task.dueDate) && task.status !== 'completed';
@@ -130,19 +142,31 @@ export default function TaskDetailModal({ task, onClose }) {
   const dueDays = getDueDateLabel(task.dueDate, task.status);
   const dueDateColor = getDueDateColor(task.dueDate, task.status);
 
-  // Permission: task creator OR admin can edit
-  const canEditDetails =
-    userProfile?.role === 'admin' || task.createdBy === userProfile?.uid;
+  // Permission: task creator OR admin can edit.
+  // A milestone is admin-only whatever createdBy says — the roadmapNodes update
+  // rule gives a non-admin nothing beyond status/progress/completionNote, so
+  // offering an assignee a title field would just produce a rejected write.
+  const canEditDetails = isMilestone
+    ? isAdminRole
+    : (isAdminRole || task.createdBy === userProfile?.uid);
 
   const handleSaveEdit = async () => {
     if (!editTitle.trim()) return;
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'tasks', task.id), {
-        title: editTitle.trim(),
-        description: editDescription.trim(),
-        updatedAt: new Date(),
-      });
+      if (isMilestone) {
+        await updateNode(
+          task.id,
+          { title: editTitle.trim(), description: editDescription.trim() },
+          effectiveUid || ''
+        );
+      } else {
+        await updateDoc(doc(db, 'tasks', task.id), {
+          title: editTitle.trim(),
+          description: editDescription.trim(),
+          updatedAt: new Date(),
+        });
+      }
       setIsEditing(false);
     } catch (err) {
       console.error('Failed to update task:', err);
@@ -190,7 +214,23 @@ export default function TaskDetailModal({ task, onClose }) {
         updatePayload.attachments = [...existingAttachments, attachment];
       }
 
-      await updateDoc(doc(db, 'tasks', task.id), updatePayload);
+      if (isMilestone) {
+        // Only the fields the roadmapNodes assignee carve-out permits. An
+        // `attachments` key would fail the rule's hasOnly() and take the whole
+        // update down with it, so milestone completion drops the attachment —
+        // roadmap attachments have their own subcollection and their own tab.
+        await updateNodeAsAssignee(
+          task.id,
+          {
+            progress,
+            status: newStatus,
+            completionNote: updatePayload.completionNote ?? task.completionNote ?? null,
+          },
+          effectiveUid || ''
+        );
+      } else {
+        await updateDoc(doc(db, 'tasks', task.id), updatePayload);
+      }
 
       // Phase 23: if this task is a roadmap mirror, also sync back to the
       // roadmap subcollection so RoadmapTaskCard reflects the update in real-time.
@@ -208,20 +248,26 @@ export default function TaskDetailModal({ task, onClose }) {
       }
 
       // ── Timeline events (fire-and-forget — errors logged, not surfaced) ──
+      // Skipped for a milestone: these write to tasks/{taskId}/events, a
+      // subcollection of a document that does not exist for a roadmap node.
+      // The equivalent audit trail for a node is its History tab, written
+      // server-side by onRoadmapNodeHistory.
       const timelineAuthor = {
         uid:    userProfile?.uid    || '',
         name:   userProfile?.name   || userProfile?.email || 'Unknown',
         avatar: userProfile?.avatar || '',
       };
-      // Record progress change if delta >= 10 points (throttled inside service)
-      recordProgressUpdate(task.id, timelineAuthor, prevProgress, progress).catch(
-        (e) => console.error('[TaskDetailModal] recordProgressUpdate failed:', e)
-      );
-      // Record status transition if status actually changed
-      if (newStatus !== prevStatus) {
-        recordStatusChange(task.id, timelineAuthor, prevStatus, newStatus).catch(
-          (e) => console.error('[TaskDetailModal] recordStatusChange failed:', e)
+      if (!isMilestone) {
+        // Record progress change if delta >= 10 points (throttled inside service)
+        recordProgressUpdate(task.id, timelineAuthor, prevProgress, progress).catch(
+          (e) => console.error('[TaskDetailModal] recordProgressUpdate failed:', e)
         );
+        // Record status transition if status actually changed
+        if (newStatus !== prevStatus) {
+          recordStatusChange(task.id, timelineAuthor, prevStatus, newStatus).catch(
+            (e) => console.error('[TaskDetailModal] recordStatusChange failed:', e)
+          );
+        }
       }
 
       // Notify assignees about a *progress-only* update.
@@ -273,11 +319,21 @@ export default function TaskDetailModal({ task, onClose }) {
     if (!newDueDate) return;
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'tasks', task.id), {
-        dueDate: new Date(newDueDate),
-        isExtended: true,
-        updatedAt: new Date(),
-      });
+      if (isMilestone) {
+        // `dueDate` is not in the assignee carve-out, so this is admin-only and
+        // the button below is hidden for everybody else.
+        await updateNode(
+          task.id,
+          { dueDate: new Date(newDueDate), isExtended: true },
+          effectiveUid || ''
+        );
+      } else {
+        await updateDoc(doc(db, 'tasks', task.id), {
+          dueDate: new Date(newDueDate),
+          isExtended: true,
+          updatedAt: new Date(),
+        });
+      }
       setIsExtending(false);
     } catch (err) {
       console.error('Failed to extend task:', err);
@@ -289,7 +345,7 @@ export default function TaskDetailModal({ task, onClose }) {
 
   return (
     <>
-      <Modal isOpen={!!task} onClose={onClose} title="Task Details" size="lg">
+      <Modal isOpen={!!task} onClose={onClose} title={isMilestone ? 'Milestone Details' : 'Task Details'} size="lg">
         <div className="space-y-6">
           {/* Header */}
           <div>
@@ -314,11 +370,29 @@ export default function TaskDetailModal({ task, onClose }) {
                   Admin Assigned - Roadmap
                 </span>
               )}
+              {isMilestone && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-500/10 text-teal-300 border border-teal-500/20">
+                  🏁 Roadmap Milestone
+                </span>
+              )}
               <PriorityBadge priority={task.priority} />
               <StatusBadge status={task.status} />
             </div>
             {task.module && (
               <p className="text-xs text-text-muted uppercase tracking-wider font-semibold mt-1">{task.module}</p>
+            )}
+            {isMilestone && (
+              <Link
+                to={`/roadmap/${task.id}`}
+                onClick={onClose}
+                className="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-orange hover:text-orange-hover"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                </svg>
+                Open in Company Roadmap — sub-tasks, comments, attachments and history
+              </Link>
             )}
           </div>
 
@@ -374,7 +448,7 @@ export default function TaskDetailModal({ task, onClose }) {
                     <p className={`text-sm font-medium ${task.isExtended ? 'text-red-400' : 'text-text-primary'}`}>{formatDate(task.dueDate)}</p>
                     <p className={`text-xs font-semibold mt-0.5 ${dueDateColor}`}>{dueDays}</p>
                   </div>
-                  {canUpdate && task.status !== 'completed' && (
+                  {canUpdate && task.status !== 'completed' && (!isMilestone || isAdminRole) && (
                     <button
                       onClick={() => setIsExtending(true)}
                       className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-orange hover:text-orange-hover flex items-center gap-1 mt-0.5"
@@ -417,10 +491,15 @@ export default function TaskDetailModal({ task, onClose }) {
             )}
           </div>
 
-          {/* ── Todo List (per-task checklist, full CRUD) ───────────── */}
-          <div className="border-t border-border pt-4">
-            <TaskTodoList task={task} />
-          </div>
+          {/* ── Todo List (per-task checklist, full CRUD) ─────────────
+              Not rendered for a milestone: todos live on the tasks/{id}
+              document, which a roadmap node does not have. A milestone's
+              breakdown is its Tasks tab on the roadmap, linked above. */}
+          {!isMilestone && (
+            <div className="border-t border-border pt-4">
+              <TaskTodoList task={task} />
+            </div>
+          )}
 
           {/* Completion Note (if completed) */}
           {task.completionNote && (
@@ -441,15 +520,22 @@ export default function TaskDetailModal({ task, onClose }) {
             </div>
           )}
 
-          {/* ── Work Partners ──────────────────────────────────────── */}
-          <div className="py-1 border-t border-border pt-4">
-            <WorkPartnersSection task={task} />
-          </div>
+          {/* ── Work Partners ────────────────────────────────────────
+              Milestones have no work-partner concept, and both of these write
+              under tasks/{id}, so they are task-only. The roadmap panel's
+              Comments tab is the collaboration surface for a node. */}
+          {!isMilestone && (
+            <>
+              <div className="py-1 border-t border-border pt-4">
+                <WorkPartnersSection task={task} />
+              </div>
 
-          {/* ── Collaboration Timeline ─────────────────────────────── */}
-          <div className="border-t border-border pt-4">
-            <TaskTimeline taskId={task.id} task={task} />
-          </div>
+              {/* ── Collaboration Timeline ─────────────────────────────── */}
+              <div className="border-t border-border pt-4">
+                <TaskTimeline taskId={task.id} task={task} />
+              </div>
+            </>
+          )}
 
           {/* Links */}
           {task.links?.length > 0 && (
@@ -557,7 +643,10 @@ export default function TaskDetailModal({ task, onClose }) {
               )}
 
               {/* Delete button */}
-              {(userProfile?.role === 'admin' || (task.isAdminTask === false && task.createdBy === userProfile?.uid)) && (
+              {/* Deleting a milestone is a roadmap action (archiveNode, which keeps
+                  its subtree and history) — never a task delete, which would
+                  orphan every child node. Hidden here for that reason. */}
+              {!isMilestone && (isAdminRole || (task.isAdminTask === false && task.createdBy === userProfile?.uid)) && (
                 <button
                   onClick={handleDelete}
                   disabled={saving}

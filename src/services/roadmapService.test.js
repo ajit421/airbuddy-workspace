@@ -38,9 +38,13 @@ import {
   subscribeToSubtree,
   subscribeToNode,
   recomputeNodeRollup,
+  nodeToWorkItem,
+  subscribeToAssignedNodes,
+  updateNodeAsAssignee,
+  NODE_ASSIGNEE_WRITABLE_FIELDS,
 } from './roadmapService';
 // eslint-disable-next-line no-unused-vars
-import { setDoc, updateDoc, deleteDoc, where, getDoc, getDocs } from 'firebase/firestore';
+import { setDoc, updateDoc, deleteDoc, where, getDoc, getDocs, onSnapshot } from 'firebase/firestore';
 
 // ─── Valid base form ─────────────────────────────────────────────────────────
 const validForm = {
@@ -594,5 +598,140 @@ describe('recomputeNodeRollup', () => {
   it('is a no-op when nodeId is falsy', async () => {
     await recomputeNodeRollup('');
     expect(getDoc).not.toHaveBeenCalled();
+  });
+});
+
+
+// ─── Assigned milestones on the Dashboard ────────────────────────────────────
+//
+// Regression cover for the bug where a roadmap node assigned to two people
+// appeared on nobody's Dashboard: `roadmapNodes.assignedTo` was written by the
+// admin and read by nothing on the task path.
+
+describe('nodeToWorkItem', () => {
+  const node = {
+    id: 'node-1',
+    title: 'Release Prototype 1 PCB',
+    description: 'Design already complete',
+    status: 'pending',
+    priority: 'critical',
+    progress: 40,
+    assignedTo: ['uid-a', 'uid-b'],
+    dueDate: new Date('2026-08-29'),
+    startDate: new Date('2026-08-24'),
+    depth: 1,
+    isArchived: false,
+  };
+
+  it('tags the item so consumers can route writes back to roadmapNodes', () => {
+    const item = nodeToWorkItem(node);
+    expect(item._source).toBe('roadmapNode');
+    expect(item.roadmapNodeId).toBe('node-1');
+    expect(item.id).toBe('node-1');
+  });
+
+  it('carries the fields the dashboard renders', () => {
+    const item = nodeToWorkItem(node);
+    expect(item.title).toBe('Release Prototype 1 PCB');
+    expect(item.assignedTo).toEqual(['uid-a', 'uid-b']);
+    expect(item.progress).toBe(40);
+    expect(item.priority).toBe('critical');
+    expect(item.dueDate).toEqual(new Date('2026-08-29'));
+  });
+
+  it('marks the item admin-assigned so it is never labelled self-assigned', () => {
+    expect(nodeToWorkItem(node).isAdminTask).toBe(true);
+  });
+
+  it('gives partner arrays a concrete empty value rather than undefined', () => {
+    const item = nodeToWorkItem(node);
+    expect(item.workPartnerUids).toEqual([]);
+    expect(item.workPartners).toEqual([]);
+  });
+
+  it('defaults a bare node without throwing', () => {
+    const item = nodeToWorkItem({ id: 'n', title: 'T' });
+    expect(item.status).toBe('pending');
+    expect(item.priority).toBe('medium');
+    expect(item.progress).toBe(0);
+    expect(item.assignedTo).toEqual([]);
+    expect(item.dueDate).toBeNull();
+  });
+});
+
+describe('subscribeToAssignedNodes', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns a no-op and emits [] without a uid', () => {
+    const onData = vi.fn();
+    const unsub = subscribeToAssignedNodes('', onData);
+    expect(onData).toHaveBeenCalledWith([]);
+    expect(onSnapshot).not.toHaveBeenCalled();
+    expect(() => unsub()).not.toThrow();
+  });
+
+  it('queries assignedTo array-contains only — no second where() that would need an index', () => {
+    subscribeToAssignedNodes('uid-a', vi.fn());
+    expect(where).toHaveBeenCalledTimes(1);
+    expect(where).toHaveBeenCalledWith('assignedTo', 'array-contains', 'uid-a');
+  });
+
+  it('drops archived nodes client-side and projects the rest', () => {
+    const onData = vi.fn();
+    subscribeToAssignedNodes('uid-a', onData);
+    const cb = onSnapshot.mock.calls.at(-1)[1];
+    cb({
+      docs: [
+        { id: 'live',     data: () => ({ title: 'Live',     assignedTo: ['uid-a'], dueDate: new Date('2026-01-02') }) },
+        { id: 'archived', data: () => ({ title: 'Archived', assignedTo: ['uid-a'], isArchived: true }) },
+      ],
+    });
+    const emitted = onData.mock.calls.at(-1)[0];
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].title).toBe('Live');
+    expect(emitted[0]._source).toBe('roadmapNode');
+  });
+
+  it('sorts by dueDate ascending with undated milestones last', () => {
+    const onData = vi.fn();
+    subscribeToAssignedNodes('uid-a', onData);
+    const cb = onSnapshot.mock.calls.at(-1)[1];
+    cb({
+      docs: [
+        { id: 'c', data: () => ({ title: 'C', assignedTo: ['uid-a'] }) },
+        { id: 'b', data: () => ({ title: 'B', assignedTo: ['uid-a'], dueDate: new Date('2026-03-01') }) },
+        { id: 'a', data: () => ({ title: 'A', assignedTo: ['uid-a'], dueDate: new Date('2026-01-01') }) },
+      ],
+    });
+    expect(onData.mock.calls.at(-1)[0].map((n) => n.title)).toEqual(['A', 'B', 'C']);
+  });
+});
+
+describe('updateNodeAsAssignee', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('rejects a missing nodeId', async () => {
+    await expect(updateNodeAsAssignee('', { progress: 10 }, 'uid')).rejects.toThrow(/nodeId is required/);
+  });
+
+  it('writes only fields inside the rules carve-out', async () => {
+    await updateNodeAsAssignee(
+      'node-1',
+      { progress: 100, status: 'completed', completionNote: { message: 'done' } },
+      'uid-a'
+    );
+    const payload = updateDoc.mock.calls.at(-1)[1];
+    expect(Object.keys(payload).sort()).toEqual(
+      [...NODE_ASSIGNEE_WRITABLE_FIELDS].sort()
+    );
+    expect(payload.progress).toBe(100);
+    expect(payload.status).toBe('completed');
+    expect(payload.updatedBy).toBe('uid-a');
+  });
+
+  it('omits keys the caller did not pass, so hasOnly() still matches', async () => {
+    await updateNodeAsAssignee('node-1', { progress: 50 }, 'uid-a');
+    const payload = updateDoc.mock.calls.at(-1)[1];
+    expect(Object.keys(payload).sort()).toEqual(['progress', 'updatedAt', 'updatedBy']);
   });
 });
