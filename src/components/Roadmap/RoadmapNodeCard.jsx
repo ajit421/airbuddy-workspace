@@ -23,7 +23,9 @@ import { formatDate, getDueDateColor, getDueDateLabel } from '../../utils/dateHe
  *  - node          {object}   Full roadmap node data from Firestore
  *  - depth         {number}   Nesting depth (0 = root)
  *  - isExpanded    {boolean}  Whether this node's children are shown
- *  - onToggle      {function} Called when user clicks the expand/collapse chevron
+ *  - onToggle      {function} Called when user clicks the expand/collapse chevron,
+ *                             and again from the title click to expand (never
+ *                             collapse) a node that has children
  *  - onSelect      {function} Called when user clicks the card body
  *  - isSelected    {boolean}  Whether this node is the currently selected one
  *  - onEdit        {function} Admin: open edit modal
@@ -111,9 +113,19 @@ function RoadmapNodeCard({
           {/* Status dot */}
           <span className={`flex-shrink-0 w-2 h-2 rounded-full mt-1.5 ${dotColor}`} />
 
-          {/* Title */}
+          {/* Title — opens the node's detail AND reveals its breakdown.
+              "What is this work?" and "what is under it?" are the same
+              question, and needing two separate clicks for them was the
+              complaint. Expanding only, never collapsing: hiding a branch
+              with the same click that just opened its detail would be a
+              surprise, and the chevron beside this is still how you close
+              one. Childless nodes are skipped so the click does not open an
+              empty branch or start a pointless children subscription. */}
           <button
-            onClick={() => onSelect && onSelect(node)}
+            onClick={() => {
+              onSelect && onSelect(node);
+              if (hasChildren && !isExpanded) onToggle && onToggle(node.id);
+            }}
             className="flex-1 text-left min-w-[12rem]"
           >
             <h3 className={`

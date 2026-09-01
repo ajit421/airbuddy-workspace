@@ -256,11 +256,23 @@ export function nodeToWorkItem(node) {
     // detail modal never offers the delete button (deleting a milestone is a
     // roadmap action — archiveNode — not a task action).
     isAdminTask: true,
-    // Milestones have no work partners. An empty array rather than undefined so
-    // the filter hook and WorkPartner-derived lists treat it as "none" instead
-    // of having to null-check.
-    workPartnerUids: [],
-    workPartners:    [],
+    // Read straight off the node rather than hardcoded empty: TaskDetailModal
+    // renders all four from this object — the partner chips, the attachment
+    // list, the "Extended" badge — and permissions.isWorkPartner() reads
+    // workPartnerUids to decide whether somebody may tick a todo. firestore.rules
+    // has a participant carve-out on roadmapNodes for workPartners/
+    // workPartnerUids precisely so a partner can be added to a milestone, and
+    // NODE_ASSIGNEE_WRITABLE_FIELDS covers attachments/isExtended, so all four
+    // are fields a node really does carry. Hardcoding them meant a partner added
+    // to a milestone vanished on reopen, the Extend control left no badge, and
+    // the completion dialog's `[...(task.attachments || []), attachment]` wrote
+    // back a single-element array that dropped every earlier attachment.
+    // Arrays stay concrete rather than undefined so the filter hook and the
+    // WorkPartner-derived lists still treat a bare node as "none".
+    workPartnerUids: Array.isArray(node.workPartnerUids) ? node.workPartnerUids : [],
+    workPartners:    Array.isArray(node.workPartners)    ? node.workPartners    : [],
+    attachments:     Array.isArray(node.attachments)     ? node.attachments     : [],
+    isExtended:      node.isExtended ?? false,
     _source:        'roadmapNode',
     roadmapNodeId:  node.id,
     depth:          node.depth ?? 0,

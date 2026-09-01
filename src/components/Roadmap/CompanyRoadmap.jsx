@@ -9,6 +9,7 @@ import RoadmapTree         from './RoadmapTree';
 import RoadmapJourneyView  from './RoadmapJourneyView';
 import RoadmapNodeModal    from './RoadmapNodeModal';
 import RoadmapNodeDetail   from './RoadmapNodeDetail';
+import RoadmapNodeTaskModal from './RoadmapNodeTaskModal';
 
 const ROADMAP_VIEW_STORAGE_KEY = 'roadmap-view-mode';
 
@@ -44,7 +45,13 @@ export default function CompanyRoadmap() {
   const canEdit                 = canEditRoadmapStructure(userProfile);
 
   // ── UI state ─────────────────────────────────────────────────────────────
+  // Two detail surfaces, chosen by depth in handleSelect:
+  //   selectedNodeId  → RoadmapNodeDetail, the right-hand roadmap panel. Root
+  //                     milestones only, plus any node reached by deep link.
+  //   taskModalNode   → RoadmapNodeTaskModal → the ordinary Task Details modal.
+  //                     Child nodes, because a child is a unit of work.
   const [selectedNodeId, setSelectedNodeId] = useState(deepLinkId ?? null);
+  const [taskModalNode,  setTaskModalNode]  = useState(null);
 
   // Modal state
   const [modalOpen,   setModalOpen]   = useState(false);
@@ -68,8 +75,17 @@ export default function CompanyRoadmap() {
   }, [viewMode]);
 
   // ── Deep-link: auto-select nodeId from URL ────────────────────────────────
+  // A deep link always opens the roadmap panel, whatever the node's depth —
+  // that is the whole point of the Company Roadmap link inside the Task Details
+  // modal, which is how a child node's comments, attachments, history and
+  // "Add Child" stay reachable now that clicking the card opens the task modal
+  // instead. Following that link dismisses the modal, so the panel it just
+  // asked for is not left hidden behind one.
   useEffect(() => {
-    if (deepLinkId) setSelectedNodeId(deepLinkId);
+    if (deepLinkId) {
+      setSelectedNodeId(deepLinkId);
+      setTaskModalNode(null);
+    }
   }, [deepLinkId]);
 
   // ── Filtered root nodes ───────────────────────────────────────────────────
@@ -82,7 +98,30 @@ export default function CompanyRoadmap() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
+  /**
+   * One funnel for both views — RoadmapTree and RoadmapJourneyView call this
+   * with the node whose title was clicked, so the routing below applies to the
+   * List view, the Journey view and the Journey view's drill-down alike.
+   *
+   * A root milestone opens the roadmap panel: it is a container, and the panel
+   * is where its breadcrumb, comments, attachments, history and "Add Child"
+   * live. A child node is the work itself, so it opens the Task Details modal —
+   * literally the same component the Dashboard renders, reaching roadmapNodes
+   * rather than tasks through the `_source` tag nodeToWorkItem sets.
+   *
+   * Opening a child deliberately leaves `selectedNodeId` alone rather than
+   * clearing it. Whatever the panel was showing is the *root* the user picked,
+   * not the child, so there is nothing to close — and it means a child reached
+   * by deep link still has its panel waiting underneath when the modal closes,
+   * instead of the modal's own Company Roadmap link becoming a no-op navigation
+   * to the URL the page is already on.
+   */
   const handleSelect = useCallback((node) => {
+    if ((node.depth ?? 0) > 0) {
+      setTaskModalNode(node);
+      return;
+    }
+    setTaskModalNode(null);
     setSelectedNodeId((prev) => prev === node.id ? null : node.id);
   }, []);
 
@@ -117,12 +156,16 @@ export default function CompanyRoadmap() {
     try {
       await archiveNode(node.id, userProfile?.uid);
       if (selectedNodeId === node.id) setSelectedNodeId(null);
+      setTaskModalNode((prev) => (prev?.id === node.id ? null : prev));
     } catch (err) {
       console.error('[CompanyRoadmap] archiveNode:', err);
       alert(`Failed to archive: ${err.message}`);
     }
   }, [userProfile, selectedNodeId]);
 
+  // Breadcrumb clicks inside the panel stay in the panel, even when the target
+  // is a child node — the breadcrumb is a structural navigation, not a request
+  // to work on the item.
   const handleNavigate = useCallback((nodeId) => {
     setSelectedNodeId(nodeId ?? null);
   }, []);
@@ -467,6 +510,16 @@ export default function CompanyRoadmap() {
           </>
         )}
       </div>
+
+      {/* ── Child node → Task Details ─────────────────────────────────────
+       * The same modal the Dashboard opens for a task. Mounted only while a
+       * child is open so its single-document listener exists only then. */}
+      {taskModalNode && (
+        <RoadmapNodeTaskModal
+          node={taskModalNode}
+          onClose={() => setTaskModalNode(null)}
+        />
+      )}
 
       {/* ── Create / Edit modal ───────────────────────────────────────────── */}
       <RoadmapNodeModal

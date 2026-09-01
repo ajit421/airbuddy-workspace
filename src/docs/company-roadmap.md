@@ -29,13 +29,34 @@ CompanyRoadmap (src/components/Roadmap/CompanyRoadmap.jsx)
 ├── RoadmapTree               — recursive node tree with virtualization shim
 │   └── RoadmapNodeCard       — individual node card (React.memo)
 │       └── [expand] RoadmapTree (children, recursive)
-└── RoadmapNodeDetail         — slide-in detail panel / bottom-sheet modal
-    ├── Overview tab          — node metadata, assigned users, dates
-    ├── Tasks tab             — RoadmapTaskCard list + RoadmapTaskModal
-    ├── Comments tab          — RoadmapCommentsTab
-    ├── Attachments tab       — RoadmapAttachmentsTab
-    └── History tab           — RoadmapHistoryLog (paginated)
+├── RoadmapNodeDetail         — slide-in detail panel / bottom-sheet modal
+│   ├── Overview tab          — node metadata, assigned users, dates
+│   ├── Comments tab          — RoadmapCommentsTab
+│   ├── Attachments tab       — RoadmapAttachmentsTab
+│   └── History tab           — RoadmapHistoryLog (paginated)
+└── RoadmapNodeTaskModal      — child node → the ordinary Task Details modal
 ```
+
+### Which panel a click opens
+
+Clicking a node's **title** does two things at once: it opens that node's detail
+*and* expands its children, so you never have to click the chevron separately
+just to see what is underneath. It only ever expands — to collapse a branch, use
+the chevron, which stays a pure expand/collapse toggle.
+
+Clicking a **root milestone** opens the slide-in detail panel on the right. A
+root is a container: the panel is where its breadcrumb, comments, attachments,
+audit history and **Add Child** live.
+
+Clicking a **child node** opens **Task Details** instead — the very same modal
+the Dashboard, Calendar and Work Partner drawer use for a task, with the same
+progress slider, checklist, work partners, Extend control and activity feed. A
+child node is the unit of work, so it is worked on exactly the way a task is.
+
+The panel is still available for a child: the **Company Roadmap** link at the
+top of the modal opens it, which is how a child's comments, attachments, history
+and Add Child stay reachable. Deep links (`/roadmap/:nodeId`) always open the
+panel, whatever the node's depth.
 
 Supporting components:
 - **`RoadmapBreadcrumb`** — ancestry path navigation (Phase 11)

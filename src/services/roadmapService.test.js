@@ -648,6 +648,27 @@ describe('nodeToWorkItem', () => {
     const item = nodeToWorkItem(node);
     expect(item.workPartnerUids).toEqual([]);
     expect(item.workPartners).toEqual([]);
+    expect(item.attachments).toEqual([]);
+    expect(item.isExtended).toBe(false);
+  });
+
+  // These four used to be hardcoded empty. TaskDetailModal renders all of them
+  // straight off this object, so a work partner added to a milestone vanished
+  // when the modal was reopened, the Extend control left no "Extended" badge,
+  // and the completion dialog's `[...(task.attachments || []), attachment]`
+  // wrote back an array holding only the newest attachment.
+  it('carries work partners, attachments and the extension flag off the node', () => {
+    const item = nodeToWorkItem({
+      ...node,
+      workPartnerUids: ['uid-c'],
+      workPartners:    [{ uid: 'uid-c', name: 'Partner' }],
+      attachments:     [{ url: 'https://example.com/p', name: 'PR' }],
+      isExtended:      true,
+    });
+    expect(item.workPartnerUids).toEqual(['uid-c']);
+    expect(item.workPartners).toEqual([{ uid: 'uid-c', name: 'Partner' }]);
+    expect(item.attachments).toEqual([{ url: 'https://example.com/p', name: 'PR' }]);
+    expect(item.isExtended).toBe(true);
   });
 
   it('defaults a bare node without throwing', () => {
