@@ -1,0 +1,26 @@
+{
+  "name": "@airbuddy/workspace-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local MCP server that lets your own Claude read and update your AirBuddy WorkSpace tasks, roadmap milestones and work partners — as you, under the same Firestore rules as the web app.",
+  "type": "module",
+  "bin": {
+    "airbuddy-mcp": "src/cli.js"
+  },
+  "files": [
+    "src",
+    "!src/**/*.test.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/cli.js serve",
+    "login": "node src/cli.js login"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "zod": "^4.6.5"
+  }
+}

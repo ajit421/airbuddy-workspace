@@ -13,6 +13,7 @@ import AnnouncementList from './components/Announcement/AnnouncementList';
 import AboutPage from './components/About/AboutPage';
 import AdminPanel from './components/Admin/AdminPanel';
 import DocsPage from './pages/DocsPage';
+import ConnectClaudePage from './pages/ConnectClaudePage';
 
 // HRMS Module imports — added for the new HRMS feature set
 import EmployeeDirectory    from './components/HRMS/Directory/EmployeeDirectory';
@@ -81,6 +82,9 @@ const AppRoutes = () => {
         path="/login"
         element={user ? <Navigate to="/" replace /> : <LoginPage />}
       />
+      {/* Hands the session to the local airbuddy-mcp server. Outside ProtectedRoute
+          so a signed-out visit keeps its ?port=&state= — see ConnectClaudePage. */}
+      <Route path="connect/claude" element={<ConnectClaudePage />} />
       {/* HI-9 fix: docs routes require login, placed outside AppLayout to avoid double header/sidebar layout issues */}
       <Route
         path="docs"

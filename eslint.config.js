@@ -94,6 +94,15 @@ export default defineConfig([
       'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
+  // The local MCP server each employee runs (mcp/). Plain Node, its own
+  // package.json — linted rather than ignored because it writes to production
+  // Firestore as whoever is signed in.
+  {
+    files: ['mcp/**/*.js'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
   // Service workers in public/ run in a ServiceWorkerGlobalScope, not a window,
   // and are loaded as classic scripts (importScripts, not import). Declared here
   // rather than with an /* eslint-env */ comment, which flat config ignores and

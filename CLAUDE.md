@@ -11,7 +11,7 @@ npm run dev            # Vite dev server -> http://localhost:5173
 npm run build          # Production build -> dist/
 npm run preview        # Serve the built bundle
 npm run lint           # ESLint (dist/ and functions/ are globally ignored)
-npm test               # vitest run — 10 files, 265 tests, ~6s
+npm test               # vitest run — 16 files, 402 tests (includes mcp/), ~6s
 
 npx vitest                                       # watch mode
 npx vitest run src/services/taskService.test.js  # single file
@@ -54,6 +54,7 @@ Emulator ports ([firebase.json](firebase.json)): functions 5001, firestore 8080,
 | [api/](api/) | Vercel serverless | Only [api/gemini.js](api/gemini.js). |
 | [functions/](functions/) | Firebase (CommonJS, Node 22) | Firestore triggers + two crons. Blaze-only — see "Cloud Functions". |
 | [scripts/](scripts/) | Local Node, admin SDK | Gitignored. Needs `serviceAccountKey.json` at repo root. Run `--dry-run` first. |
+| [mcp/](mcp/) | Each employee's computer | `airbuddy-mcp`, a local stdio MCP server for their own Claude. Firestore **REST with the user's ID token** — rules apply. Own `package.json`. See "Claude connector". |
 
 There is no server of our own in the request path for data. **Firestore security rules in [firestore.rules](firestore.rules) are the only real authorization layer** — 500 lines of it, and the most important file in the repo to read before changing any data access.
 
@@ -375,6 +376,20 @@ Things worth knowing before changing any of it:
   ([src/services/calendarEvent.server.test.js](src/services/calendarEvent.server.test.js)),
   the same arrangement `roadmapService.server.js` uses — keep `calendarEvent.js`
   free of firebase-admin and network access so that keeps working.
+
+## Claude connector (mcp/)
+
+[mcp/](mcp/) is a local stdio MCP server each employee installs (`npm install -g ./mcp`) so their own Claude Desktop / Claude Code can list and update their work. Details in [mcp/README.md](mcp/README.md); user-facing steps in [src/docs/claude-connector.md](src/docs/claude-connector.md).
+
+**It is a client, not a server of ours — keep it that way.** Every call goes to the Firestore REST API with the employee's own Firebase ID token, so `firestore.rules` is enforced exactly as for the SPA. Never add `firebase-admin` or a service account to it: that would bypass every rule and make this package the authorization layer.
+
+**Login is a session handoff, not a new OAuth client.** `airbuddy-mcp login` listens on `127.0.0.1:<random>` and opens `/connect/claude?port=&state=` ([src/pages/ConnectClaudePage.jsx](src/pages/ConnectClaudePage.jsx)), which form-POSTs `auth.currentUser.refreshToken` (plus the public `apiKey`/`projectId`) back to the loopback only after the user clicks Connect. No scope is involved, so no Google warning. The route sits **outside** `ProtectedRoute` on purpose: `ProtectedRoute` → `/login` → `/` drops `?port=&state=`, so the page signs in by itself.
+
+**Writes mirror the web app field-for-field**, and each method in `mcp/src/workspace.js` names the function it copies. Two traps are already handled there: `updatedBy` is written on milestones (as `updateNodeAsAssignee` does) but **never on tasks**, because `onTaskUpdate` skips notifying `updatedBy` and a stale value would silence that person for later web edits. And checklist edits use an `updateTime` precondition with retries in place of `runTransaction`.
+
+**Parity is enforced by tests.** `mcp/src/workItems.test.js` imports `NODE_ASSIGNEE_WRITABLE_FIELDS`, `normalizeTodos`, `computeHierarchy`, `sortNodesByDueDate`, `permissions.js` and `checkCanAddPartner` from `src/` and compares them with the copies in `mcp/src/workItems.js`. Changing one of those in `src/` means changing the copy too. A new field in a rules `hasOnly()` list needs the same treatment.
+
+`mcp/src/rules.emulator.test.js` runs every MCP write **as an employee** against the real rules (skipped unless `FIRESTORE_EMULATOR_HOST` is set): `npx firebase-tools emulators:exec --only firestore --project demo-airbuddy "npx vitest run mcp/src/rules.emulator.test.js"`. Testing the tools from an admin account proves nothing about the carve-outs, so run this one after touching a write or a `hasOnly()` list.
 
 ## Notifications
 

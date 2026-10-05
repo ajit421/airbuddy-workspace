@@ -55,3 +55,5 @@ gcp-key*.json
 
 # Migration scripts (LO-10: moved to scripts/ — ignore scoped correctly)
 scripts/
+# airbuddy-mcp package builds (npm pack in mcp/)
+mcp/*.tgz
