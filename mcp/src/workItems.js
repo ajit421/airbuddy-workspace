@@ -14,6 +14,9 @@
  *   computeHierarchy               ⇔ src/services/roadmapService.js
  *   canUpdateProgress / canManageTodos ⇔ src/utils/permissions.js
  *   canAddPartner                  ⇔ checkCanAddPartner in collaborationService.js
+ *   hasPermission                  ⇔ src/utils/permissions.js
+ *   PERMISSION_KEYS                ⇔ src/utils/permissionCatalog.js
+ *   MODULE_OPTIONS                 ⇔ src/utils/permissions.js
  *
  * The client-side permission checks only exist to give Claude a clear reason
  * before a write is attempted. firestore.rules is still the actual boundary.
@@ -95,6 +98,48 @@ export function parseDateInput(s) {
 /** Today in India as YYYY-MM-DD. */
 export const todayIst = () => istDate(new Date());
 
+// ─── Admin-granted permissions ───────────────────────────────────────────────
+
+/** Same list as src/utils/permissionCatalog.js (parity-tested). */
+export const PERMISSION_KEYS = [
+  'hrms.directory', 'hrms.attendance', 'hrms.leaves', 'hrms.recruitment', 'hrms.performance',
+  'kpi.edit', 'roadmap.edit', 'tasks.assign', 'tasks.viewAll', 'announcements.post',
+];
+
+/**
+ * The permissions the connector's tools actually use. The rest of the catalog
+ * (HRMS, KPI, announcements) has no tool yet, so it grants nothing here.
+ */
+export const TOOL_PERMISSIONS = {
+  'roadmap.edit': 'create_milestone, update_milestone; update progress/dates on any milestone',
+  'tasks.assign': 'assign_task — assign a task to teammates',
+  'tasks.viewAll': "list_my_work with `assignee` — see anybody's work",
+};
+
+/**
+ * Admins hold every permission; an employee holds the keys an admin granted
+ * (users/{uid}.permissions). Same as hasPermission() in src/utils/permissions.js
+ * and can(key) in firestore.rules — which is still the real boundary.
+ *
+ * @param {{role?: string, permissions?: object}|null} me
+ * @param {string} key
+ */
+export function hasPermission(me, key) {
+  if (!me) return false;
+  if (me.role === 'admin') return true;
+  return me.permissions?.[key] === true;
+}
+
+/** The granted keys, for whoami. */
+export const grantedPermissions = (me) =>
+  me?.role === 'admin' ? [...PERMISSION_KEYS] : PERMISSION_KEYS.filter((k) => me?.permissions?.[k] === true);
+
+/** Same as MODULE_OPTIONS in src/utils/permissions.js — the Admin Panel's task modules. */
+export const MODULE_OPTIONS = [
+  'Mission Planning', 'Avionics', 'Propulsion', 'Structures', 'Navigation', 'Ground Support',
+  'Quality Assurance', 'Research & Development', 'Documentation', 'Testing', 'Other',
+];
+
 // ─── Roles on an item ─────────────────────────────────────────────────────────
 
 const asList = (v) => (Array.isArray(v) ? v : typeof v === 'string' && v ? [v] : []);
@@ -130,12 +175,6 @@ export function canAddPartner(item, me) {
   if (me.role === 'admin') return true;
   return item.createdBy === me.uid || isAssignee(item, me.uid) ||
     (Array.isArray(item.workPartners) && item.workPartners.some((p) => p?.uid === me.uid));
-}
-
-/** Only the creator or an admin may remove partners (WorkPartnersSection). */
-export function canRemovePartner(item, me) {
-  if (!item || !me) return false;
-  return me.role === 'admin' || item.createdBy === me.uid;
 }
 
 // ─── Todos ────────────────────────────────────────────────────────────────────

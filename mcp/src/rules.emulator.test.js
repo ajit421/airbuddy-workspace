@@ -41,6 +41,10 @@ const SEED = {
   'users/u1': { uid: 'u1', name: 'Ajit', email: 'ajit@airbuddy.in', role: 'employee' },
   'users/u2': { uid: 'u2', name: 'Archit Jain', email: 'archit@airbuddy.in', role: 'employee' },
   'users/boss': { uid: 'boss', name: 'Boss', email: 'boss@airbuddy.in', role: 'admin' },
+  'users/lead': {
+    uid: 'lead', name: 'Lead', email: 'lead@airbuddy.in', role: 'employee',
+    permissions: { 'roadmap.edit': true, 'tasks.assign': true, 'tasks.viewAll': true },
+  },
   'allowed_emails/alt@gmail.com': { status: 'approved' },
   'user_email_map/alt@gmail.com': { primaryUid: 'u1' },
   'roadmapNodes/root': {
@@ -97,7 +101,6 @@ describe.skipIf(!HOST)('MCP writes vs firestore.rules (employee, emulator)', () 
     await ajit.api.addTodo({ id: 'n1', text: 'Mount sensor' });
     const item = await ajit.api.setTodoDone({ id: 'n1', item: 'mount', done: true });
     expect(item.checklist[0].done).toBe(true);
-    await ajit.api.deleteTodo({ id: 'n1', item: '1' });
     await ajit.api.postUpdate({ id: 'n1', message: 'Sensor mounted' });
     await ajit.api.commentOnMilestone({ id: 'n1', text: 'Looks good' });
 
@@ -123,9 +126,23 @@ describe.skipIf(!HOST)('MCP writes vs firestore.rules (employee, emulator)', () 
     await expectDenied(ajit.db.commit([updateWrite(ajit.db.docName('tasks/mine'), { title: 'x' })]));
   });
 
-  it('personal task create; admin-only tools refused', async () => {
+  it('personal task create; permission-gated tools refused', async () => {
     expect((await ajit.api.createPersonalTask({ title: 'Mine', dueDate: '2026-10-10' })).type).toBe('personal');
-    await expect(ajit.api.createMilestone({ title: 'X' })).rejects.toThrow(/Only admins/);
+    await expect(ajit.api.createMilestone({ title: 'X' })).rejects.toThrow(/roadmap\.edit/);
+    await expect(ajit.api.assignTask({ title: 'X', assignees: ['archit'] })).rejects.toThrow(/tasks\.assign/);
+    // and the rules agree, should the pre-check ever be wrong:
+    await expectDenied(ajit.db.commit([createWrite(ajit.db.docName('roadmapNodes/sneaky'), { title: 'X', isArchived: false })]));
+  });
+
+  it('employee granted roadmap.edit, tasks.assign and tasks.viewAll: accepted by can() in the rules', async () => {
+    const lead = apiAs('lead', 'lead@airbuddy.in');
+    const child = await lead.api.createMilestone({ title: 'Lead child', parentId: 'root', assignees: ['archit'] });
+    expect(child.assignees).toEqual(['Archit Jain']);
+    expect((await lead.api.updateMilestone({ id: child.id, title: 'Renamed', addAssignees: ['ajit'] })).title).toBe('Renamed');
+    expect((await lead.api.updateProgress({ id: 'root', progress: 10 })).progress).toBe(10);
+    const task = await lead.api.assignTask({ title: 'Solder ESC', assignees: ['ajit'], module: 'Avionics', dueDate: '2026-10-20' });
+    expect(task.type).toBe('assigned');
+    expect((await lead.api.listWork({ assignee: 'archit' })).items.map((i) => i.id)).toContain('partnered');
   });
 
   it('a mapped secondary account acts as its primary uid', async () => {
@@ -138,8 +155,8 @@ describe.skipIf(!HOST)('MCP writes vs firestore.rules (employee, emulator)', () 
     const boss = apiAs('boss', 'boss@airbuddy.in');
     const child = await boss.api.createMilestone({ title: 'Prop test', parentId: 'root', dueDate: '2026-11-15', assignees: ['ajit'] });
     expect(child).toMatchObject({ depth: 1, assignees: ['Ajit'] });
-    expect((await owner.get('roadmapNodes/root')).childCount).toBe(2);
-    const moved = await boss.api.updateMilestone({ id: child.id, addAssignees: ['archit'], removeAssignees: ['ajit'] });
-    expect(moved.assignees).toEqual(['Archit Jain']);
+    expect((await owner.get('roadmapNodes/root')).childCount).toBe(3); // seed's n1 + the lead's child + this one
+    const moved = await boss.api.updateMilestone({ id: child.id, addAssignees: ['archit'] });
+    expect(moved.assignees).toEqual(['Ajit', 'Archit Jain']);
   });
 });

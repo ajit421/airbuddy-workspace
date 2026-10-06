@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { FirestoreError } from './firestore.js';
+import { FirestoreError, RemovalNotAllowedError, assertNoRemoval } from './firestore.js';
 import { NODE_ASSIGNEE_WRITABLE_FIELDS, TASK_ASSIGNEE_DENIED_FIELDS } from './workItems.js';
 import { WorkspaceApi } from './workspace.js';
 
@@ -27,12 +27,17 @@ class FakeDb {
         op === 'array-contains' ? (d[f] ?? []).includes(v) : (d[f] ?? null) === v));
   }
   async commit(writes) {
+    assertNoRemoval(writes); // same guard as FirestoreClient.commit
     if (this.failNextCommitWith) {
       const err = this.failNextCommitWith;
       this.failNextCommitWith = null;
       throw err;
     }
     this.commits.push(writes);
+    // Remember created docs (as an empty shell) so a read-back finds them.
+    for (const w of writes) {
+      if (w.currentDocument?.exists === false && !this.docs[w.update.name]) this.docs[w.update.name] = {};
+    }
     return {};
   }
   /** Every field a write touches: mask + transforms. */
@@ -131,9 +136,73 @@ describe('checklist', () => {
   });
 });
 
-describe('admin tools', () => {
-  it('refuse non-admins before writing anything', async () => {
-    await expect(api.createMilestone({ title: 'X' })).rejects.toThrow(/Only admins/);
+describe('permission-gated tools', () => {
+  it('refuse a plain employee before writing anything', async () => {
+    await expect(api.createMilestone({ title: 'X' })).rejects.toThrow(/roadmap\.edit/);
+    await expect(api.updateMilestone({ id: 'n1', title: 'X' })).rejects.toThrow(/roadmap\.edit/);
+    await expect(api.assignTask({ title: 'X', assignees: ['archit'] })).rejects.toThrow(/tasks\.assign/);
+    await expect(api.listWork({ assignee: 'archit' })).rejects.toThrow(/tasks\.viewAll/);
     expect(db.commits).toHaveLength(0);
+  });
+
+  it('open to an employee an admin granted the key', async () => {
+    db.docs['users/u1'].permissions = { 'roadmap.edit': true, 'tasks.assign': true, 'tasks.viewAll': true };
+    await api.createMilestone({ title: 'Prop test', parentId: 'n1' });
+    await api.assignTask({ title: 'Solder ESC', assignees: ['archit'], module: 'Avionics', dueDate: '2026-10-20' });
+    const work = await api.listWork({ assignee: 'archit' });
+    expect(work.person).toBe('Archit Jain');
+
+    const task = db.commits.flat().find((w) => w.update.name.startsWith('tasks/'));
+    expect(task.update.fields.isAdminTask).toEqual({ booleanValue: true });
+    expect(task.update.fields.createdBy).toEqual({ stringValue: 'u1' });
+    expect(task.update.fields.assignedTo.arrayValue.values).toEqual([{ stringValue: 'u2' }]);
+  });
+
+  it('roadmap.edit lets a non-assignee update any milestone, but grants nothing on tasks', async () => {
+    db.docs['users/u1'].permissions = { 'roadmap.edit': true };
+    db.docs['roadmapNodes/n1'].assignedTo = ['u2'];
+    db.docs['tasks/t1'].assignedTo = ['u2'];
+    await api.updateProgress({ id: 'n1', progress: 20 });
+    await expect(api.updateProgress({ id: 't1', progress: 20 })).rejects.toThrow(/can't update progress/);
+  });
+
+  it('a key set to anything but true is not a grant', async () => {
+    db.docs['users/u1'].permissions = { 'tasks.assign': 'yes' };
+    await expect(api.assignTask({ title: 'X', assignees: ['archit'] })).rejects.toThrow(/tasks\.assign/);
+  });
+
+  it('whoami reports the granted keys', async () => {
+    db.docs['users/u1'].permissions = { 'tasks.viewAll': true, 'not.a.key': true };
+    const caps = await api.capabilities();
+    expect(caps.permissions).toEqual(['tasks.viewAll']);
+    expect(caps.needsPermission).toEqual({ 'roadmap.edit': false, 'tasks.assign': false, 'tasks.viewAll': true });
+  });
+});
+
+describe('no removal, for anybody', () => {
+  const admin = { getAuthIdentity: async () => ({ uid: 'admin', email: 'boss@airbuddy.in' }) };
+
+  it('the api has no delete or remove methods', () => {
+    const methods = Object.getOwnPropertyNames(WorkspaceApi.prototype);
+    expect(methods.filter((m) => /delete|remove|archive/i.test(m))).toEqual([]);
+  });
+
+  it('update_milestone only ever adds assignees, even for an admin', async () => {
+    const boss = new WorkspaceApi(db, admin);
+    await boss.updateMilestone({ id: 'n1', addAssignees: ['archit'], removeAssignees: ['ajit'], dueDate: null });
+    const [write] = db.commits[0];
+    expect(write.updateTransforms.some((t) => t.removeAllFromArray)).toBe(false);
+    expect(FakeDb.affected(write)).not.toContain('dueDate');
+  });
+
+  it('commit refuses a delete, a field deletion and an array removal', () => {
+    expect(() => assertNoRemoval([{ delete: 'projects/p/databases/(default)/documents/tasks/t1' }]))
+      .toThrow(RemovalNotAllowedError);
+    expect(() => assertNoRemoval([{ update: { name: 'x', fields: {} }, updateMask: { fieldPaths: ['title'] } }]))
+      .toThrow(/delete field title/);
+    expect(() => assertNoRemoval([{
+      update: { name: 'x', fields: {} }, updateMask: { fieldPaths: [] },
+      updateTransforms: [{ fieldPath: 'assignedTo', removeAllFromArray: { values: [] } }],
+    }])).toThrow(/remove from assignedTo/);
   });
 });

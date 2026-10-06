@@ -20,6 +20,9 @@
  *     exactly the fields passed — that is what rules see as affectedKeys(), so
  *     a write never carries a key the caller did not ask for.
  *   - FirestoreClient: get / query / commit over fetch.
+ *   - assertNoRemoval: the package is read + write only. commit() refuses any
+ *     write that deletes a document, deletes a field, or removes array
+ *     elements — so no tool, now or later, can remove anything.
  *
  * Pure apart from FirestoreClient, so the codec and builders are unit-tested.
  * ─────────────────────────────────────────────────────────────────────────────
@@ -123,14 +126,42 @@ export const arrayUnion = (fieldPath, ...values) => ({
   appendMissingElements: { values: values.map(encodeValue) },
 });
 
-/** arrayRemove() */
-export const arrayRemove = (fieldPath, ...values) => ({
-  fieldPath,
-  removeAllFromArray: { values: values.map(encodeValue) },
-});
+// There is deliberately no arrayRemove(): see assertNoRemoval below.
 
 /** increment() */
 export const increment = (fieldPath, n) => ({ fieldPath, increment: encodeValue(n) });
+
+// ─── No-removal guard ─────────────────────────────────────────────────────────
+
+/** Thrown when a write would delete or remove something. */
+export class RemovalNotAllowedError extends Error {
+  constructor(what) {
+    super(`The AirBuddy connector is read and write only — it never deletes or removes anything (${what}). Do this in the web app instead if you really mean it.`);
+    this.name = 'RemovalNotAllowedError';
+  }
+}
+
+/**
+ * Reject any write that removes data. Three ways a Firestore REST write can:
+ *   - a `delete` write (whole document)
+ *   - an updateMask path with no value in `fields` (deletes that field)
+ *   - a `removeAllFromArray` transform
+ * Overwriting a value (including unticking a checklist item) is still a write.
+ *
+ * @param {object[]} writes
+ */
+export function assertNoRemoval(writes) {
+  for (const w of writes) {
+    if (w.delete) throw new RemovalNotAllowedError(`delete ${w.delete.split('/documents/').pop()}`);
+    const fields = w.update?.fields ?? {};
+    for (const p of w.updateMask?.fieldPaths ?? []) {
+      if (!(p.split('.')[0] in fields)) throw new RemovalNotAllowedError(`delete field ${p}`);
+    }
+    for (const t of w.updateTransforms ?? []) {
+      if (t.removeAllFromArray) throw new RemovalNotAllowedError(`remove from ${t.fieldPath}`);
+    }
+  }
+}
 
 // ─── Write builders ───────────────────────────────────────────────────────────
 
@@ -331,6 +362,7 @@ export class FirestoreClient {
    * @returns {Promise<object>}
    */
   async commit(writes) {
+    assertNoRemoval(writes);
     return this.#request('POST', `${this.base}:commit`, { writes });
   }
 }

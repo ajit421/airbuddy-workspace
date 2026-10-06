@@ -14,20 +14,31 @@
  * every authorUid/senderUid/updatedBy uses. Rules do the same lookup in
  * getEffectiveUid(), so using the raw auth uid would make queries return
  * nothing and writes be rejected for a mapped secondary account.
+ *
+ * Who may do what follows the web app's three tiers: employee (their own
+ * work), admin (everything), and admin-granted permissions from the Admin
+ * Panel's Permissions tab (`roadmap.edit`, `tasks.assign`, `tasks.viewAll`).
+ * The checks here only give Claude a clear reason up front; can(key) in
+ * firestore.rules is the real boundary.
+ *
+ * Nothing here deletes or removes: FirestoreClient.commit() refuses it.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import {
-  FirestoreError, autoId, arrayRemove, arrayUnion, createWrite, increment, serverTimestamp, updateWrite,
+  FirestoreError, autoId, arrayUnion, createWrite, increment, serverTimestamp, updateWrite,
 } from './firestore.js';
 import {
   COLLECTION, COMMENT_MAX_LENGTH, KIND_MILESTONE, KIND_TASK, TODO_MAX_LENGTH,
-  canAddPartner, canManageTodos, canRemovePartner, canUpdateProgress, computeHierarchy,
-  deriveStatus, findTodo, isAssignee, matchPerson, normalizeTodos, parseDateInput,
-  presentWorkItem, sortByDueDate,
+  MODULE_OPTIONS, canAddPartner, canManageTodos, canUpdateProgress, computeHierarchy,
+  deriveStatus, findTodo, grantedPermissions, hasPermission, isAssignee, matchPerson,
+  normalizeTodos, parseDateInput, presentWorkItem, sortByDueDate,
 } from './workItems.js';
 
 const CACHE_MS = 5 * 60_000;
+// Shorter for the signed-in profile, so a role or permission an admin changes
+// takes effect within a minute without restarting Claude.
+const ME_CACHE_MS = 60_000;
 const MAX_TREE_NODES = 200;
 
 export class WorkspaceApi {
@@ -46,10 +57,10 @@ export class WorkspaceApi {
 
   /**
    * The effective user — mirrors AuthContext's user_email_map lookup.
-   * @returns {Promise<{uid: string, authUid: string, email: string, name: string, avatar: string, role: string}>}
+   * @returns {Promise<{uid: string, authUid: string, email: string, name: string, avatar: string, role: string, permissions: object}>}
    */
   async me() {
-    if (this._me && this._me.at + CACHE_MS > Date.now()) return this._me.value;
+    if (this._me && this._me.at + ME_CACHE_MS > Date.now()) return this._me.value;
 
     const { uid: authUid, email } = await this.session.getAuthIdentity();
     let uid = authUid;
@@ -80,6 +91,7 @@ export class WorkspaceApi {
       name: profile.name || email || 'Team Member',
       avatar: profile.avatar || '',
       role: profile.role || 'employee',
+      permissions: profile.permissions && typeof profile.permissions === 'object' ? profile.permissions : {},
     };
     this._me = { value, at: Date.now() };
     return value;
@@ -113,10 +125,25 @@ export class WorkspaceApi {
     return matchPerson(await this.team(), query);
   }
 
-  async requireAdmin(action) {
+  /**
+   * Admins pass; an employee needs the admin-granted key. Same as can(key) in
+   * AuthContext and firestore.rules.
+   */
+  async requirePermission(key, action) {
     const me = await this.me();
-    if (me.role !== 'admin') throw new Error(`Only admins can ${action}.`);
+    if (!hasPermission(me, key)) {
+      throw new Error(`You can't ${action}: it needs the "${key}" permission. Ask an admin to grant it in Admin Panel > Permissions.`);
+    }
     return me;
+  }
+
+  /**
+   * On a milestone, `roadmap.edit` is the whole-node power: can('roadmap.edit')
+   * in the roadmapNodes update rule allows any field. Tasks have no such key;
+   * their full-update branch is isAdmin() only.
+   */
+  #canEditNode(kind, me) {
+    return kind === KIND_MILESTONE && hasPermission(me, 'roadmap.edit');
   }
 
   // ─── Lookups ───────────────────────────────────────────────────────────────
@@ -161,8 +188,8 @@ export class WorkspaceApi {
     let uid = me.uid;
     if (assignee) {
       const p = await this.person(assignee);
-      if (p.uid !== me.uid && me.role !== 'admin') {
-        throw new Error("Only admins can list somebody else's work.");
+      if (p.uid !== me.uid && !hasPermission(me, 'tasks.viewAll')) {
+        throw new Error(`You can't list somebody else's work: it needs the "tasks.viewAll" permission. Ask an admin to grant it in Admin Panel > Permissions.`);
       }
       uid = p.uid;
     }
@@ -358,7 +385,7 @@ export class WorkspaceApi {
   async updateProgress({ id, kind, progress, completionNote }) {
     const me = await this.me();
     const { doc, kind: k } = await this.resolve(id, kind);
-    if (!canUpdateProgress(doc, me)) {
+    if (!canUpdateProgress(doc, me) && !this.#canEditNode(k, me)) {
       throw new Error(`You can't update progress on "${doc.title}" — only its assignees${k === KIND_TASK ? ', creator' : ''} or an admin can. Work partners can tick checklist items and post updates instead.`);
     }
 
@@ -412,7 +439,7 @@ export class WorkspaceApi {
   async extendDueDate({ id, kind, dueDate }) {
     const me = await this.me();
     const { doc, kind: k } = await this.resolve(id, kind);
-    if (!canUpdateProgress(doc, me)) {
+    if (!canUpdateProgress(doc, me) && !this.#canEditNode(k, me)) {
       throw new Error(`You can't change the due date of "${doc.title}" — only its assignees or an admin can.`);
     }
     const fields = { dueDate: parseDateInput(dueDate), isExtended: true };
@@ -434,7 +461,7 @@ export class WorkspaceApi {
   async addWorkPartner({ id, kind, person }) {
     const me = await this.me();
     const { doc, kind: k } = await this.resolve(id, kind);
-    if (!canAddPartner(doc, me)) {
+    if (!canAddPartner(doc, me) && !this.#canEditNode(k, me)) {
       throw new Error(`You can't add partners to "${doc.title}" — only its creator, assignees, existing partners or an admin can.`);
     }
     const p = await this.person(person);
@@ -461,28 +488,12 @@ export class WorkspaceApi {
     return this.#present(k, id);
   }
 
-  /** collaborationService.removeWorkPartner: rewrite both arrays from the filtered rich array. */
-  async removeWorkPartner({ id, kind, person }) {
-    const me = await this.me();
-    const { doc, kind: k } = await this.resolve(id, kind);
-    if (!canRemovePartner(doc, me)) {
-      throw new Error(`Only the creator of "${doc.title}" or an admin can remove work partners.`);
-    }
-    const partners = Array.isArray(doc.workPartners) ? doc.workPartners : [];
-    const p = matchPerson(partners.map((x) => ({ uid: x.uid, name: x.name })), person);
-    await this.#mutate(k, id, (fresh) => {
-      const kept = (fresh.workPartners ?? []).filter((x) => x?.uid !== p.uid);
-      return { fields: { workPartners: kept, workPartnerUids: kept.map((x) => x.uid) } };
-    });
-    return this.#present(k, id);
-  }
-
   // ─── Checklist ─────────────────────────────────────────────────────────────
 
   async #requireTodoAccess(id, kind) {
     const me = await this.me();
     const { doc, kind: k } = await this.resolve(id, kind);
-    if (!canManageTodos(doc, me)) {
+    if (!canManageTodos(doc, me) && !this.#canEditNode(k, me)) {
       throw new Error(`You can't edit the checklist of "${doc.title}" — only its participants can.`);
     }
     return { me, doc, k };
@@ -521,17 +532,6 @@ export class WorkspaceApi {
           })),
         },
       };
-    });
-    return this.#present(k, id);
-  }
-
-  /** todoService.deleteTodo. */
-  async deleteTodo({ id, kind, item }) {
-    const { k } = await this.#requireTodoAccess(id, kind);
-    await this.#mutate(k, id, (fresh) => {
-      const todos = normalizeTodos(fresh.todos);
-      const target = findTodo(todos, item);
-      return { fields: { todos: todos.filter((t) => t.id !== target.id) } };
     });
     return this.#present(k, id);
   }
@@ -592,7 +592,7 @@ export class WorkspaceApi {
    * same atomic commit rather than a second write.
    */
   async createMilestone({ title, description = '', parentId, dueDate, startDate, priority = 'medium', assignees = [] }) {
-    const me = await this.requireAdmin('create roadmap milestones');
+    const me = await this.requirePermission('roadmap.edit', 'create roadmap milestones');
     const parent = parentId ? (await this.resolve(parentId, KIND_MILESTONE)).doc : null;
     const assignedTo = await Promise.all(assignees.map(async (a) => (await this.person(a)).uid));
     const id = autoId();
@@ -627,31 +627,81 @@ export class WorkspaceApi {
   }
 
   /**
-   * roadmapService.updateNode (admin). Assignee changes use arrayUnion /
-   * arrayRemove so they cannot clobber a concurrent edit; onRoadmapNodeCalendar
-   * then notifies and calendars the newly added people server-side.
+   * roadmapService.updateNode (roadmap.edit). Assignees are only ever added,
+   * with arrayUnion so a concurrent edit cannot be clobbered; taking somebody
+   * off a milestone is a removal and stays in the web app, as does clearing a
+   * date. onRoadmapNodeCalendar then notifies and calendars the newly added
+   * people server-side.
    */
-  async updateMilestone({ id, title, description, priority, status, dueDate, startDate, addAssignees = [], removeAssignees = [] }) {
-    const me = await this.requireAdmin('edit roadmap milestones');
+  async updateMilestone({ id, title, description, priority, status, dueDate, startDate, addAssignees = [] }) {
+    const me = await this.requirePermission('roadmap.edit', 'edit roadmap milestones');
     const { doc } = await this.resolve(id, KIND_MILESTONE);
     const fields = { updatedBy: me.uid };
     if (title !== undefined) fields.title = title.trim();
     if (description !== undefined) fields.description = description;
     if (priority !== undefined) fields.priority = priority;
     if (status !== undefined) fields.status = status;
-    if (dueDate !== undefined) fields.dueDate = dueDate ? parseDateInput(dueDate) : null;
-    if (startDate !== undefined) fields.startDate = startDate ? parseDateInput(startDate) : null;
+    if (dueDate) fields.dueDate = parseDateInput(dueDate);
+    if (startDate) fields.startDate = parseDateInput(startDate);
 
     const add = await Promise.all(addAssignees.map(async (a) => (await this.person(a)).uid));
-    const remove = await Promise.all(removeAssignees.map(async (a) => (await this.person(a)).uid));
-    if (remove.some((u) => add.includes(u))) {
-      throw new Error('The same person is in both add_assignees and remove_assignees.');
-    }
     const transforms = [serverTimestamp('updatedAt')];
     if (add.length) transforms.push(arrayUnion('assignedTo', ...add));
-    if (remove.length) transforms.push(arrayRemove('assignedTo', ...remove));
 
     await this.db.commit([updateWrite(this.db.docName(`roadmapNodes/${doc.id}`), fields, { transforms })]);
     return this.#present(KIND_MILESTONE, doc.id);
+  }
+
+  /**
+   * taskService.createAdminTask, the Admin Panel's "Assign Task". Allowed by
+   * can('tasks.assign') on `tasks` create. Assignees are notified and get a
+   * Google Calendar event from onTaskCreate, exactly as from the web app, so
+   * nothing is notified from here (doing both doubled the bell entry once).
+   */
+  async assignTask({ title, description = '', assignees, module = 'Other', priority = 'medium', startDate, dueDate }) {
+    const me = await this.requirePermission('tasks.assign', 'assign tasks to other people');
+    if (!assignees?.length) throw new Error('Name at least one assignee.');
+    if (!MODULE_OPTIONS.includes(module)) {
+      throw new Error(`module must be one of: ${MODULE_OPTIONS.join(', ')}.`);
+    }
+    const assignedTo = [...new Set(await Promise.all(assignees.map(async (a) => (await this.person(a)).uid)))];
+    const id = autoId();
+    await this.db.commit([createWrite(this.db.docName(`tasks/${id}`), {
+      title: title.trim(),
+      description,
+      module,
+      priority,
+      status: 'pending',
+      progress: 0,
+      assignedTo,
+      links: [],
+      attachments: [],
+      assignedBy: me.uid,
+      isAdminTask: true,
+      startDate: startDate ? parseDateInput(startDate) : new Date(),
+      dueDate: dueDate ? parseDateInput(dueDate) : new Date(),
+      createdBy: me.uid,
+    }, [serverTimestamp('createdAt'), serverTimestamp('updatedAt')])]);
+    return this.#present(KIND_TASK, id);
+  }
+
+  /** What this account can do through the connector, for whoami. */
+  async capabilities() {
+    const me = await this.me();
+    return {
+      name: me.name, email: me.email, role: me.role, uid: me.uid,
+      permissions: grantedPermissions(me),
+      canAlways: [
+        'read: your work, the roadmap, the team',
+        'progress, due date, checklist, work partners and updates on work you are assigned to or partner on',
+        'comment on any milestone; create personal tasks',
+      ],
+      needsPermission: {
+        'roadmap.edit': hasPermission(me, 'roadmap.edit'),
+        'tasks.assign': hasPermission(me, 'tasks.assign'),
+        'tasks.viewAll': hasPermission(me, 'tasks.viewAll'),
+      },
+      neverAllowed: 'deleting or removing anything (tasks, milestones, checklist items, work partners, assignees, comments)',
+    };
   }
 }

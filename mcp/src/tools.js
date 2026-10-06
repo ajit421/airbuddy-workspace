@@ -5,16 +5,23 @@
  * WorkspaceApi method — Zod here is the write boundary, the same role
  * `Schema.parse(form)` plays in src/services/.
  *
- * Deliberately absent:
- *   - Deleting tasks. TaskDetailModal's delete does not route roadmap tasks
- *     (a known open bug, see CLAUDE.md); copying it here would copy the bug.
- *   - Archiving milestones. Hiding a subtree is a roadmap-page decision an
- *     admin should make looking at the tree, not from a chat.
+ * Read and write only, for everybody, admins included. There is no tool that
+ * deletes, archives or removes anything: not tasks, milestones, checklist
+ * items, work partners, assignees or comments. FirestoreClient.commit()
+ * enforces the same thing underneath (assertNoRemoval), so a future tool
+ * cannot quietly add one. Removing things is done in the web app.
+ *
+ * Who can use what:
+ *   everyone       reads, own-work updates, comments, personal tasks
+ *   roadmap.edit   create_milestone, update_milestone (admins hold every key)
+ *   tasks.assign   assign_task
+ *   tasks.viewAll  list_my_work for somebody else
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { z } from 'zod';
-import { FirestoreError } from './firestore.js';
+import { FirestoreError, RemovalNotAllowedError } from './firestore.js';
+import { MODULE_OPTIONS } from './workItems.js';
 import { NotSignedInError } from './session.js';
 
 const id = z.string().min(1).describe('Task or milestone id (from list_my_work, search_roadmap or browse_roadmap)');
@@ -25,11 +32,10 @@ const person = z.string().min(1).describe('Name, email or uid of a team member')
 
 const READ = { readOnlyHint: true, openWorldHint: false };
 const WRITE = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
-const REMOVE = { readOnlyHint: false, destructiveHint: true, openWorldHint: false };
 
 /** Turn a thrown error into a tool result Claude can act on. */
 function toErrorText(err) {
-  if (err instanceof NotSignedInError) return err.message;
+  if (err instanceof NotSignedInError || err instanceof RemovalNotAllowedError) return err.message;
   if (err instanceof FirestoreError) {
     if (err.status === 'PERMISSION_DENIED') {
       return 'WorkSpace security rules rejected this. You are signed in as yourself, so this is something your account is not allowed to do — the same thing would fail in the web app.';
@@ -63,21 +69,21 @@ export function registerTools(server, api) {
 
   tool('whoami', {
     title: 'Who am I',
-    description: 'The WorkSpace account this Claude is acting as: name, email, role (admin or employee).',
+    description:
+      'The WorkSpace account this Claude is acting as: name, email, role (admin or employee), the permissions an admin has granted, ' +
+      'and what that lets you do here. Check it before trying something that needs a permission.',
     annotations: READ,
-  }, async () => {
-    const me = await api.me();
-    return { name: me.name, email: me.email, role: me.role, uid: me.uid };
-  });
+  }, () => api.capabilities());
 
   tool('list_my_work', {
     title: 'List my work',
     description:
       'Your open work items — the same list as your WorkSpace Dashboard: tasks assigned to you or where you are a work partner, ' +
-      'plus roadmap milestones assigned to you or partnered by you. Sorted by due date. Admins may pass `assignee` to see somebody else\'s.',
+      'plus roadmap milestones assigned to you or partnered by you. Sorted by due date. ' +
+      'With the tasks.viewAll permission (admins have it) you may pass `assignee` to see somebody else\'s.',
     inputSchema: {
       include_completed: z.boolean().optional().describe('Also include completed items (default false)'),
-      assignee: person.optional().describe('Admins only: whose work to list'),
+      assignee: person.optional().describe('Needs tasks.viewAll: whose work to list'),
     },
     annotations: READ,
   }, ({ include_completed, assignee }) => api.listWork({ includeCompleted: include_completed, assignee }));
@@ -119,7 +125,7 @@ export function registerTools(server, api) {
   tool('update_progress', {
     title: 'Update progress',
     description:
-      'Set progress (0–100) on a task or milestone you are assigned to. Status follows progress the way the web app does it: 0 = pending, 1–99 = in-progress, 100 = completed. ' +
+      'Set progress (0–100) on a task or milestone you are assigned to (or any milestone, with roadmap.edit). Status follows progress the way the web app does it: 0 = pending, 1–99 = in-progress, 100 = completed. ' +
       'Completing needs a completion_note. Assignees are notified; a status change also triggers the usual push and calendar updates.',
     inputSchema: {
       id, kind,
@@ -146,13 +152,6 @@ export function registerTools(server, api) {
     annotations: WRITE,
   }, ({ id: itemId, kind: k, person: p }) => api.addWorkPartner({ id: itemId, kind: k, person: p }));
 
-  tool('remove_work_partner', {
-    title: 'Remove work partner',
-    description: 'Remove a Work Partner. Only the item\'s creator or an admin can.',
-    inputSchema: { id, kind, person },
-    annotations: REMOVE,
-  }, ({ id: itemId, kind: k, person: p }) => api.removeWorkPartner({ id: itemId, kind: k, person: p }));
-
   // ─── Checklist ─────────────────────────────────────────────────────────────
 
   tool('add_checklist_item', {
@@ -164,17 +163,10 @@ export function registerTools(server, api) {
 
   tool('set_checklist_item', {
     title: 'Tick or untick checklist item',
-    description: 'Mark a checklist item done or not done. `item` is the item number from get_work_item, its id, or a unique part of its text.',
+    description: 'Mark a checklist item done or not done. `item` is the item number from get_work_item, its id, or a unique part of its text. Items cannot be deleted from here.',
     inputSchema: { id, kind, item: z.string().min(1), done: z.boolean() },
     annotations: WRITE,
   }, ({ id: itemId, kind: k, item, done }) => api.setTodoDone({ id: itemId, kind: k, item, done }));
-
-  tool('delete_checklist_item', {
-    title: 'Delete checklist item',
-    description: 'Remove a checklist item. `item` is its number, id, or a unique part of its text.',
-    inputSchema: { id, kind, item: z.string().min(1) },
-    annotations: REMOVE,
-  }, ({ id: itemId, kind: k, item }) => api.deleteTodo({ id: itemId, kind: k, item }));
 
   // ─── Updates and comments ──────────────────────────────────────────────────
 
@@ -214,10 +206,28 @@ export function registerTools(server, api) {
   }, ({ title, description, priority, due_date }) =>
     api.createPersonalTask({ title, description, priority, dueDate: due_date }));
 
-  tool('create_milestone', {
-    title: 'Create milestone (admin)',
+  tool('assign_task', {
+    title: 'Assign task (tasks.assign)',
     description:
-      'Admins only. Add a roadmap milestone — a root milestone, or a child under parent_id (child milestones are how work is broken down). ' +
+      'Needs the tasks.assign permission (admins have it). Assign a task to one or more teammates, the same as Admin Panel > Assign Task. ' +
+      'Assignees get a notification, a push and a Google Calendar event from the server. Due date defaults to today.',
+    inputSchema: {
+      title: z.string().trim().min(1).max(200),
+      assignees: z.array(person).min(1),
+      description: z.string().max(5000).optional(),
+      module: z.enum(MODULE_OPTIONS).optional().describe('Default "Other"'),
+      priority: z.enum(['low', 'medium', 'high']).optional(),
+      start_date: date.optional(),
+      due_date: date.optional(),
+    },
+    annotations: WRITE,
+  }, ({ title, assignees, description, module, priority, start_date, due_date }) =>
+    api.assignTask({ title, assignees, description, module, priority, startDate: start_date, dueDate: due_date }));
+
+  tool('create_milestone', {
+    title: 'Create milestone (roadmap.edit)',
+    description:
+      'Needs the roadmap.edit permission (admins have it). Add a roadmap milestone — a root milestone, or a child under parent_id (child milestones are how work is broken down). ' +
       'Assignees get a notification and a Google Calendar event from the server.',
     inputSchema: {
       title: z.string().trim().min(1).max(200),
@@ -233,23 +243,23 @@ export function registerTools(server, api) {
     api.createMilestone({ title, parentId: parent_id, description, dueDate: due_date, startDate: start_date, priority, assignees }));
 
   tool('update_milestone', {
-    title: 'Update milestone (admin)',
-    description: 'Admins only. Edit a milestone\'s title, description, priority, status, dates, or add/remove assignees. Pass only what changes.',
+    title: 'Update milestone (roadmap.edit)',
+    description:
+      'Needs the roadmap.edit permission (admins have it). Edit a milestone\'s title, description, priority, status or dates, or add assignees. ' +
+      'Pass only what changes. Removing an assignee or clearing a date is not possible here; do it in the web app.',
     inputSchema: {
       id: z.string().min(1).describe('Milestone id'),
       title: z.string().trim().min(1).max(200).optional(),
       description: z.string().max(5000).optional(),
       priority: z.enum(['low', 'medium', 'high', 'critical']).optional(),
       status: z.enum(['pending', 'in-progress', 'completed', 'blocked']).optional(),
-      due_date: date.nullable().optional().describe('YYYY-MM-DD, or null to clear'),
-      start_date: date.nullable().optional(),
+      due_date: date.optional(),
+      start_date: date.optional(),
       add_assignees: z.array(person).optional(),
-      remove_assignees: z.array(person).optional(),
     },
     annotations: WRITE,
-  }, ({ id: itemId, due_date, start_date, add_assignees, remove_assignees, ...rest }) =>
+  }, ({ id: itemId, due_date, start_date, add_assignees, ...rest }) =>
     api.updateMilestone({
-      id: itemId, ...rest, dueDate: due_date, startDate: start_date,
-      addAssignees: add_assignees, removeAssignees: remove_assignees,
+      id: itemId, ...rest, dueDate: due_date, startDate: start_date, addAssignees: add_assignees,
     }));
 }

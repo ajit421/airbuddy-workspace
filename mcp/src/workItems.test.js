@@ -14,6 +14,7 @@ const web = await import('../../src/services/roadmapService.js');
 const webTodos = await import('../../src/services/todoService.js');
 const webPerms = await import('../../src/utils/permissions.js');
 const webCollab = await import('../../src/services/collaborationService.js');
+const webCatalog = await import('../../src/utils/permissionCatalog.js');
 const mcp = await import('./workItems.js');
 
 describe('parity with the web app', () => {
@@ -63,6 +64,34 @@ describe('parity with the web app', () => {
       }
       expect(mcp.canUpdateProgress(item, { uid: 'z', role: 'admin' })).toBe(true);
     }
+  });
+});
+
+describe('permission parity', () => {
+  it('PERMISSION_KEYS matches permissionCatalog.js', () => {
+    expect(mcp.PERMISSION_KEYS).toEqual(webCatalog.PERMISSION_KEYS);
+  });
+
+  it('every key a tool uses is in the catalog', () => {
+    for (const k of Object.keys(mcp.TOOL_PERMISSIONS)) expect(webCatalog.PERMISSION_KEYS).toContain(k);
+  });
+
+  it('hasPermission agrees with permissions.js', () => {
+    const profiles = [
+      null,
+      { uid: 'a', role: 'admin' },
+      { uid: 'e', role: 'employee' },
+      { uid: 'e', role: 'employee', permissions: { 'roadmap.edit': true, 'tasks.assign': 'yes' } },
+    ];
+    for (const p of profiles) {
+      for (const k of webCatalog.PERMISSION_KEYS) {
+        expect(mcp.hasPermission(p, k)).toBe(webPerms.hasPermission(p, k));
+      }
+    }
+  });
+
+  it('MODULE_OPTIONS matches permissions.js', () => {
+    expect(mcp.MODULE_OPTIONS).toEqual(webPerms.MODULE_OPTIONS);
   });
 });
 
