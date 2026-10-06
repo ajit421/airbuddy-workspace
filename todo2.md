@@ -87,6 +87,10 @@ Done:
 - [x] `src/docs/claude-connector.md` (the `/docs` page for the team):
   permissions table, "nobody can delete through Claude", install 0.2.0.
 - [x] `CLAUDE.md`: Claude connector section, test count.
+- [x] Sidebar: the separate **Connect Claude** link is removed. The setup guide
+  now lives in one place only: **Documentation → Connect your Claude**
+  (`/docs/claude-connector`). The `/connect/claude` page stays, because
+  `airbuddy-mcp login` opens it during sign-in.
 
 ---
 

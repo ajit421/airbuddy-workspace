@@ -61,3 +61,17 @@ taking work partners or assignees off. Do those in the app. If you used version
 
 Run `airbuddy-mcp logout` on that computer. If a laptop is lost, ask an admin
 to revoke your sessions. That signs you out everywhere, including the web app.
+
+
+### Who can do what through Claude now
+
+| Action | Employee | With permission | Admin |
+|---|---|---|---|
+| Read own work, roadmap, team | ✅ | ✅ | ✅ |
+| Progress / due date / checklist / partners / updates on **own** work | ✅ | ✅ | ✅ |
+| Comment on a milestone, create a personal task | ✅ | ✅ | ✅ |
+| Progress / dates / partners on **any** milestone | ❌ | `roadmap.edit` | ✅ |
+| Create or edit milestones, add assignees | ❌ | `roadmap.edit` | ✅ |
+| Assign a task to someone | ❌ | `tasks.assign` | ✅ |
+| See somebody else's work | ❌ | `tasks.viewAll` | ✅ |
+| **Delete / remove / archive anything** | ❌ | ❌ | ❌ |
