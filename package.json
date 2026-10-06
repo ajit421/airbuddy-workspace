@@ -8,10 +8,12 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev:connector": "node api/_lib/dev.js"
   },
   "dependencies": {
     "@google/genai": "^1.44.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "chart.js": "^4.5.1",
     "date-fns": "^4.1.0",
     "firebase": "^12.10.0",

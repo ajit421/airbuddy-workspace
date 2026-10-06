@@ -244,6 +244,93 @@ Checks after all fixes: `npm test` 434 passed; emulator rules tests 24 passed;
 
 ---
 
+## Part G: One-click connector for the whole team (web, desktop, phone)
+
+**Goal:** every employee connects once, from claude.ai, with nothing to install
+and no code shared. It works in the claude.ai website, Claude Desktop and the
+Claude phone app, because all three use the same Team account.
+
+**How:** run the connector on our existing Vercel project instead of on each
+computer. Employees only ever see a URL; the code stays private in this repo.
+
+```
+claude.ai (any device) ──HTTPS──▶ airbuddy-workspace.vercel.app/api/mcp
+                                   ├─ OAuth sign-in → /connect/claude page (Google, no extra scopes)
+                                   └─ Firestore REST with THAT employee's own token → firestore.rules
+```
+
+Rules that do not change: each person acts as themselves, their role and
+permissions apply, nothing can be deleted, never `firebase-admin`.
+
+### G1. Build it ✅ (done 2026-10-06, not committed)
+- [x] `api/mcp.js` → `api/_lib/mcpHandler.js`: the same 17 tools over
+  Streamable HTTP, stateless. Imports `registerTools`/`WorkspaceApi` from
+  `mcp/src`; nothing copied. Rate limit 120 calls/min per person.
+- [x] `api/oauth.js` → `api/_lib/oauth.js`: discovery
+  (`/.well-known/oauth-*`, rewritten in `vercel.json`), registration, authorize,
+  token, plus `describe`/`approve`/`deny` for the sign-in page.
+- [x] `/connect/claude?authreq=…` (`ConnectClaudePage.jsx`): sign in with Google →
+  **Connect Claude** / **Cancel**; shows where the code goes and warns when
+  that's a local program. The old `airbuddy-mcp login` mode still works.
+- [x] No token database: `api/_lib/seal.js` (AES-256-GCM, key from
+  `MCP_TOKEN_SECRET`). Claude never sees the Firebase session inside its token.
+- [x] Redirects: only `https://claude.ai/api/mcp/auth_callback` and Claude Code's
+  `http://localhost|127.0.0.1:<any port>/callback` (from Anthropic's connector
+  auth docs).
+- [x] Tests: `api/_lib/connector.test.js` (15: helpers, sealing, the full flow
+  over HTTP); `api/_lib/connector.rules.emulator.test.js` (4, as employees,
+  real rules). All 3 emulator suites: 28 passed. `npm test`: 449 passed.
+- [x] **End-to-end in the browser** with real Google sign-in and the live
+  database (an official MCP SDK client acting like Claude Code, read-only):
+  401 → discovery → sign-in page → Connect → token → 17 tools → `whoami` →
+  `list_my_work` → refresh. **PASS.** (Used the SDK client instead of the MCP
+  Inspector UI; same protocol.)
+- Run it locally: `npm run dev` + `npm run dev:connector`, MCP URL
+  `http://localhost:5173/api/mcp`.
+
+**Known trade-offs (by design):**
+- An old refresh token stays valid until its own 90-day expiry even after it
+  is rotated (nothing is stored). To cut a person off: `revokeRefreshTokens(uid)`
+  in Firebase. Emergency for everyone: change `MCP_TOKEN_SECRET` (all reconnect).
+- Everyone reconnects at least every 90 days.
+- Vercel runs functions in the US by default and Firestore is in Delhi, so each
+  tool call takes roughly 0.3–1 s. Optional: Vercel → Settings → Functions →
+  region **Mumbai (bom1)**.
+
+### G2. Deploy (you)
+1. Make a secret (run once, copy the output, keep it private):
+   `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
+2. Vercel → Project → Settings → Environment Variables → `MCP_TOKEN_SECRET` =
+   that value, for **Production** (and Preview if you test there).
+   `VITE_FIREBASE_API_KEY` and `VITE_FIREBASE_PROJECT_ID` are already there and
+   are reused.
+3. Commit and push. Vercel deploys it.
+4. Check: open `https://airbuddy-workspace.vercel.app/.well-known/oauth-authorization-server`
+   → JSON with `"issuer": "https://airbuddy-workspace.vercel.app"`. If it shows
+   the website instead, the `vercel.json` rewrites didn't deploy.
+
+### G3. Add it for the team (organization owner, once) ⬜
+1. claude.ai → Organization settings → **Connectors** → **Add** → **Custom** →
+   **Web**.
+2. Name: `AirBuddy WorkSpace`
+3. MCP server URL: `https://airbuddy-workspace.vercel.app/api/mcp`
+4. **Continue** → save. It now appears in every member's connector list.
+
+### G4. Each employee, once (about 30 seconds) ⬜
+1. claude.ai → Settings → **Connectors** → **AirBuddy WorkSpace** → **Connect**.
+2. A WorkSpace page opens → sign in with their usual Google account → click
+   **Connect Claude**.
+3. Done. It now works on the website, in Claude Desktop and in the phone app.
+   Test: ask *"what can you do for me in WorkSpace?"*
+
+### G5. After it works
+- [ ] Tell people who installed the local `airbuddy-mcp` to remove it
+  (`npm uninstall -g @airbuddy/workspace-mcp`, and remove `airbuddy` from the Claude
+  config), so they don't see every tool twice.
+- [ ] Update `/docs/claude-connector` to the one-click steps above.
+- [ ] Someone leaves: remove their Team seat **and** revoke their Firebase
+  sessions (`revokeRefreshTokens(uid)`). That cuts the connector off at once.
+
 ## Notes: using Claude across the team
 
 1. **One seat per person, never a shared login.** The connector acts as

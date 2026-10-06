@@ -17,18 +17,10 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { FirestoreClient } from './firestore.js';
 import { DEFAULT_APP_URL, login } from './login.js';
 import { CREDENTIALS_PATH, Session, deleteCredentials, loadCredentials } from './session.js';
-import { registerTools } from './tools.js';
+import { SERVER_INSTRUCTIONS, registerTools } from './tools.js';
 import { WorkspaceApi } from './workspace.js';
 
 const { version } = createRequire(import.meta.url)('../package.json');
-
-const INSTRUCTIONS = `Tools for AirBuddy Aerospace WorkSpace — the team's tasks, company roadmap milestones, work partners and checklists.
-You act as the signed-in employee and can do what their role and admin-granted permissions allow in the web app; the database's security rules enforce it.
-Call whoami first to see the role and permissions: roadmap.edit unlocks create_milestone/update_milestone, tasks.assign unlocks assign_task, tasks.viewAll lets list_my_work show somebody else's work. Admins hold all of them.
-This connector is read and write only: nothing can be deleted, archived or removed (tasks, milestones, checklist items, partners, assignees). If the user asks for that, tell them to do it in the web app.
-Start with list_my_work (or search_roadmap / browse_roadmap) to find ids, and get_work_item before changing something.
-Progress drives status: 0 pending, 1-99 in-progress, 100 completed (needs a completion_note).
-Dates are YYYY-MM-DD in India time. Confirm with the user before completing work, assigning tasks to other people or creating milestones.`;
 
 function buildApi() {
   const session = new Session(loadCredentials());
@@ -42,7 +34,7 @@ function buildApi() {
 async function serve() {
   const server = new McpServer(
     { name: 'airbuddy-workspace', version },
-    { instructions: INSTRUCTIONS },
+    { instructions: SERVER_INSTRUCTIONS },
   );
   registerTools(server, buildApi());
   await server.connect(new StdioServerTransport());

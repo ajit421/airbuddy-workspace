@@ -5,6 +5,16 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
 
+  // The hosted Claude connector (api/mcp.js, api/oauth.js) in local dev: run
+  // `npm run dev:connector` alongside `npm run dev`. Only these paths are
+  // proxied, so /api/gemini behaves as before.
+  server: {
+    proxy: Object.fromEntries(
+      ['/api/mcp', '/api/oauth', '/.well-known/oauth-protected-resource', '/.well-known/oauth-authorization-server']
+        .map((p) => [p, 'http://127.0.0.1:3001']),
+    ),
+  },
+
   build: {
     rollupOptions: {
       output: {

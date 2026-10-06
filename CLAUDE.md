@@ -11,7 +11,7 @@ npm run dev            # Vite dev server -> http://localhost:5173
 npm run build          # Production build -> dist/
 npm run preview        # Serve the built bundle
 npm run lint           # ESLint (dist/ and functions/ are globally ignored)
-npm test               # vitest run — 19 files, 434 tests (includes mcp/), ~6s
+npm test               # vitest run — 20 files, 449 tests (includes mcp/ and api/), ~6s
 
 npx vitest                                       # watch mode
 npx vitest run src/services/taskService.test.js  # single file
@@ -51,7 +51,7 @@ Emulator ports ([firebase.json](firebase.json)): functions 5001, firestore 8080,
 | Tier | Runs where | Notes |
 |---|---|---|
 | [src/](src/) | Browser | Talks to Firestore directly. ESLint **blocks `firebase-admin` imports here** — it bypasses all security rules. |
-| [api/](api/) | Vercel serverless | Only [api/gemini.js](api/gemini.js). |
+| [api/](api/) | Vercel serverless | [api/gemini.js](api/gemini.js), and the hosted Claude connector: [api/mcp.js](api/mcp.js) + [api/oauth.js](api/oauth.js) (logic in `api/_lib/`, which Vercel does not deploy as functions). |
 | [functions/](functions/) | Firebase (CommonJS, Node 22) | Firestore triggers + two crons. Blaze-only — see "Cloud Functions". |
 | [scripts/](scripts/) | Local Node, admin SDK | Gitignored. Needs `serviceAccountKey.json` at repo root. Run `--dry-run` first. |
 | [mcp/](mcp/) | Each employee's computer | `airbuddy-mcp`, a local stdio MCP server for their own Claude. Firestore **REST with the user's ID token** — rules apply. Own `package.json`. See "Claude connector". |
@@ -396,6 +396,8 @@ Things worth knowing before changing any of it:
 **Read and write only — nobody deletes or removes anything through it, admins included.** There is no delete/remove/archive tool, `update_milestone` only *adds* assignees, and `FirestoreClient.commit()` runs `assertNoRemoval()` on every write (rejects a document delete, a field delete via `updateMask`, and `removeAllFromArray`). `mcp/src/tools.test.js` fails the build if a destructive tool comes back. This is a client-side guarantee for Claude's use; the user's token could still delete via raw REST where rules allow, exactly as the web app can.
 
 **Access follows the three tiers: employee, admin, admin-granted permissions.** `roadmap.edit` unlocks `create_milestone`/`update_milestone` and whole-node edits on any milestone, `tasks.assign` unlocks `assign_task` (mirrors `createAdminTask`), `tasks.viewAll` unlocks `list_my_work` for somebody else. `hasPermission`, `PERMISSION_KEYS` and `MODULE_OPTIONS` in `mcp/src/workItems.js` are parity-tested copies — adding a catalog key means updating `PERMISSION_KEYS` there too. The signed-in profile is cached 60 s so a grant/revoke lands without restarting Claude. The admin "employee view" toggle does not apply here (rules don't know it either).
+
+**There is also a hosted version, for claude.ai web, Desktop and mobile** — `https://<deployment>/api/mcp`, added once by an org Owner (Connectors → Add → Custom → Web). It runs the same `registerTools`/`WorkspaceApi` from `mcp/src`, stateless, and still uses only the employee's own Firebase session (no `firebase-admin`): `api/_lib/oauth.js` is a small OAuth 2.1 server (DCR, PKCE S256, discovery via the `401` + `resource_metadata` Claude requires), sign-in is `/connect/claude?authreq=` posting the refresh token to `/api/oauth/approve`, and every token Claude holds is that session sealed with AES-GCM under `MCP_TOKEN_SECRET` (`api/_lib/seal.js`) — no token store. Redirects are allowlisted to `https://claude.ai/api/mcp/auth_callback` and loopback `/callback` on any port (Claude Code). `vercel.json` rewrites `/.well-known/oauth-*` and `/api/oauth/:op` before the SPA catch-all; keep that order. Local: `npm run dev:connector` beside `npm run dev` (Vite proxies only the connector paths). Tests: `api/_lib/connector.test.js`, and `api/_lib/connector.rules.emulator.test.js` with the other emulator suites.
 
 **Parity is enforced by tests.** `mcp/src/workItems.test.js` imports `NODE_ASSIGNEE_WRITABLE_FIELDS`, `normalizeTodos`, `computeHierarchy`, `sortNodesByDueDate`, `permissions.js` and `checkCanAddPartner` from `src/` and compares them with the copies in `mcp/src/workItems.js`. Changing one of those in `src/` means changing the copy too. A new field in a rules `hasOnly()` list needs the same treatment.
 
