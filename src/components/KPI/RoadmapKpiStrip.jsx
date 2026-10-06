@@ -184,7 +184,7 @@ function TopContributors({ contributors, allUsers }) {
                 </span>
                 {/* Avatar */}
                 {avatar ? (
-                  <img src={avatar} alt={name} className="w-7 h-7 rounded-full flex-shrink-0 object-cover" />
+                  <img referrerPolicy="no-referrer" src={avatar} alt={name} className="w-7 h-7 rounded-full flex-shrink-0 object-cover" />
                 ) : (
                   <div className="w-7 h-7 rounded-full bg-orange-muted border border-orange/30 flex items-center justify-center flex-shrink-0">
                     <span className="text-orange text-[10px] font-bold">{name[0]?.toUpperCase()}</span>

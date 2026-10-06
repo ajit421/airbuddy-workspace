@@ -366,7 +366,7 @@ function AdminAttendanceTable({ summaries, dateRange, onDrillDown }) {
                   <td className="px-5 py-3.5 whitespace-nowrap">
                     <div className="flex items-center gap-3">
                       {employee.avatar ? (
-                        <img src={employee.avatar} alt={employee.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
+                        <img referrerPolicy="no-referrer" src={employee.avatar} alt={employee.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
                       ) : (
                         <div className="w-8 h-8 rounded-full bg-orange/20 flex items-center justify-center shrink-0">
                           <span className="text-orange text-xs font-bold">
@@ -436,7 +436,7 @@ function EmployeeDrillDown({ employee, records, dateRange, onClose, approvedLeav
         <div className="flex items-center justify-between p-6 border-b border-border">
           <div className="flex items-center gap-3">
             {employee.avatar ? (
-              <img src={employee.avatar} alt={employee.name} className="w-10 h-10 rounded-full object-cover" />
+              <img referrerPolicy="no-referrer" src={employee.avatar} alt={employee.name} className="w-10 h-10 rounded-full object-cover" />
             ) : (
               <div className="w-10 h-10 rounded-full bg-orange/20 flex items-center justify-center">
                 <span className="text-orange font-bold">{(employee.name || '?')[0].toUpperCase()}</span>

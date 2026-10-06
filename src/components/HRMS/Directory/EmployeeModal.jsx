@@ -6,13 +6,18 @@
  *   isOpen    {boolean}       — controls visibility
  *   onClose   {function}      — called when the modal should dismiss
  *   onSaved   {function}      — called after a successful save so the parent can refresh
- *   employee  {Object|null}   — if set, the modal is in "edit" mode; null = "create" mode
- *   isAdmin   {boolean}       — when true the Salary Base field is visible
+ *   employee  {Object|null}   — if set, the modal is in "edit" mode; null = "invite" mode
+ *   isAdmin   {boolean}       — when true the Salary Base field is visible (edit mode only)
+ *   existingEmails {string[]} — emails already on the team, so an invite can't duplicate one
+ *
+ * "Add Employee" invites rather than creates: a profile is keyed by the Google
+ * sign-in uid, which only exists after the person's first sign-in. See
+ * inviteEmployee() in hrmsService.js.
  */
 
 import { useState, useEffect } from 'react';
 import {
-  addEmployee,
+  inviteEmployee,
   updateEmployee,
   getEmployeeCompensation,
   setEmployeeCompensation,
@@ -42,7 +47,7 @@ const inputCls = `w-full px-3 py-2 rounded-lg bg-background border border-border
   transition-colors`;
 
 // ─── Component ───────────────────────────────────────────────────────────────
-export default function EmployeeModal({ isOpen, onClose, onSaved, employee, isAdmin }) {
+export default function EmployeeModal({ isOpen, onClose, onSaved, employee, isAdmin, existingEmails = [] }) {
   // ── Form state ─────────────────────────────────────────────────────────────
   const [form, setForm] = useState({
     name: '',
@@ -113,7 +118,7 @@ export default function EmployeeModal({ isOpen, onClose, onSaved, employee, isAd
     };
     // Salary is saved separately, to the admin-only private doc
     let salaryBase = null;
-    if (isAdmin && form.salaryBase !== '') {
+    if (isAdmin && isEditing && form.salaryBase !== '') {
       salaryBase = parseFloat(form.salaryBase);
       if (isNaN(salaryBase) || salaryBase < 0) return setError('Salary Base must be a valid positive number.');
     }
@@ -126,7 +131,12 @@ export default function EmployeeModal({ isOpen, onClose, onSaved, employee, isAd
           await setEmployeeCompensation(employee.id, { salaryBase }, effectiveUid);
         }
       } else {
-        await addEmployee(payload);
+        const email = payload.email.toLowerCase();
+        if (existingEmails.some((e) => (e || '').toLowerCase() === email)) {
+          setSaving(false);
+          return setError('This person is already on the team. Use Edit on their row instead.');
+        }
+        await inviteEmployee(payload, effectiveUid);
       }
       onSaved(); // tell the parent to refresh the list
       onClose();
@@ -158,7 +168,9 @@ export default function EmployeeModal({ isOpen, onClose, onSaved, employee, isAd
               {isEditing ? 'Edit Employee' : 'Add Employee'}
             </h2>
             <p className="text-xs text-text-muted mt-0.5">
-              {isEditing ? 'Update HR details for this team member.' : 'Create a new employee record.'}
+              {isEditing
+                ? 'Update HR details for this team member.'
+                : 'Approves their email. They appear in the Directory, with these details, after their first Google sign-in.'}
             </p>
           </div>
           {/* Close button */}
@@ -237,8 +249,8 @@ export default function EmployeeModal({ isOpen, onClose, onSaved, employee, isAd
             />
           </Field>
 
-          {/* Salary Base — ADMIN ONLY: rendered only when isAdmin is true */}
-          {isAdmin && (
+          {/* Salary Base — admin only, and only when editing: an invite has no uid to key users/{uid}/private by yet */}
+          {isAdmin && isEditing && (
             <Field label="Salary Base (₹ / month)">
               <input
                 type="number"

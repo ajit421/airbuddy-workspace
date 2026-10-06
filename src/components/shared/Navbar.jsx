@@ -290,7 +290,7 @@ export default function Navbar({ onMenuToggle }) {
             className="flex items-center gap-2 btn-ghost px-2 py-1.5 rounded-lg"
           >
             {userProfile?.avatar ? (
-              <img src={userProfile.avatar} alt="" className="w-7 h-7 rounded-full" />
+              <img referrerPolicy="no-referrer" src={userProfile.avatar} alt="" className="w-7 h-7 rounded-full" />
             ) : (
               <div className="w-7 h-7 rounded-full bg-orange-muted border border-orange/30 flex items-center justify-center text-orange font-bold text-xs">
                 {userProfile?.name?.[0]?.toUpperCase() || 'U'}

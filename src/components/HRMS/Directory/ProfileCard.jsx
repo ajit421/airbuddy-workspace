@@ -103,6 +103,7 @@ function Avatar({ avatar, name, size = 'lg' }) {
   if (avatar && !imgError) {
     return (
       <img
+        referrerPolicy="no-referrer"
         src={avatar}
         alt={name}
         onError={() => setImgError(true)}

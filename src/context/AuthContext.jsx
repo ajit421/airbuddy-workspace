@@ -101,13 +101,25 @@ export const AuthProvider = ({ children }) => {
           const snap = await getDoc(profileRef);
 
           if (!snap.exists()) {
-            // First login — create profile with employee role
+            // First login — create profile with employee role. If an admin
+            // invited this email from the Directory's "Add Employee"
+            // (inviteEmployee in hrmsService), start from the details they
+            // entered. Readable: the allowed_emails rule lets you read your own.
+            let invite = {};
+            try {
+              const inviteSnap = await getDoc(doc(db, 'allowed_emails', firebaseUser.email));
+              if (inviteSnap.exists()) invite = inviteSnap.data();
+            } catch (err) {
+              console.error('[AuthContext] reading invite failed (non-fatal):', err);
+            }
             const newProfile = {
               uid: targetUid,
-              name: firebaseUser.displayName || 'Team Member',
+              name: invite.name || firebaseUser.displayName || 'Team Member',
               email: firebaseUser.email,
               role: 'employee',
               avatar: firebaseUser.photoURL || '',
+              ...(invite.department ? { department: invite.department } : {}),
+              ...(invite.designation ? { designation: invite.designation } : {}),
               createdAt: serverTimestamp(),
             };
             await setDoc(profileRef, newProfile);

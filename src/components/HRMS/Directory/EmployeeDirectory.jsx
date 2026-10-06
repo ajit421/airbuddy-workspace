@@ -52,6 +52,7 @@ function Avatar({ name, avatar }) {
   if (avatar) {
     return (
       <img
+        referrerPolicy="no-referrer"
         src={avatar}
         alt={name}
         className="w-9 h-9 rounded-full object-cover flex-shrink-0"
@@ -449,6 +450,7 @@ export default function EmployeeDirectory() {
         onSaved={fetchEmployees}   // refresh the list after any save
         employee={selectedEmployee}
         isAdmin={isAdmin}
+        existingEmails={employees.map((e) => e.email)}
       />
     </div>
   );

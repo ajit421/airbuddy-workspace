@@ -325,7 +325,7 @@ export default function Sidebar({ isOpen, onClose }) {
           
           <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-background">
             {userProfile?.avatar ? (
-              <img src={userProfile.avatar} alt="" className="w-8 h-8 rounded-full flex-shrink-0" />
+              <img referrerPolicy="no-referrer" src={userProfile.avatar} alt="" className="w-8 h-8 rounded-full flex-shrink-0" />
             ) : (
               <div className="w-8 h-8 rounded-full bg-orange-muted flex items-center justify-center text-orange font-bold text-sm flex-shrink-0">
                 {userProfile?.name?.[0]?.toUpperCase() || 'U'}

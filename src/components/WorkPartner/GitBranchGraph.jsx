@@ -184,7 +184,7 @@ function Tooltip({ tip }) {
         {/* Author */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, borderTop: '1px solid #21262d', paddingTop: 8 }}>
           {e.authorAvatar
-            ? <img src={e.authorAvatar} style={{ width: 18, height: 18, borderRadius: '50%' }} alt="" />
+            ? <img referrerPolicy="no-referrer" src={e.authorAvatar} style={{ width: 18, height: 18, borderRadius: '50%' }} alt="" />
             : <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff', fontWeight: 700 }}>
                 {e.authorName?.[0]?.toUpperCase()}
               </div>

@@ -169,6 +169,24 @@ describe.skipIf(!HOST)('admin-granted permissions vs firestore.rules (emulator)'
     await expectDenied(plain.commit([updateWrite(plain.docName('roadmapNodes/c'), { title: 'Hijack' })]));
   });
 
+  it('Add Employee: only an admin can invite; the invitee\'s first profile may carry the invited details', async () => {
+    const invite = { status: 'approved', name: 'New Hire', department: 'Engineering', designation: 'Intern' };
+    await expectDenied(mgr.commit([createWrite(mgr.docName('allowed_emails/new@gmail.com'), invite)]));
+    await boss.commit([createWrite(boss.docName('allowed_emails/new@gmail.com'), invite)]);
+
+    // First sign-in, as AuthContext does it: reads its own invite, creates its profile.
+    const newbie = clientAs('newbie', 'new@gmail.com');
+    expect((await newbie.get('allowed_emails/new@gmail.com')).department).toBe('Engineering');
+    await newbie.commit([createWrite(newbie.docName('users/newbie'), {
+      uid: 'newbie', name: 'New Hire', email: 'new@gmail.com', role: 'employee',
+      department: 'Engineering', designation: 'Intern',
+    })]);
+    // ...but can't change department afterwards (self-update deny list).
+    await expectDenied(newbie.commit([updateWrite(newbie.docName('users/newbie'), { department: 'HR' })]));
+    // and somebody else's invite stays unreadable (CR-5)
+    await expectDenied(plain.get('allowed_emails/new@gmail.com'));
+  });
+
   it('announcements: announcements.post can create, others cannot', async () => {
     const ann = { title: 'Hi', message: 'All hands', isRead: [] };
     await mgr.commit([createWrite(mgr.docName('announcements/a1'), ann)]);

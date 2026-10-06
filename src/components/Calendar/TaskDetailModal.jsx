@@ -9,7 +9,7 @@ import { formatDate, getDueDateLabel, getDueDateColor, isOverdue } from '../../u
 import { canEditTask, canUpdateProgress } from '../../utils/permissions';
 import { notifyUsers } from '../../services/notificationService';
 import { recordStatusChange, recordProgressUpdate } from '../../services/collaborationService';
-import { updateRoadmapTask } from '../../services/roadmapTaskService';
+import { updateRoadmapTask, deleteRoadmapTask } from '../../services/roadmapTaskService';
 import { updateNode, updateNodeAsAssignee } from '../../services/roadmapService';
 import WorkPartnersSection from '../WorkPartner/WorkPartnersSection';
 import TaskTimeline from '../WorkPartner/TaskTimeline';
@@ -303,10 +303,22 @@ export default function TaskDetailModal({ task, onClose }) {
 
     if (!canDelete) return;
 
+    if (isMilestone) return; // archived from the roadmap, never deleted here (would orphan its subtree)
+
     if (window.confirm('Are you sure you want to delete this task?')) {
       setSaving(true);
       try {
-        await deleteDoc(doc(db, 'tasks', task.id));
+        // A roadmap task lives at roadmapNodes/{nodeId}/tasks/{id} plus a
+        // best-effort root `tasks` mirror. Deleting only tasks/{id} "succeeds"
+        // even when the mirror was never written (a delete of a missing doc is
+        // not an error), so the modal closed and the task came back on refresh.
+        // The mirror carries roadmapNodeId; a source-only task carries nodeId.
+        const roadmapNodeId = task._mirrorOf === 'roadmap' ? task.roadmapNodeId : task.nodeId;
+        if (roadmapNodeId) {
+          await deleteRoadmapTask(roadmapNodeId, task.id);
+        } else {
+          await deleteDoc(doc(db, 'tasks', task.id));
+        }
         onClose();
       } catch (err) {
         console.error('Failed to delete task:', err);

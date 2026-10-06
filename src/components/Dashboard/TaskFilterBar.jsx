@@ -85,7 +85,7 @@ function EmployeeDropdown({ value, onChange, employeeList }) {
           </>
         ) : (
           <>
-            <img src={selectedEmployee.avatar} alt="" className="w-4 h-4 rounded-full flex-shrink-0 object-cover" />
+            <img referrerPolicy="no-referrer" src={selectedEmployee.avatar} alt="" className="w-4 h-4 rounded-full flex-shrink-0 object-cover" />
             <span className="truncate">{selectedEmployee.name}</span>
           </>
         )}
@@ -141,7 +141,7 @@ function EmployeeDropdown({ value, onChange, employeeList }) {
                   ${isFocused ? 'bg-surfaceHover' : ''}
                 `}
               >
-                <img src={emp.avatar} alt="" className="w-6 h-6 rounded-full flex-shrink-0 object-cover" />
+                <img referrerPolicy="no-referrer" src={emp.avatar} alt="" className="w-6 h-6 rounded-full flex-shrink-0 object-cover" />
                 <span className="truncate">{emp.name}</span>
                 {isSelected && <svg className="w-3.5 h-3.5 ml-auto flex-shrink-0 text-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
               </li>

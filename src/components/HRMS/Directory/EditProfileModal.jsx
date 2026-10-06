@@ -125,6 +125,7 @@ function AvatarPreview({ src, name }) {
   if (src && !imgError) {
     return (
       <img
+        referrerPolicy="no-referrer"
         src={src}
         alt="Preview"
         onError={() => setImgError(true)}

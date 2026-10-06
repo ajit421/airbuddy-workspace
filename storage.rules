@@ -14,17 +14,21 @@ rules_version = '2';
 //     roadmapAttachments/{nodeId}/{timestamp}_{safeName}
 //
 // Access model mirrors firestore.rules for the attachments subcollection:
-//   Read:   any signed-in user on the company domain or the allowed_emails
-//           whitelist (company-wide transparency, same as roadmap nodes)
+//   Read:   anybody isEmailAllowed() lets into the app (company-wide
+//           transparency, same as roadmap nodes)
 //   Write:  same audience, capped at 10 MB per object to match the
 //           `fileSize <= 10485760` check on the Firestore metadata document
 //   Delete: same audience — the Firestore attachment document is the real
 //           record, and its rule already restricts deletion to the uploader or
-//           an admin. Storage objects are unreadable without that document.
+//           an admin.
 //
-// NOTE: Storage rules cannot read Firestore, so the whitelist cannot be checked
-// here the way isEmailAllowed() does in firestore.rules. The domain check plus
-// authentication is the closest equivalent available.
+// isEmailAllowed() is the same check as in firestore.rules, read across
+// services with firestore.exists()/firestore.get(). This used to be just
+// `request.auth != null`, which let ANY Google account that could authenticate
+// against the project read, overwrite or delete roadmap attachments — including
+// a suspended external collaborator. Cross-service reads need the Storage
+// service agent to have Firestore read access: the first
+// `firebase deploy --only storage` with these rules offers to grant it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 service firebase.storage {
@@ -34,21 +38,27 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    // Same as isEmailAllowed() in firestore.rules — keep the two identical.
+    // @airbuddy.in is trusted; anybody else needs allowed_emails/{email} not
+    // suspended (status defaults to approved when absent).
+    function isEmailAllowed() {
+      let email = request.auth.token.email;
+      let ref   = /databases/(default)/documents/allowed_emails/$(email);
+      return isSignedIn() && email is string && (
+        email.matches('.*@airbuddy\\.in')
+        || (firestore.exists(ref) && firestore.get(ref).data.get('status', 'approved') == 'approved')
+      );
+    }
+
     function isUnderSizeLimit() {
       return request.resource.size <= 10 * 1024 * 1024;
     }
 
     // ── Roadmap attachments ─────────────────────────────────────────────────
-    // isSignedIn() is deliberately not narrowed to the @airbuddy.in domain:
-    // external collaborators on the allowed_emails whitelist upload here too,
-    // and that collection is unreachable from Storage rules. The Firestore
-    // attachment document — which does go through isEmailAllowed() — is what
-    // makes an object discoverable, so an unlisted account can authenticate
-    // but has nothing to look up.
     match /roadmapAttachments/{nodeId}/{fileName} {
-      allow read:           if isSignedIn();
-      allow create, update: if isSignedIn() && isUnderSizeLimit();
-      allow delete:         if isSignedIn();
+      allow read:           if isEmailAllowed();
+      allow create, update: if isEmailAllowed() && isUnderSizeLimit();
+      allow delete:         if isEmailAllowed();
     }
 
     // Everything else in the bucket is closed. Add an explicit match block

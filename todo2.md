@@ -5,9 +5,10 @@ their access allows (**employee**, **admin**, or **custom permissions** an admin
 grants). Through Claude, **nobody can delete or remove anything**, admins
 included.
 
-**Status (2026-10-06):** Parts A–C are done. The code is committed
-(`030fd78 Permission-gated MCP tools`). The doc changes (Part C) are **not
-committed yet**. What's left is **Part D: Your steps**, in order.
+**Status (2026-10-06, evening):** Parts A–C and Part F are done. The MCP code,
+docs and sidebar change are committed (`030fd78`, `2c699ff`, `533ebd3`). The
+Part F fixes are **not committed yet**. Of **Part D: Your steps**, steps 2 and 3
+were already done; what's left is marked ⬜ below.
 
 > **Two rules to remember**
 > 1. Hiding a tool is not access control. `firestore.rules` (`can('<key>')`) is
@@ -81,7 +82,7 @@ Done:
 - [x] Started the 0.2.0 server and called it like Claude does: 17 tools listed,
   none destructive; `whoami` works against the live database.
 
-## Part C: Docs ✅ (not committed yet)
+## Part C: Docs ✅ (committed)
 
 - [x] `mcp/README.md`: tools table with who-can-use-it, the no-removal rule.
 - [x] `src/docs/claude-connector.md` (the `/docs` page for the team):
@@ -98,29 +99,32 @@ Done:
 
 Do these **in this order**. Skip any step you have already done.
 
-### Step 1: Commit the docs
-`CLAUDE.md`, `mcp/README.md`, `src/docs/claude-connector.md`, and this file.
+### Step 1 ⬜: Commit and push everything that's uncommitted
+You do all git. `git status` lists it: the Part F fixes and this file. Pushing `main` is what deploys the website on Vercel, so
+after this push the photo fix, Add Employee and the task-delete fix go live for
+the team.
 
-### Step 2: Finish the permissions rollout (from the old todo, if not done yet)
-The MCP permission checks depend on these being live.
+### Step 2 ✅: Permissions rollout (already done, checked 2026-10-06)
+1. Rules deployed: an admin can read `users/{uid}/private/compensation`,
+   which the old rules blocked.
+2. Salary migration: nothing to move. No `users` doc has `salaryBase`, and no
+   salary was ever saved, so you can skip the script.
+3. Website deployed: production already shows Admin Panel → Permissions.
 
-1. Deploy the rules: `npx firebase-tools deploy --only firestore:rules`
-2. Move the salaries: `node scripts/migrateSalaryToPrivate.cjs --dry-run`, check
-   the list, then run it again without `--dry-run`.
-3. Deploy the website: `npx vercel --prod`
-
-### Step 3: Update the connector on **your own** computer first
-Your Claude is still running **0.1.0, which still has the delete tools**.
-
+### Step 2b ⬜: Deploy the new storage rules (Part F, fix 3)
 ```powershell
-cd D:\Code\Work_flow\mcp
-npm install -g .
-airbuddy-mcp status        # should say: Signed in as ... (admin)
+npx firebase-tools deploy --only storage
 ```
+The first time, the CLI asks to let Cloud Storage read Firestore
+(the cross-service rules need it). Answer **Yes**. If you answer no, every
+attachment upload and download is refused, so check one in the Roadmap →
+Attachments tab afterwards.
 
-Then **restart Claude** (Claude Code: close and reopen; Desktop: quit fully).
+### Step 3 ✅: Connector on your computer is 0.2.0
+`airbuddy-mcp --version` → `0.2.0`. Restart Claude Code/Desktop once if it was
+open from before, so it loads the new tools.
 
-### Step 4: Check it as yourself (admin)
+### Step 4 ⬜: Check it as yourself (admin)
 Ask your Claude:
 1. *"What can you do for me in WorkSpace?"* → role `admin`, all permissions,
    "never allowed: deleting or removing anything".
@@ -128,7 +132,7 @@ Ask your Claude:
    the app.
 3. *"Remove <name> as work partner from <task>"* → same.
 
-### Step 5: Check it as an employee (the important test)
+### Step 5 ⬜: Check it as an employee (the important test)
 An admin account passes everything, so this is what proves the restrictions.
 
 1. Use a test employee account (or a teammate's computer, with their OK).
@@ -142,7 +146,7 @@ An admin account passes everything, so this is what proves the restrictions.
    again → works. Archive the test milestone afterwards **in the web app**.
 8. Revoke it again → within a minute Claude is refused again.
 
-### Step 6: Roll out to the team
+### Step 6 ⬜: Roll out to the team
 1. Share `mcp/airbuddy-workspace-mcp-0.2.0.tgz` (Drive/Slack). Delete the old
    `airbuddy-workspace-mcp-0.1.0.tgz` so nobody installs it by mistake.
 2. Each person follows `/docs/claude-connector` in the app:
@@ -152,12 +156,20 @@ An admin account passes everything, so this is what proves the restrictions.
 4. Set each person's permissions in Admin Panel → Permissions **before** they
    start using it.
 
-### Step 7: Decide on the open questions
+### Step 7 ⬜: Decide on the open questions
 1. **KPI view:** should KPI pages stay visible to every employee, or need a new
    `kpi.view` permission? (Carried over from the old todo.)
 2. **More tools for Claude?** Today the connector covers tasks and roadmap
    only. The other permissions (HRMS, KPI, announcements) have no tool yet, so
    they grant nothing in Claude. See Part E.
+
+### Step 8 ⬜: Try "Add Employee" once for real
+HRMS → Directory → **Add Employee** → enter a new person's name and email →
+Add. It now **approves their email** (needed for a gmail address) and keeps
+the department/designation. They show up in the Directory after their first
+Google sign-in, with those details already filled in. (Only checked with an
+email that's already on the team, which is correctly refused; a real invite
+writes to production, so that one is yours to try.)
 
 ---
 
@@ -184,17 +196,51 @@ emulator test as an employee.
   the Claude subscription notes below. Big job: it needs hosting and a proper
   OAuth sign-in. Keep the same rule: user's own token, never `firebase-admin`.
 
-## Known bugs (not MCP, still open)
+## Part F: Problems found in the browser and fixed (not committed) ✅
 
-- Deleting a roadmap task from `TaskDetailModal` silently does nothing (see
-  CLAUDE.md).
-- "Add Employee" in the Directory has never worked (`addEmployee(payload)` vs
-  `addEmployee(uid, data)`).
-- `storage.rules`: roadmap attachments are open to any signed-in Google account.
+Found by opening the app on `localhost:5173` as admin and going through the
+pages.
+
+1. **Profile photos broken** in Admin Panel, Directory, Attendance and others
+   (alt text spilling over names). Cause: Google refuses `lh3.googleusercontent.com`
+   avatar images when the request carries a `Referer` header, and loads them
+   without one. Fix: `referrerPolicy="no-referrer"` on the 19 avatar `<img>`
+   tags only. Not set site-wide, because a referrer-restricted Firebase API key
+   needs that header. Checked: 0 broken photos on `/`, `/admin`, `/team`,
+   `/work-partner`, `/hrms/attendance`, `/hrms/directory`, `/kpi`.
+2. **"Add Employee" never worked.** A profile is keyed by the Google sign-in
+   uid, which doesn't exist before the first sign-in. Fix: `inviteEmployee()`
+   in `hrmsService.js` approves the email in `allowed_emails` and keeps the HR
+   details there; `AuthContext` copies them into the new profile on first
+   sign-in. Refuses an email already on the team. Salary field hidden while
+   adding (set it with Edit after they join). No rules change needed. Checked in
+   the emulator (`permissions.rules.emulator.test.js`): only an admin can invite,
+   the first profile may carry the details, the employee can't change department
+   later, nobody else can read the invite.
+3. **Roadmap attachments open to any Google account** (`storage.rules` only
+   checked "signed in"). Fix: the same `isEmailAllowed()` as `firestore.rules`,
+   reading `allowed_emails` across services. Emulator: `@airbuddy.in` ✅, approved
+   outsider ✅, unlisted outsider ❌, suspended outsider ❌. **Needs Step 2b.**
+4. **Deleting a roadmap task from the task dialog silently did nothing.**
+   Fix: `TaskDetailModal` routes roadmap tasks to `deleteRoadmapTask()` (source +
+   mirror + progress rollup). Milestones still can't be deleted there. Checked
+   the dialog still opens from the Dashboard and the Calendar with no console
+   errors (Delete itself not pressed, since it would remove real data).
+5. **Sidebar** (committed in `533ebd3`): the duplicate "Connect Claude" link is removed; the guide is only
+   under Documentation.
+
+Checks after all fixes: `npm test` 434 passed; emulator rules tests 24 passed;
+`npm run lint` 0 errors (same 51 accepted warnings); `npm run build` OK.
+
+## Still open (decisions, not bugs to fix in code)
+
 - A non-admin with `tasks.assign` can create an assigned task but can't edit its
   progress afterwards unless they are on it (the `tasks` full-update rule is
-  `isAdmin()` only). Claude reports the rules refusal clearly. Decide if that's
-  intended.
+  `isAdmin()` only). Decide if that's intended.
+- 4 of the team are on gmail: no Google Calendar sync for them until they get
+  `@airbuddy.in` accounts.
+- No screen to suspend an outside email yet: set
+  `allowed_emails/{email}.status = 'suspended'` in the Firebase console.
 
 ---
 

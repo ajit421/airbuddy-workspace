@@ -74,41 +74,46 @@ export async function getAllEmployees() {
   }
 }
 
-// ─── addEmployee ─────────────────────────────────────────────────────────────
+// ─── inviteEmployee ──────────────────────────────────────────────────────────
+const InviteSchema = z.object({
+  name:        z.string().trim().min(1, 'Name is required'),
+  email:       z.email('Must be a valid email').transform((e) => e.trim().toLowerCase()),
+  department:  z.string().optional().default(''),
+  designation: z.string().optional().default(''),
+});
+
 /**
- * Creates a new document in the `users` collection for an already-existing
- * Firebase Auth account.
+ * The Directory's "Add Employee". Admin only (allowed_emails is admin-write).
  *
- * ME-2 fix: The previous implementation used `addDoc` which auto-generates a
- * random Firestore ID — producing orphaned records that can never be linked to
- * a Google OAuth login. Now uses `setDoc(doc(db, 'users', uid), ...)` so the
- * Firestore document ID matches the Firebase Auth UID.
+ * A profile cannot be created up front: users/{uid} is keyed by the Firebase
+ * Auth uid, which does not exist until the person first signs in with Google.
+ * The old addEmployee(uid, data) needed that uid, so the modal's
+ * addEmployee(payload) call always threw and "Add Employee" never worked.
  *
- * ⚠️  IMPORTANT: `uid` MUST be a real Firebase Auth UID.
- * The preferred self-onboarding flow is: user signs in with Google → AuthContext
- * auto-creates their profile. Only use this function if you already have an Auth
- * UID (e.g., created server-side via Admin SDK).
+ * Instead this approves the email in allowed_emails/{email} (required for
+ * anybody outside @airbuddy.in, harmless for @airbuddy.in) and parks the HR
+ * details there. AuthContext copies name/department/designation into the new
+ * profile on their first sign-in — so they appear in the Directory from then on.
+ * Merged, so re-inviting a suspended email re-approves it without losing fields.
  *
- * @param {string} uid  - Firebase Auth UID (document ID in `users` collection).
- * @param {Object} data - Employee data:
- *   { name, email, role, department, designation }
- * @returns {Promise<void>}
+ * @param {{name: string, email: string, department?: string, designation?: string}} data
+ * @param {string} adminUid - effectiveUid of the inviting admin
+ * @returns {Promise<string>} the normalized email
  */
-export async function addEmployee(uid, data) {
-  if (!uid) throw new Error('[hrmsService] addEmployee: uid is required');
+export async function inviteEmployee(data, adminUid) {
   try {
-    // LO-6 fix: validate data before writing to Firestore
-    const validated = EmployeeCreateSchema.parse(data);
-    await setDoc(doc(db, USERS_COLLECTION, uid), {
-      uid,
-      ...validated,
-      // Ensure role always has a safe default
-      role: validated.role || 'employee',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    const v = InviteSchema.parse(data);
+    await setDoc(doc(db, 'allowed_emails', v.email), {
+      status:      'approved',
+      name:        v.name,
+      department:  v.department,
+      designation: v.designation,
+      invitedBy:   adminUid,
+      invitedAt:   serverTimestamp(),
+    }, { merge: true });
+    return v.email;
   } catch (err) {
-    console.error('[hrmsService] addEmployee failed:', err);
+    console.error('[hrmsService] inviteEmployee failed:', err);
     throw err;
   }
 }

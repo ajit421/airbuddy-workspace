@@ -32,6 +32,7 @@ function PartnerAvatar({ name, avatar }) {
   if (avatar) {
     return (
       <img
+        referrerPolicy="no-referrer"
         src={avatar}
         alt={name}
         className="w-6 h-6 rounded-full object-cover flex-shrink-0"

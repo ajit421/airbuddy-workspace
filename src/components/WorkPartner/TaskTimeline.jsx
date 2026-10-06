@@ -30,6 +30,7 @@ function EventAvatar({ name, avatar, size = 'sm' }) {
   if (avatar) {
     return (
       <img
+        referrerPolicy="no-referrer"
         src={avatar}
         alt={name}
         className={`${dim} rounded-full object-cover flex-shrink-0`}

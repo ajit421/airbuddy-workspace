@@ -22,6 +22,7 @@ function SelectorAvatar({ name, avatar, size = 9 }) {
   if (avatar) {
     return (
       <img
+        referrerPolicy="no-referrer"
         src={avatar}
         alt={name}
         className={`${sz} rounded-full object-cover flex-shrink-0 ring-2 ring-border`}

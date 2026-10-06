@@ -44,7 +44,7 @@ const TeamOverview = ({ users, allTasks }) => {
               <tr key={u.uid} className="hover:bg-surfaceHover transition-colors">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    {u.avatar ? <img src={u.avatar} className="w-7 h-7 rounded-full" alt="" /> :
+                    {u.avatar ? <img referrerPolicy="no-referrer" src={u.avatar} className="w-7 h-7 rounded-full" alt="" /> :
                       <div className="w-7 h-7 rounded-full bg-orange-muted flex items-center justify-center text-orange font-bold text-xs">{u.name?.[0]?.toUpperCase()}</div>}
                     <span className="font-medium text-text-primary text-sm">{u.name}</span>
                   </div>
@@ -186,7 +186,7 @@ const AssignTask = ({ users }) => {
                 : 'border-border bg-surface text-text-secondary hover:border-orange/40'
                 }`}
             >
-              {u.avatar ? <img src={u.avatar} className="w-5 h-5 rounded-full" alt="" /> :
+              {u.avatar ? <img referrerPolicy="no-referrer" src={u.avatar} className="w-5 h-5 rounded-full" alt="" /> :
                 <div className="w-5 h-5 rounded-full bg-orange-muted flex items-center justify-center text-orange font-bold text-xs">{u.name?.[0]?.toUpperCase()}</div>}
               <span className="truncate text-xs font-medium">{u.name}</span>
             </button>
@@ -423,7 +423,7 @@ const EmployeeManagement = ({ users }) => (
     {users.map(u => (
       <div key={u.uid} className="card">
         <div className="flex items-center gap-3 mb-3">
-          {u.avatar ? <img src={u.avatar} className="w-10 h-10 rounded-full border-2 border-border" alt="" /> :
+          {u.avatar ? <img referrerPolicy="no-referrer" src={u.avatar} className="w-10 h-10 rounded-full border-2 border-border" alt="" /> :
             <div className="w-10 h-10 rounded-full bg-orange-muted border-2 border-orange/30 flex items-center justify-center text-orange font-bold">{u.name?.[0]?.toUpperCase()}</div>}
           <div>
             <p className="font-semibold text-text-primary text-sm">{u.name}</p>

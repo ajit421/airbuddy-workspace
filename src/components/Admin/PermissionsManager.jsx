@@ -23,7 +23,7 @@ import { updateUserPermissions, normalizePermissions } from '../../services/perm
 
 const Avatar = ({ user, size = 'w-10 h-10' }) => (
   user.avatar
-    ? <img src={user.avatar} className={`${size} rounded-full border-2 border-border flex-shrink-0`} alt="" />
+    ? <img referrerPolicy="no-referrer" src={user.avatar} className={`${size} rounded-full border-2 border-border flex-shrink-0`} alt="" />
     : (
       <div className={`${size} rounded-full bg-orange-muted border-2 border-orange/30 flex items-center justify-center text-orange font-bold flex-shrink-0`}>
         {user.name?.[0]?.toUpperCase() || '?'}
