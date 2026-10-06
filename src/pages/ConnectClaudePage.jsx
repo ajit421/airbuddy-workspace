@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { firebaseConfig } from '../services/firebase';
 
@@ -82,6 +82,9 @@ export default function ConnectClaudePage() {
           This page is opened by <code className="text-orange">airbuddy-mcp login</code>. Run that command on the
           computer where Claude is installed and it will bring you back here.
         </p>
+        <Link to="/docs/claude-connector" className="btn-secondary w-full mt-6 inline-flex justify-center">
+          Read the setup guide
+        </Link>
       </>
     );
   } else if (loading) {
