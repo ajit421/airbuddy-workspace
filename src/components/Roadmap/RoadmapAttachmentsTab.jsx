@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { canEditRoadmapStructure } from '../../utils/permissions';
 import {
   subscribeToAttachments,
   uploadAttachment,
@@ -61,7 +60,9 @@ function FileIcon({ mimeType, className = 'w-5 h-5' }) {
 
 export default function RoadmapAttachmentsTab({ nodeId }) {
   const { userProfile, effectiveUid } = useAuth();
-  const isAdmin = canEditRoadmapStructure(userProfile);
+  // Moderation (delete anyone's) stays admin-only, matching firestore.rules;
+  // roadmap.edit grants structure editing, not this.
+  const isAdmin = userProfile?.role === 'admin';
   const uid     = effectiveUid ?? userProfile?.uid;
 
   const [attachments,  setAttachments]  = useState([]);

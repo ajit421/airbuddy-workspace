@@ -18,6 +18,12 @@ export const docsConfig = [
     file: () => import('./company-roadmap.md?raw'),
   },
   {
+    id: 'permissions',
+    title: 'Permissions',
+    icon: '🔐',
+    file: () => import('./permissions.md?raw'),
+  },
+  {
     id: 'claude-connector',
     title: 'Connect your Claude',
     icon: '🤖',

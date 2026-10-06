@@ -8,6 +8,8 @@
 import {
   collection,
   getDocs,
+  getDoc,
+  setDoc,
   doc,
   addDoc,
   updateDoc,
@@ -35,7 +37,6 @@ const EmployeeCreateSchema = z.object({
   role:        z.enum(['admin', 'employee']).default('employee'),
   department:  z.string().optional(),
   designation: z.string().optional(),
-  salaryBase:  z.number().nonnegative().optional(),
   avatar:      z.string().optional(),
 });
 
@@ -48,7 +49,8 @@ const EmployeeUpdateSchema = EmployeeCreateSchema.partial();
  *
  * Existing fields per document: { uid, name, email, role, avatar }
  * Extended HRMS fields (may be absent on older docs):
- *   { department, designation, joinDate (Timestamp), salaryBase }
+ *   { department, designation, joinDate (Timestamp) }
+ * Pay is not on this document — see getEmployeeCompensation().
  *
  * @returns {Promise<Array<Object>>} Array of user objects, each with Firestore doc `id`.
  */
@@ -89,7 +91,7 @@ export async function getAllEmployees() {
  *
  * @param {string} uid  - Firebase Auth UID (document ID in `users` collection).
  * @param {Object} data - Employee data:
- *   { name, email, role, department, designation, salaryBase? }
+ *   { name, email, role, department, designation }
  * @returns {Promise<void>}
  */
 export async function addEmployee(uid, data) {
@@ -97,7 +99,6 @@ export async function addEmployee(uid, data) {
   try {
     // LO-6 fix: validate data before writing to Firestore
     const validated = EmployeeCreateSchema.parse(data);
-    const { setDoc } = await import('firebase/firestore');
     await setDoc(doc(db, USERS_COLLECTION, uid), {
       uid,
       ...validated,
@@ -132,6 +133,54 @@ export async function updateEmployee(uid, data) {
     });
   } catch (err) {
     console.error(`[hrmsService] updateEmployee failed for uid "${uid}":`, err);
+    throw err;
+  }
+}
+
+// ─── Compensation (admin-only) ───────────────────────────────────────────────
+// Pay lives at users/{uid}/private/compensation, not on users/{uid}: every
+// allowed user can read users/{uid} (the Team Members grid needs it), while
+// firestore.rules lets only admins read or write the `private` subcollection.
+const CompensationSchema = z.object({
+  salaryBase: z.number().nonnegative(),
+});
+
+const compensationRef = (uid) => doc(db, USERS_COLLECTION, uid, 'private', 'compensation');
+
+/**
+ * Reads an employee's pay. Admin-only — rejected by the rules for anyone else.
+ *
+ * @param {string} uid
+ * @returns {Promise<{ salaryBase: number } | null>} null when none is recorded.
+ */
+export async function getEmployeeCompensation(uid) {
+  try {
+    const snap = await getDoc(compensationRef(uid));
+    return snap.exists() ? snap.data() : null;
+  } catch (err) {
+    console.error(`[hrmsService] getEmployeeCompensation failed for uid "${uid}":`, err);
+    throw err;
+  }
+}
+
+/**
+ * Sets an employee's pay. Admin-only.
+ *
+ * @param {string} uid
+ * @param {{ salaryBase: number }} data
+ * @param {string} adminUid - effectiveUid of the admin making the change.
+ * @returns {Promise<void>}
+ */
+export async function setEmployeeCompensation(uid, data, adminUid) {
+  try {
+    const validated = CompensationSchema.parse(data);
+    await setDoc(compensationRef(uid), {
+      ...validated,
+      updatedBy: adminUid,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  } catch (err) {
+    console.error(`[hrmsService] setEmployeeCompensation failed for uid "${uid}":`, err);
     throw err;
   }
 }

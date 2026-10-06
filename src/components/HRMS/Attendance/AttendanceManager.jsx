@@ -470,8 +470,10 @@ function EmployeeDrillDown({ employee, records, dateRange, onClose, approvedLeav
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AttendanceManager() {
-  const { userProfile, isAdmin } = useAuth();
+  const { userProfile, can } = useAuth();
   const uid = userProfile?.uid;
+  // Team-wide view: admins, or anyone granted hrms.attendance (permissionCatalog.js)
+  const isAdmin = can('hrms.attendance');
 
   // ── Employee view state ──
   const [records, setRecords]   = useState([]);

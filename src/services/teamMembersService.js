@@ -56,6 +56,11 @@ export function subscribeToAllUsers(onData, onError) {
           designation: data.designation ?? '',
           joinDate:    data.joinDate    ?? null,
           createdAt:   data.createdAt   ?? null,
+          // Admin-granted permissions (permissionCatalog.js) — the Admin Panel's
+          // Permissions tab reads these.
+          permissions:          data.permissions          ?? {},
+          permissionsUpdatedBy: data.permissionsUpdatedBy ?? null,
+          permissionsUpdatedAt: data.permissionsUpdatedAt ?? null,
         };
       });
 

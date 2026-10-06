@@ -7,7 +7,11 @@ import { subscribeToAssignedNodes, subscribeToAllAssignedNodes } from '../servic
 const TaskContext = createContext(null);
 
 export const TaskProvider = ({ children }) => {
-  const { user, isAdmin, effectiveUid } = useAuth();
+  const { user, can, effectiveUid } = useAuth();
+  // Company-wide task list: admins, or anyone granted tasks.viewAll
+  // (permissionCatalog.js); firestore.rules lets both read every task.
+  // A boolean, so it is safe in the effect's dependency list.
+  const seeAllTasks = can('tasks.viewAll');
   const [allTasks, setAllTasks] = useState([]);
   const [allUsers, setAllUsers] = useState({});
   const [loading, setLoading] = useState(true);
@@ -64,11 +68,11 @@ export const TaskProvider = ({ children }) => {
       console.error('Roadmap node listener (assignedTo) error:', err);
       setAssignedNodes([]);
     };
-    const unsubAssignedNodes = isAdmin
+    const unsubAssignedNodes = seeAllTasks
       ? subscribeToAllAssignedNodes(onNodes, onNodesError)
       : subscribeToAssignedNodes(effectiveUid, onNodes, onNodesError);
 
-    if (isAdmin) {
+    if (seeAllTasks) {
       // Admin: fetch all tasks
       const adminQuery = query(collection(db, 'tasks'), orderBy('createdAt', 'desc'));
       unsubTasks = onSnapshot(adminQuery, (snap) => {
@@ -145,14 +149,14 @@ export const TaskProvider = ({ children }) => {
       unsubTasks();
       unsubAssignedNodes();
     };
-  }, [user, isAdmin, effectiveUid]);
+  }, [user, seeAllTasks, effectiveUid]);
 
   // ME-3 fix: merge the two employee query slices via useMemo.
   // This is atomic — React computes it in a single synchronous pass after
   // both state slices have been updated, so the intermediate "half-clear"
   // state that caused the race condition cannot occur here.
   const tasks = useMemo(() => {
-    if (isAdmin) return allTasks; // admin path uses allTasks directly
+    if (seeAllTasks) return allTasks; // admin path uses allTasks directly
 
     // Wait until all snapshots have been received at least once
     if (assignedTasks === null || partnerTasks === null || roadmapAssignedTasks === null) return [];
@@ -170,7 +174,7 @@ export const TaskProvider = ({ children }) => {
       return dateA - dateB;
     });
     return merged;
-  }, [isAdmin, allTasks, assignedTasks, partnerTasks, roadmapAssignedTasks]);
+  }, [seeAllTasks, allTasks, assignedTasks, partnerTasks, roadmapAssignedTasks]);
 
   // The viewer's work list: `tasks` plus the roadmap milestones assigned to
   // them. This — not `tasks` — is what the Dashboard's counters and "due this

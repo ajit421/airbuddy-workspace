@@ -50,7 +50,9 @@ export default function IndustriesPanel() {
     getClientsForIndustry,
     getProductsForIndustry,
   } = useKpi();
-  const { isAdmin } = useAuth();
+  const { can } = useAuth();
+  // Add/edit/delete: admins, or anyone granted kpi.edit (permissionCatalog.js)
+  const isAdmin = can('kpi.edit');
   const { viewMode } = useViewMode();
 
   const [modalOpen, setModalOpen] = useState(false);

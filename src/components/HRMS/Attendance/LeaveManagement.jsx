@@ -472,7 +472,9 @@ function PendingApprovals({ adminUid }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function LeaveManagement() {
-  const { userProfile, isAdmin } = useAuth();
+  const { userProfile, can } = useAuth();
+  // Approvals: admins, or anyone granted hrms.leaves (permissionCatalog.js)
+  const isAdmin = can('hrms.leaves');
   const uid = userProfile?.uid;
 
   const [myLeaves, setMyLeaves]       = useState([]);

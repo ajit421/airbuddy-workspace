@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import RoleBadge from './RoleBadge';
+import { ADMIN_PANEL_PERMISSIONS } from '../../utils/permissionCatalog';
 
 const CLAUDE_GUIDE_PATH = '/docs/claude-connector';
 
@@ -95,7 +96,10 @@ const navItems = [
 ];
 
 export default function Sidebar({ isOpen, onClose }) {
-  const { userProfile, isAdmin, realIsAdmin, isEmployeeView, toggleEmployeeView } = useAuth();
+  const { userProfile, realIsAdmin, isEmployeeView, toggleEmployeeView, can } = useAuth();
+  // Hiding a link is not access control — PermissionRoute in App.jsx and
+  // can() in firestore.rules enforce the same keys.
+  const showAdminPanel = ADMIN_PANEL_PERMISSIONS.some(can);
 
   const getLinkClass = ({ isActive }) =>
     isActive ? 'sidebar-link-active' : 'sidebar-link';
@@ -163,7 +167,7 @@ export default function Sidebar({ isOpen, onClose }) {
             ))}
           </ul>
 
-          {isAdmin && (
+          {showAdminPanel && (
             <>
               <p className="text-xs text-text-muted font-semibold uppercase tracking-wider px-3 mt-6 mb-3">
                 Administration
@@ -187,15 +191,15 @@ export default function Sidebar({ isOpen, onClose }) {
 
           {/* HRMS Section */}
           {/* All users see the HRMS header (employees have Leaves).         */}
-          {/* Admin-only pages are hidden from employees in both sidebar AND  */}
-          {/* route guards (App.jsx AdminRoute), matching ME-1 fix.          */}
+          {/* Team-wide pages show only with their permission, in both the   */}
+          {/* sidebar AND route guards (App.jsx PermissionRoute), per ME-1.  */}
           <>
             <p className="text-xs text-text-muted font-semibold uppercase tracking-wider px-3 mt-6 mb-3">
               HRMS
             </p>
             <ul className="space-y-1">
-              {/* Directory — Admin only */}
-              {isAdmin && (
+              {/* Directory — hrms.directory */}
+              {can('hrms.directory') && (
                 <li>
                   <NavLink to="/hrms/directory" className={getLinkClass} onClick={onClose}>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -205,8 +209,8 @@ export default function Sidebar({ isOpen, onClose }) {
                   </NavLink>
                 </li>
               )}
-              {/* Attendance — Admin only */}
-              {isAdmin && (
+              {/* Attendance — hrms.attendance */}
+              {can('hrms.attendance') && (
                 <li>
                   <NavLink to="/hrms/attendance" className={getLinkClass} onClick={onClose}>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -225,8 +229,8 @@ export default function Sidebar({ isOpen, onClose }) {
                   <span>Leaves</span>
                 </NavLink>
               </li>
-              {/* Recruitment — Admin only */}
-              {isAdmin && (
+              {/* Recruitment — hrms.recruitment */}
+              {can('hrms.recruitment') && (
                 <li>
                   <NavLink to="/hrms/recruitment" className={getLinkClass} onClick={onClose}>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -236,8 +240,8 @@ export default function Sidebar({ isOpen, onClose }) {
                   </NavLink>
                 </li>
               )}
-              {/* Performance Dashboard — Admin only */}
-              {isAdmin && (
+              {/* Performance Dashboard — hrms.performance */}
+              {can('hrms.performance') && (
                 <li>
                   <NavLink to="/hrms/performance" className={getLinkClass} onClick={onClose}>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

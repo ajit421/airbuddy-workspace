@@ -522,8 +522,10 @@ function ChartsSection({ reviews, selectedName }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function PerformanceDashboard() {
-  const { userProfile, isAdmin } = useAuth();
+  const { userProfile, can } = useAuth();
   const uid = userProfile?.uid;
+  // Everyone's reviews: admins, or anyone granted hrms.performance (permissionCatalog.js)
+  const isAdmin = can('hrms.performance');
 
   // All reviews (admin) or own reviews (employee)
   const [allReviews, setAllReviews]     = useState([]);

@@ -68,6 +68,15 @@ export default defineConfig([
       ],
     },
   },
+  // Emulator rules tests run under Node against the Firestore emulator
+  // (process.env.FIRESTORE_EMULATOR_HOST, Buffer for fake tokens), even when
+  // they sit under src/ beside the service they cover.
+  {
+    files: ['**/*.emulator.test.js'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
   // Node.js globals for Vercel serverless API routes (api/ directory)
   {
     files: ['api/**/*.{js,cjs,mjs}'],

@@ -6,6 +6,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../services/firebase';
+import { hasPermission } from '../utils/permissions';
 import { requestBrowserNotifPermission } from '../services/notificationService';
 import {
   enablePushNotifications,
@@ -41,6 +42,11 @@ export const AuthProvider = ({ children }) => {
       }
 
       if (firebaseUser) {
+        // Held until the first profile snapshot (below). Route guards read
+        // `isAdmin` off the profile, so releasing `loading` any earlier let
+        // AdminRoute see a null profile on a hard refresh of /admin and
+        // redirect an admin to the Dashboard.
+        setLoading(true);
         try {
           // ── Access Gate ───────────────────────────────────────────────────────
           // Rule: @airbuddy.in domain emails are automatically trusted (company domain).
@@ -108,12 +114,20 @@ export const AuthProvider = ({ children }) => {
           }
 
           // LO-3 fix: subscribe to user's own profile doc for real-time role/avatar updates.
+          let profileReady = false;
+          const markProfileReady = () => {
+            if (profileReady) return;
+            profileReady = true;
+            setLoading(false);
+          };
           unsubProfile = onSnapshot(profileRef, (profileSnap) => {
             if (profileSnap.exists()) {
               setUserProfile(profileSnap.data());
             }
+            markProfileReady();
           }, (err) => {
             console.error('Error in user profile real-time listener:', err);
+            markProfileReady();
           });
 
           // Register this device for background push (Cloud Functions send it).
@@ -137,13 +151,16 @@ export const AuthProvider = ({ children }) => {
           setUser(null);
           setEffectiveUid(null);
           setUserProfile(null);
+          setLoading(false);
         }
       } else {
         setUser(null);
         setEffectiveUid(null);
         setUserProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
+      // A signed-in user's `loading` is released by the first profile
+      // snapshot (markProfileReady above), not here.
     });
 
     return () => {
@@ -202,11 +219,18 @@ export const AuthProvider = ({ children }) => {
   const realIsAdmin = userProfile?.role === 'admin';
   const isAdmin = realIsAdmin && !isEmployeeView;
   const toggleEmployeeView = () => setIsEmployeeView(prev => !prev);
+  // Admin-granted permissions (src/utils/permissionCatalog.js). An admin in
+  // "Viewing as Employee" mode gets none, so the toggle still shows exactly
+  // what a plain employee sees; an employee gets whatever was granted.
+  const can = (key) => {
+    if (realIsAdmin) return !isEmployeeView;
+    return hasPermission(userProfile, key);
+  };
 
   return (
     <AuthContext.Provider value={{
       user, userProfile, effectiveUid, loading, signInWithGoogle, signOut,
-      isAdmin, realIsAdmin, isEmployeeView, toggleEmployeeView,
+      isAdmin, realIsAdmin, isEmployeeView, toggleEmployeeView, can,
       authError, clearAuthError
     }}>
       {children}

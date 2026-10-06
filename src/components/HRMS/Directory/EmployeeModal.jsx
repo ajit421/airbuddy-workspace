@@ -11,7 +11,13 @@
  */
 
 import { useState, useEffect } from 'react';
-import { addEmployee, updateEmployee } from '../../../services/hrmsService';
+import {
+  addEmployee,
+  updateEmployee,
+  getEmployeeCompensation,
+  setEmployeeCompensation,
+} from '../../../services/hrmsService';
+import { useAuth } from '../../../context/AuthContext';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const DEPARTMENTS = ['Engineering', 'HR', 'Design', 'Sales', 'Finance', 'Operations', 'Marketing'];
@@ -47,6 +53,7 @@ export default function EmployeeModal({ isOpen, onClose, onSaved, employee, isAd
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
+  const { effectiveUid } = useAuth();
 
   // Derived flag — are we editing an existing record or creating a new one?
   const isEditing = Boolean(employee);
@@ -59,8 +66,7 @@ export default function EmployeeModal({ isOpen, onClose, onSaved, employee, isAd
         email:       employee.email       || '',
         department:  employee.department  || '',
         designation: employee.designation || '',
-        // salaryBase may be a number; convert to string for the input
-        salaryBase:  employee.salaryBase != null ? String(employee.salaryBase) : '',
+        salaryBase:  '', // loaded below from users/{uid}/private/compensation
       });
     } else {
       // Reset for create mode
@@ -68,6 +74,22 @@ export default function EmployeeModal({ isOpen, onClose, onSaved, employee, isAd
     }
     setError('');
   }, [employee, isOpen]); // re-run whenever the modal's open state or target employee changes
+
+  // Pay is not on the users doc any more (every employee can read that), so
+  // admins fetch it from the admin-only private subcollection.
+  useEffect(() => {
+    if (!isOpen || !isAdmin || !employee?.id) return;
+    let cancelled = false;
+    getEmployeeCompensation(employee.id)
+      .then((comp) => {
+        if (cancelled || comp?.salaryBase == null) return;
+        setForm((prev) => ({ ...prev, salaryBase: String(comp.salaryBase) }));
+      })
+      .catch(() => {
+        if (!cancelled) setError('Could not load salary. You can still edit other details.');
+      });
+    return () => { cancelled = true; };
+  }, [employee, isOpen, isAdmin]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleChange = (e) => {
@@ -83,23 +105,26 @@ export default function EmployeeModal({ isOpen, onClose, onSaved, employee, isAd
     if (!form.name.trim())  return setError('Name is required.');
     if (!form.email.trim()) return setError('Email is required.');
 
-    // Build the payload — only include salaryBase if admin and value provided
     const payload = {
       name:        form.name.trim(),
       email:       form.email.trim(),
       department:  form.department  || '',
       designation: form.designation || '',
     };
+    // Salary is saved separately, to the admin-only private doc
+    let salaryBase = null;
     if (isAdmin && form.salaryBase !== '') {
-      const parsed = parseFloat(form.salaryBase);
-      if (isNaN(parsed) || parsed < 0) return setError('Salary Base must be a valid positive number.');
-      payload.salaryBase = parsed;
+      salaryBase = parseFloat(form.salaryBase);
+      if (isNaN(salaryBase) || salaryBase < 0) return setError('Salary Base must be a valid positive number.');
     }
 
     setSaving(true);
     try {
       if (isEditing) {
         await updateEmployee(employee.id, payload);
+        if (salaryBase != null) {
+          await setEmployeeCompensation(employee.id, { salaryBase }, effectiveUid);
+        }
       } else {
         await addEmployee(payload);
       }

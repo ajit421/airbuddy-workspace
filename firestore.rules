@@ -46,6 +46,20 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(uid)).data.get('role', '') == 'admin';
     }
 
+    // Admin-granted permission (src/utils/permissionCatalog.js), stored as
+    // users/{uid}.permissions = { '<key>': true }. Admins hold every key.
+    // Mirrors hasPermission() in src/utils/permissions.js. Reads the same
+    // users doc isAdmin() does, which the rules engine fetches once per request.
+    // The client's "Viewing as Employee" toggle is UI-only and unknown here.
+    function can(key) {
+      let uid = getEffectiveUid();
+      let ref = /databases/$(database)/documents/users/$(uid);
+      return isAuthenticated()
+        && exists(ref)
+        && (get(ref).data.get('role', '') == 'admin'
+            || get(ref).data.get('permissions', {}).get(key, false) == true);
+    }
+
     function isTaskParticipantLocal(taskData) {
       let uid = getEffectiveUid();
       let assigned = taskData.get('assignedTo', []);
@@ -85,6 +99,11 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isEmailAllowed()
         && request.auth.uid == userId
         && request.resource.data.role == 'employee'
+        // A new profile starts with no granted permissions and no pay on it:
+        // permissions are admin-granted (see below) and pay lives in
+        // users/{uid}/private, which only admins can read.
+        && !request.resource.data.keys().hasAny(['permissions', 'permissionsUpdatedBy',
+                                                 'permissionsUpdatedAt', 'viewScope', 'salaryBase'])
         // Block secondary emails from creating new user docs —
         // they are handled by AuthContext's email-map redirect
         && !exists(/databases/$(database)/documents/user_email_map/$(request.auth.token.email));
@@ -96,7 +115,11 @@ service cloud.firestore {
           && !request.resource.data.diff(resource.data)
               .affectedKeys()
               .hasAny(['role', 'uid', 'email', 'salaryBase', 'department', 'designation',
-                       'fcmToken', 'fcmTokens', 'fcmTokenUpdatedAt'])
+                       'fcmToken', 'fcmTokens', 'fcmTokenUpdatedAt',
+                       // Granted by an admin from the Admin Panel's Permissions tab;
+                       // an employee must never be able to grant themselves access.
+                       'permissions', 'permissionsUpdatedBy', 'permissionsUpdatedAt',
+                       'viewScope'])
         )
         // FCM device registration.
         //
@@ -117,6 +140,15 @@ service cloud.firestore {
       );
 
       allow delete: if isAdmin();
+    }
+
+    // Private HR data — users/{uid}/private/compensation holds salaryBase.
+    // It used to sit on users/{uid}, which every allowed user can read (the
+    // Team Members grid needs that), so the whole team's pay was one console
+    // query away. Admin-only in both directions, including the employee
+    // themselves, matching the "Visible to admins only" note in EmployeeModal.
+    match /users/{userId}/private/{docId} {
+      allow read, write: if isAuthenticated() && isEmailAllowed() && isAdmin();
     }
 
     // Email → Primary UID Lookup Map
@@ -142,15 +174,16 @@ service cloud.firestore {
 
       // Read: Admin sees all. Employee sees tasks they are assigned to, created, or partnered on.
       allow read: if isAuthenticated() && isEmailAllowed() && (
-        isAdmin() ||
+        can('tasks.viewAll') ||
         ('assignedTo' in resource.data && getEffectiveUid() in resource.data.assignedTo) ||
         ('createdBy' in resource.data && resource.data.createdBy == getEffectiveUid()) ||
         ('workPartnerUids' in resource.data && getEffectiveUid() in resource.data.workPartnerUids)
       );
 
-      // Create: Admin can create any. Employee can create personal tasks (isAdminTask == false/undefined).
+      // Create: Admin (or anyone granted tasks.assign) can create any.
+      // Employee can create personal tasks (isAdminTask == false/undefined).
       allow create: if isAuthenticated() && isEmailAllowed() && (
-        isAdmin() ||
+        can('tasks.assign') ||
         (request.resource.data.get('isAdminTask', false) == false && request.resource.data.get('createdBy', '') == getEffectiveUid())
       );
 
@@ -222,8 +255,8 @@ service cloud.firestore {
         (isAdmin() || 
          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']));
 
-      // Create/Delete: Admins only
-      allow create, delete: if isAdmin();
+      // Create/Delete: admins, or anyone granted announcements.post
+      allow create, delete: if isAuthenticated() && isEmailAllowed() && can('announcements.post');
     }
 
     // Notifications Collection
@@ -258,17 +291,17 @@ service cloud.firestore {
     // Schema: leaves/{leaveId}
     // { uid, applicantName, type, startDate, endDate, reason, status, createdAt, reviewedBy? }
     match /leaves/{leaveId} {
-      // Read: owner can read own; admin can read all (for pending approvals view)
+      // Read: owner can read own; hrms.leaves (admins included) can read all
       allow read: if isAuthenticated() && isEmailAllowed() &&
-        (resource.data.uid == getEffectiveUid() || isAdmin());
+        (resource.data.uid == getEffectiveUid() || can('hrms.leaves'));
 
       // Create: any whitelisted authenticated user can apply for their own leave
       allow create: if isAuthenticated() && isEmailAllowed() &&
         request.resource.data.uid == getEffectiveUid() &&
         request.resource.data.status == 'pending';
 
-      // Update: only admins can change status (approve / reject)
-      allow update: if isAdmin();
+      // Update: only hrms.leaves (admins included) can change status (approve / reject)
+      allow update: if isAuthenticated() && isEmailAllowed() && can('hrms.leaves');
 
       // Delete: admins only
       allow delete: if isAdmin();
@@ -280,9 +313,9 @@ service cloud.firestore {
     // Admins can read any user's records (e.g., for manager dashboards).
     // Users can only read/write their own records.
     match /attendance/{userId}/records/{recordId} {
-      // Read: own records always; admin can read anyone's
+      // Read: own records always; hrms.attendance (admins included) can read anyone's
       allow read: if isAuthenticated() && isEmailAllowed() &&
-        (getEffectiveUid() == userId || isAdmin());
+        (getEffectiveUid() == userId || can('hrms.attendance'));
 
       // Create: only the owner can punch in (create a new record for themselves)
       allow create: if isAuthenticated() && isEmailAllowed() && getEffectiveUid() == userId;
@@ -298,11 +331,13 @@ service cloud.firestore {
     // Schema: candidates/{candidateId}
     // { name, email, role, experience, status, notes, createdAt, updatedAt }
     match /candidates/{candidateId} {
-      // All whitelisted authenticated users can view the recruitment pipeline
-      allow read: if isAuthenticated() && isEmailAllowed();
+      // Candidate names, emails, resumes and notes are personal data: only
+      // hrms.recruitment (admins included) may see the pipeline. It used to be
+      // readable by every allowed user, external collaborators included.
+      allow read: if isAuthenticated() && isEmailAllowed() && can('hrms.recruitment');
 
-      // Only admins can add candidates or move them between columns
-      allow create, update: if isAdmin();
+      // Add candidates or move them between columns
+      allow create, update: if isAuthenticated() && isEmailAllowed() && can('hrms.recruitment');
 
       // Delete: admins only
       allow delete: if isAdmin();
@@ -312,12 +347,12 @@ service cloud.firestore {
     // Schema: performances/{reviewId}
     // { uid, employeeName, reviewedBy, period, skills{...}, goalsAssigned, goalsCompleted, notes, createdAt }
     match /performances/{reviewId} {
-      // Employee can read their own reviews; admins can read all
+      // Employee can read their own reviews; hrms.performance (admins included) can read all
       allow read: if isAuthenticated() && isEmailAllowed() &&
-        (resource.data.uid == getEffectiveUid() || isAdmin());
+        (resource.data.uid == getEffectiveUid() || can('hrms.performance'));
 
-      // Only admins can create or update reviews
-      allow create, update: if isAdmin();
+      // Create or update reviews
+      allow create, update: if isAuthenticated() && isEmailAllowed() && can('hrms.performance');
 
       // Delete: admins only
       allow delete: if isAdmin();
@@ -331,32 +366,32 @@ service cloud.firestore {
 
     match /kpi_industries/{docId} {
       allow read:           if isAuthenticated() && isEmailAllowed();
-      allow create, update: if isAdmin();
-      allow delete:         if isAdmin();
+      allow create, update: if isAuthenticated() && isEmailAllowed() && can('kpi.edit');
+      allow delete:         if isAuthenticated() && isEmailAllowed() && can('kpi.edit');
     }
 
     match /kpi_clients/{docId} {
       allow read:           if isAuthenticated() && isEmailAllowed();
-      allow create, update: if isAdmin();
-      allow delete:         if isAdmin();
+      allow create, update: if isAuthenticated() && isEmailAllowed() && can('kpi.edit');
+      allow delete:         if isAuthenticated() && isEmailAllowed() && can('kpi.edit');
     }
 
     match /kpi_products/{docId} {
       allow read:           if isAuthenticated() && isEmailAllowed();
-      allow create, update: if isAdmin();
-      allow delete:         if isAdmin();
+      allow create, update: if isAuthenticated() && isEmailAllowed() && can('kpi.edit');
+      allow delete:         if isAuthenticated() && isEmailAllowed() && can('kpi.edit');
     }
 
     match /kpi_sales/{docId} {
       allow read:           if isAuthenticated() && isEmailAllowed();
-      allow create, update: if isAdmin();
-      allow delete:         if isAdmin();
+      allow create, update: if isAuthenticated() && isEmailAllowed() && can('kpi.edit');
+      allow delete:         if isAuthenticated() && isEmailAllowed() && can('kpi.edit');
     }
 
     match /kpi_patents/{docId} {
       allow read:           if isAuthenticated() && isEmailAllowed();
-      allow create, update: if isAdmin();
-      allow delete:         if isAdmin();
+      allow create, update: if isAuthenticated() && isEmailAllowed() && can('kpi.edit');
+      allow delete:         if isAuthenticated() && isEmailAllowed() && can('kpi.edit');
     }
     // ── Phase 9: Roadmap Security Rules ─────────────────────────────────────
     //
@@ -436,9 +471,9 @@ service cloud.firestore {
     //   Delete: Admin only
     match /roadmapNodes/{nodeId} {
       allow read:   if isAuthenticated() && isEmailAllowed();
-      allow create: if isAuthenticated() && isEmailAllowed() && isAdmin();
+      allow create: if isAuthenticated() && isEmailAllowed() && can('roadmap.edit');
       allow update: if isAuthenticated() && isEmailAllowed() && (
-        isAdmin() ||
+        can('roadmap.edit') ||
         request.resource.data.diff(resource.data)
           .affectedKeys()
           .hasOnly(['progress', 'childCompletedCount', 'status', 'updatedAt']) ||
@@ -456,7 +491,7 @@ service cloud.firestore {
             .hasOnly(['workPartners', 'workPartnerUids', 'todos', 'updatedBy', 'updatedAt'])
         )
       );
-      allow delete: if isAuthenticated() && isEmailAllowed() && isAdmin();
+      allow delete: if isAuthenticated() && isEmailAllowed() && can('roadmap.edit');
 
       // ── tasks subcollection ───────────────────────────────────────────────
       // Phase 4 §4:

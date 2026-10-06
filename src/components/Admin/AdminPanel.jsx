@@ -7,6 +7,7 @@ import { PRIORITY_OPTIONS, STATUS_OPTIONS, MODULE_OPTIONS } from '../../utils/pe
 import { createAdminTask, deleteTask, subscribeToAdminTasks, syncAllCalendars } from '../../services/taskService';
 import { createAnnouncement, deleteAnnouncement, subscribeToAnnouncements } from '../../services/announcementService';
 import { subscribeToAllUsers } from '../../services/teamMembersService';
+import PermissionsManager from './PermissionsManager';
 
 // ─── Team Overview ───────────────────────────────────────────
 const TeamOverview = ({ users, allTasks }) => {
@@ -201,7 +202,9 @@ const AssignTask = ({ users }) => {
 };
 
 // ─── Task Monitor ────────────────────────────────────────────
-const TaskMonitor = ({ allTasks }) => {
+// `canManage` (real admin) shows Delete and Sync now — both are admin-only in
+// firestore.rules / syncAllCalendars, even for someone granted tasks.viewAll.
+const TaskMonitor = ({ allTasks, canManage }) => {
   const [filter, setFilter] = useState({ status: 'all', search: '' });
   const [deleting, setDeleting] = useState(null);
   const [error, setError] = useState('');
@@ -257,6 +260,7 @@ const TaskMonitor = ({ allTasks }) => {
   return (
     <div className="space-y-4">
       {/* Google Calendar backfill */}
+      {canManage && (
       <div className="card p-4 flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex-1">
           <p className="text-sm font-semibold text-text-primary">Google Calendar sync</p>
@@ -273,6 +277,7 @@ const TaskMonitor = ({ allTasks }) => {
           {syncing ? 'Syncing…' : 'Sync now'}
         </button>
       </div>
+      )}
       {syncResult && (
         <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-400 text-sm">
           {syncResult}
@@ -310,9 +315,11 @@ const TaskMonitor = ({ allTasks }) => {
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <button onClick={() => handleDelete(t.id)} disabled={deleting === t.id} className="text-red-400 hover:text-red-300 text-xs font-medium">
-                    {deleting === t.id ? '...' : 'Delete'}
-                  </button>
+                  {canManage && (
+                    <button onClick={() => handleDelete(t.id)} disabled={deleting === t.id} className="text-red-400 hover:text-red-300 text-xs font-medium">
+                      {deleting === t.id ? '...' : 'Delete'}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -431,27 +438,34 @@ const EmployeeManagement = ({ users }) => (
 );
 
 // ─── Main Admin Panel ────────────────────────────────────────
-const TABS = ['Team Overview', 'Assign Task', 'Task Monitor', 'Announcements', 'Employee Management'];
-
 export default function AdminPanel() {
-  const [activeTab, setActiveTab] = useState(0);
+  // isAdmin is the *effective* admin; the route only lets a real admin in
+  // outside "Viewing as Employee" mode, or an employee holding one of
+  // ADMIN_PANEL_PERMISSIONS — who then sees just the tabs they were granted.
+  const { isAdmin, can } = useAuth();
+  const canSeeAllTasks = can('tasks.viewAll');
+  const [activeKey, setActiveKey] = useState(null);
   const [users, setUsers] = useState([]);
   const [allTasks, setAllTasks] = useState([]);
 
   useEffect(() => {
     // HI-5 + NEW-1 fix: ALL listeners through the service layer
     const unsub1 = subscribeToAllUsers((users) => setUsers(users));
-    const unsub2 = subscribeToAdminTasks((tasks) => setAllTasks(tasks));
+    // Every task is only readable with tasks.viewAll (admins included); without
+    // it the listener would just fail on the rules.
+    const unsub2 = canSeeAllTasks ? subscribeToAdminTasks((tasks) => setAllTasks(tasks)) : () => {};
     return () => { unsub1(); unsub2(); };
-  }, []);
+  }, [canSeeAllTasks]);
 
-  const tabContent = [
-    <TeamOverview key="team" users={users} allTasks={allTasks} />,
-    <AssignTask key="assign" users={users} />,
-    <TaskMonitor key="monitor" allTasks={allTasks} />,
-    <AnnouncementsManager key="ann" users={users} />,
-    <EmployeeManagement key="emp" users={users} />,
-  ];
+  const tabs = [
+    { key: 'team',        label: 'Team Overview',       show: canSeeAllTasks,             content: <TeamOverview users={users} allTasks={allTasks} /> },
+    { key: 'assign',      label: 'Assign Task',         show: can('tasks.assign'),        content: <AssignTask users={users} /> },
+    { key: 'monitor',     label: 'Task Monitor',        show: canSeeAllTasks,             content: <TaskMonitor allTasks={allTasks} canManage={isAdmin} /> },
+    { key: 'ann',         label: 'Announcements',       show: can('announcements.post'),  content: <AnnouncementsManager users={users} /> },
+    { key: 'emp',         label: 'Employee Management', show: isAdmin,                    content: <EmployeeManagement users={users} /> },
+    { key: 'permissions', label: 'Permissions',         show: isAdmin,                    content: <PermissionsManager users={users} /> },
+  ].filter((t) => t.show);
+  const active = tabs.find((t) => t.key === activeKey) || tabs[0];
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -462,22 +476,22 @@ export default function AdminPanel() {
 
       {/* Tabs */}
       <div className="flex gap-1 overflow-x-auto bg-surface border border-border rounded-xl p-1">
-        {TABS.map((tab, i) => (
+        {tabs.map((tab) => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(i)}
-            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap transition-all ${activeTab === i
+            key={tab.key}
+            onClick={() => setActiveKey(tab.key)}
+            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap transition-all ${active?.key === tab.key
               ? 'bg-orange text-white'
               : 'text-text-secondary hover:text-text-primary hover:bg-surfaceHover'
               }`}
           >
-            {tab}
+            {tab.label}
           </button>
         ))}
       </div>
 
       {/* Tab Content */}
-      <div>{tabContent[activeTab]}</div>
+      <div>{active?.content}</div>
     </div>
   );
 }

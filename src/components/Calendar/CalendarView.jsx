@@ -244,7 +244,11 @@ function RoadmapEventPanel({ node, onClose }) {
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function CalendarView() {
   const { tasks, loading, allUsers } = useTasks();
-  const { isAdmin, effectiveUid } = useAuth();
+  const { can, effectiveUid } = useAuth();
+  // Team-wide data on the calendar follows the same permissions the rules
+  // enforce: everyone's leaves (hrms.leaves) and everyone's tasks (tasks.viewAll).
+  const seeAllLeaves = can('hrms.leaves');
+  const seeAllTasks  = can('tasks.viewAll');
   const [view, setView] = useState(Views.MONTH);
   const [date, setDate] = useState(new Date());
   const [selectedTask,  setSelectedTask]  = useState(null);
@@ -265,7 +269,7 @@ export default function CalendarView() {
     setLeavesLoading(true);
     setLeavesError(null);
 
-    const fetcher = isAdmin ? getAllLeaves() : getMyLeaves(effectiveUid);
+    const fetcher = seeAllLeaves ? getAllLeaves() : getMyLeaves(effectiveUid);
     fetcher
       .then(setLeaves)
       .catch((err) => {
@@ -273,7 +277,7 @@ export default function CalendarView() {
         setLeavesError('Could not load leave data.');
       })
       .finally(() => setLeavesLoading(false));
-  }, [effectiveUid, isAdmin]);
+  }, [effectiveUid, seeAllLeaves]);
 
   // ── Convert tasks + leaves + roadmap nodes to calendar events ─────────────────
   const events = useMemo(() => {
@@ -288,7 +292,7 @@ export default function CalendarView() {
         const end = toDate(task.dueDate) || start;
 
         let title = task.title;
-        if (isAdmin && task.assignedTo?.length > 0) {
+        if (seeAllTasks && task.assignedTo?.length > 0) {
           const names = task.assignedTo
             .map((uid) => allUsers[uid]?.name?.split(' ')[0] || 'Unknown')
             .join(', ');
@@ -310,7 +314,7 @@ export default function CalendarView() {
       const start = new Date(leave.startDate);
       const end   = new Date(leave.endDate);
       const emoji = leave.status === 'approved' ? '✅' : leave.status === 'rejected' ? '❌' : '⏳';
-      const namePrefix = isAdmin && leave.applicantName ? `${leave.applicantName}: ` : '';
+      const namePrefix = seeAllLeaves && leave.applicantName ? `${leave.applicantName}: ` : '';
       return {
         id: `leave-${leave.id}`,
         title: `${emoji} ${namePrefix}${leave.type} Leave`,
@@ -323,7 +327,7 @@ export default function CalendarView() {
 
     // Phase 15: roadmap milestone events (teal)
     return [...taskEvents, ...leaveEvents, ...roadmapEvents];
-  }, [tasks, leaves, isAdmin, allUsers, dedupTaskIds, roadmapEvents]);
+  }, [tasks, leaves, seeAllTasks, seeAllLeaves, allUsers, dedupTaskIds, roadmapEvents]);
 
   // ── Dynamic calendar height ───────────────────────────────────────────────────
   const calendarHeight = useMemo(() => {

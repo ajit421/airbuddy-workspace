@@ -32,6 +32,7 @@ import ProductsPanel      from './components/KPI/ProductsPanel';
 import SalesPanel         from './components/KPI/SalesPanel';
 import IPPanel            from './components/KPI/PatentsPanel';
 
+import { ADMIN_PANEL_PERMISSIONS } from './utils/permissionCatalog';
 // Company Roadmap Module imports
 import { RoadmapProvider } from './context/RoadmapContext';
 // Phase 19: lazy-loaded so the entire Roadmap component tree is split into
@@ -61,10 +62,15 @@ const ProtectedRoute = ({ children }) => {
   return user ? children : <Navigate to="/login" replace />;
 };
 
-const AdminRoute = ({ children }) => {
-  const { isAdmin, loading } = useAuth();
+// Admin-granted permission gate (src/utils/permissionCatalog.js). `perm` is
+// one key or an array meaning "any of these". can() already returns true for
+// an admin and false for an admin in "Viewing as Employee" mode. The rules
+// enforce the same keys; this only keeps people off pages they cannot use.
+const PermissionRoute = ({ perm, children }) => {
+  const { can, loading } = useAuth();
   if (loading) return null;
-  return isAdmin ? children : <Navigate to="/" replace />;
+  const keys = Array.isArray(perm) ? perm : [perm];
+  return keys.some(can) ? children : <Navigate to="/" replace />;
 };
 
 const AppRoutes = () => {
@@ -120,29 +126,22 @@ const AppRoutes = () => {
         <Route
           path="admin"
           element={
-            <AdminRoute>
+            <PermissionRoute perm={ADMIN_PANEL_PERMISSIONS}>
               <AdminPanel />
-            </AdminRoute>
+            </PermissionRoute>
           }
         />
 
         {/* HRMS Routes — Human Resource Management System module */}
-        {/* ME-1 fix: Admin-only HRMS views wrapped in AdminRoute guard.
+        {/* ME-1 fix: team-wide HRMS views are guarded, now per permission
+            rather than admin-only (admins pass every PermissionRoute).
             /hrms/leaves is intentionally left open to all employees — they
             only see their own leave applications (Firestore rules enforce this). */}
         <Route path="hrms/leaves" element={<LeaveManagement />} />
-        <Route
-          element={
-            <AdminRoute>
-              <Outlet />
-            </AdminRoute>
-          }
-        >
-          <Route path="hrms/directory"   element={<EmployeeDirectory />} />
-          <Route path="hrms/attendance"  element={<AttendanceManager />} />
-          <Route path="hrms/recruitment" element={<RecruitmentBoard />} />
-          <Route path="hrms/performance" element={<PerformanceDashboard />} />
-        </Route>
+        <Route path="hrms/directory"   element={<PermissionRoute perm="hrms.directory"><EmployeeDirectory /></PermissionRoute>} />
+        <Route path="hrms/attendance"  element={<PermissionRoute perm="hrms.attendance"><AttendanceManager /></PermissionRoute>} />
+        <Route path="hrms/recruitment" element={<PermissionRoute perm="hrms.recruitment"><RecruitmentBoard /></PermissionRoute>} />
+        <Route path="hrms/performance" element={<PermissionRoute perm="hrms.performance"><PerformanceDashboard /></PermissionRoute>} />
 
         {/* KPI Routes — wrapped in KpiProvider so listeners only run on KPI pages */}
         <Route element={<KpiProvider><Outlet /></KpiProvider>}>

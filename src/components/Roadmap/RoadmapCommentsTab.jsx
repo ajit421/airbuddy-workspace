@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { canEditRoadmapStructure } from '../../utils/permissions';
 import { subscribeToComments, postComment, deleteComment } from '../../services/roadmapCommentService';
 import { timeFromNow } from '../../utils/dateHelpers';
 import { notifyUsers, ROADMAP_NOTIF_TYPES } from '../../services/notificationService';
@@ -21,7 +20,9 @@ import { db } from '../../services/firebase';
  */
 export default function RoadmapCommentsTab({ nodeId }) {
   const { userProfile, effectiveUid } = useAuth();
-  const isAdmin = canEditRoadmapStructure(userProfile);
+  // Moderation (delete anyone's) stays admin-only, matching firestore.rules;
+  // roadmap.edit grants structure editing, not this.
+  const isAdmin = userProfile?.role === 'admin';
   const uid     = effectiveUid ?? userProfile?.uid;
 
   const [comments,  setComments]  = useState([]);

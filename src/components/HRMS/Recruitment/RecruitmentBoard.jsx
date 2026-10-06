@@ -306,7 +306,9 @@ function KanbanColumn({ name, candidates, draggingId, isAdmin, onDrop, onCardDra
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function RecruitmentBoard() {
-  const { isAdmin } = useAuth();
+  const { can } = useAuth();
+  // Manage the pipeline: admins, or anyone granted hrms.recruitment (permissionCatalog.js)
+  const isAdmin = can('hrms.recruitment');
 
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading]       = useState(true);

@@ -11,7 +11,7 @@ npm run dev            # Vite dev server -> http://localhost:5173
 npm run build          # Production build -> dist/
 npm run preview        # Serve the built bundle
 npm run lint           # ESLint (dist/ and functions/ are globally ignored)
-npm test               # vitest run — 16 files, 402 tests (includes mcp/), ~6s
+npm test               # vitest run — 18 files, 421 tests (includes mcp/), ~6s
 
 npx vitest                                       # watch mode
 npx vitest run src/services/taskService.test.js  # single file
@@ -60,15 +60,19 @@ There is no server of our own in the request path for data. **Firestore security
 
 Layering inside `src/`: components -> `hooks/` -> `services/` -> Firestore. Components should not import `firebase/firestore` directly; add a function to the relevant service. (A few pre-refactor exceptions remain, e.g. [src/context/ViewModeContext.jsx](src/context/ViewModeContext.jsx) and [src/hooks/useNotifications.js](src/hooks/useNotifications.js) — follow the convention in new code rather than these.)
 
-## Auth and identity — three things that touch everything
+## Auth and identity — four things that touch everything
 
-[src/context/AuthContext.jsx](src/context/AuthContext.jsx) is the source of all three:
+[src/context/AuthContext.jsx](src/context/AuthContext.jsx) is the source of all four:
 
 **1. Access gate.** `@airbuddy.in` emails are auto-trusted. Every other email must have an `allowed_emails/{email}` doc that is not `status: 'suspended'`; otherwise the user is signed straight back out with a toast. This logic is **duplicated** in `isEmailAllowed()` in [firestore.rules](firestore.rules) (where the external check is `status == 'approved'`, defaulting to approved when the field is absent). Change both together, or the client and rules will disagree.
 
 **2. `effectiveUid`, never `user.uid`.** A secondary Google account can be mapped onto a primary user via `user_email_map/{email}.primaryUid`. All reads and writes must key off `effectiveUid` from `useAuth()`. Rules mirror this with `getEffectiveUid()`, which does the same lookup — so a query keyed on `user.uid` will silently return nothing for mapped users, and a write will be rejected. `useNotifications` accepts either UID as a fallback; new code should not rely on that.
 
-**3. `isAdmin` vs `realIsAdmin`.** Admins can toggle "employee view" (`toggleEmployeeView`). `isAdmin` is the *effective* role — what UI, `AdminRoute`, and `TaskContext` query shape all use. `realIsAdmin` is the actual role, used only to decide whether to show the toggle. Rules know nothing about the toggle, so an admin in employee view still has admin write power at the database level.
+**3. `isAdmin` vs `realIsAdmin`.** Admins can toggle "employee view" (`toggleEmployeeView`). `isAdmin` is the *effective* role. `realIsAdmin` is the actual role, used only to decide whether to show the toggle. Rules know nothing about the toggle, so an admin in employee view still has admin write power at the database level.
+
+**4. `can(key)` — admin-granted permissions.** An admin can grant an individual employee access to a module without making them an admin: Admin Panel → **Permissions** writes `users/{uid}.permissions = { '<key>': true }`. The keys live in **one** list, [src/utils/permissionCatalog.js](src/utils/permissionCatalog.js) — the modal, the Zod schema in [src/services/permissionService.js](src/services/permissionService.js) and the tests all read it. `can(key)` from `useAuth()` is what UI code calls: true for an admin, **false for an admin in employee view** (so the toggle still shows a plain employee's screen), and `hasPermission(userProfile, key)` for an employee. `PermissionRoute` in `App.jsx` (replacing the old `AdminRoute`), the sidebar, and each page's team-wide mode (`TaskContext`'s all-tasks query is `can('tasks.viewAll')`, `AttendanceManager` is `can('hrms.attendance')`, and so on) all go through it.
+
+The rules mirror it with their own `can(key)` helper, and **that** is the boundary — a sidebar link hidden is not access control. Adding a permission therefore means three edits: the catalog, a `can()` in the UI, and a `can()` in `firestore.rules`. Three things are deliberately *not* grantable: the `admin` role itself, writing anyone's `permissions` (the self-update deny list carries `permissions`, `permissionsUpdatedBy`, `permissionsUpdatedAt`, `viewScope`, and only `isAdmin()` can write a user doc otherwise), and salary. The Admin Panel opens for anyone holding one of `ADMIN_PANEL_PERMISSIONS` and shows only their tabs; Delete, **Sync now**, Employee Management and Permissions stay `isAdmin`. `src/services/permissions.rules.emulator.test.js` runs every key as an employee against the real rules — run it after touching `can()` or the catalog (with `--no-file-parallelism` if run alongside the MCP emulator test, since both wipe the emulator).
 
 **The browser holds no Google OAuth access token, and `googleProvider` must never be given a scope.** There used to be a `googleAccessToken` in `AuthContext` (React state only, never `sessionStorage` — XSS hardening, `HI-11`) plus a `refreshGoogleToken()` that re-opened the popup on a Calendar `401`. All of it is gone, along with `googleCalendarService.js` and `googleCalendar.js`.
 
@@ -83,9 +87,9 @@ BrowserRouter > AuthProvider > ViewModeProvider > Routes
   /login, /docs, /docs/:docId          (outside the app shell)
   ProtectedRoute > TaskProvider > AppLayout (Navbar + Sidebar + Outlet + AIAssistantButton)
     /, /calendar, /work-partner, /team, /announcements, /about
-    AdminRoute > /admin
+    PermissionRoute(any ADMIN_PANEL_PERMISSIONS) > /admin
     /hrms/leaves                        (open to employees — they see only their own)
-    AdminRoute > /hrms/{directory,attendance,recruitment,performance}
+    PermissionRoute('hrms.<page>') > /hrms/{directory,attendance,recruitment,performance}
     KpiProvider     > /kpi, /kpi/{industries,clients,products,sales,ip}
     RoadmapProvider > /roadmap, /roadmap/:nodeId   (React.lazy + Suspense)
 ```
@@ -108,7 +112,9 @@ Every file in [src/services/](src/services/) follows the same contract, and new 
 
 | Path | Write access | Notes |
 |---|---|---|
-| `users/{uid}` | Self (safe fields only) / admin | Self-update **denies** `role, uid, email, salaryBase, department, designation` and the three FCM keys. Create must be `role: 'employee'` and is blocked for mapped secondary emails. |
+| `users/{uid}` | Self (safe fields only) / admin | Self-update **denies** `role, uid, email, salaryBase, department, designation`, the three FCM keys and the four permission keys. Create must be `role: 'employee'`, carry no `permissions`/`salaryBase`, and is blocked for mapped secondary emails. Readable by every allowed user — so nothing private goes here. |
+| `users/{uid}.permissions` | Admin only | `{ '<key>': true }` from `permissionCatalog.js`, plus `permissionsUpdatedBy/At`. See "Auth and identity" §4. |
+| `users/{uid}/private/compensation` | Admin only (read *and* write) | `salaryBase`. Moved off `users/{uid}`, where every employee could read the whole team's pay; `scripts/migrateSalaryToPrivate.cjs` moves existing values. |
 | `users/{uid}.fcmToken(s)` | Self, own branch only | `fcmToken`, `fcmTokens`, `fcmTokenUpdatedAt` have a **separate** update branch guarded by `hasOnly` — a write touching anything else alongside them is rejected. |
 | `allowed_emails/{email}` | Admin | Read restricted to your own email (anti-enumeration, `CR-5`). |
 | `user_email_map/{email}` | Admin | Same read restriction. |

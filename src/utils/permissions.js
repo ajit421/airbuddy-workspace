@@ -2,6 +2,24 @@
  * Permission utility functions
  */
 
+/**
+ * Whether a user holds an admin-granted permission (see permissionCatalog.js).
+ * Admins hold every permission. Checks `userProfile.role` directly, like the
+ * other helpers here; the employee-view toggle is applied by `can()` in
+ * AuthContext, which is what UI code should call.
+ *
+ * firestore.rules mirrors this in its own can(key) and is the real boundary.
+ *
+ * @param {object|null} userProfile - User profile object from Firestore
+ * @param {string} key              - A key from PERMISSION_KEYS
+ * @returns {boolean}
+ */
+export const hasPermission = (userProfile, key) => {
+  if (!userProfile) return false;
+  if (userProfile.role === 'admin') return true;
+  return userProfile.permissions?.[key] === true;
+};
+
 export const canEditTask = (task, userProfile) => {
   if (!task || !userProfile) return false;
   if (userProfile.role === 'admin') return true;
@@ -92,8 +110,9 @@ export const MODULE_OPTIONS = [
 // ── Roadmap Permissions ─────────────────────────────────────────────────────
 
 /**
- * Only admins can create, edit, or delete roadmap node structure.
- * Employees may only update progress on tasks assigned to them.
+ * Admins, and anyone granted `roadmap.edit`, can create, edit, or archive
+ * roadmap node structure. Other employees may only update progress on work
+ * assigned to them. Mirrors can('roadmap.edit') on roadmapNodes in firestore.rules.
  *
  * Intentionally checks `userProfile.role` directly (not `isAdmin` from
  * AuthContext) to remain consistent with all other permission helpers.
@@ -101,7 +120,5 @@ export const MODULE_OPTIONS = [
  * @param {object|null} userProfile - User profile object from Firestore
  * @returns {boolean}
  */
-export const canEditRoadmapStructure = (userProfile) => {
-  if (!userProfile) return false;
-  return userProfile.role === 'admin';
-};
+export const canEditRoadmapStructure = (userProfile) =>
+  hasPermission(userProfile, 'roadmap.edit');

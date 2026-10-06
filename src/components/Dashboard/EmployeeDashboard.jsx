@@ -141,7 +141,10 @@ export default function EmployeeDashboard() {
   // task listeners can see it — without this an admin-assigned milestone shows
   // on the assignee's Google Calendar and bell and on nobody's Dashboard.
   const { myWorkItems: tasks, loading, getUpcomingTasks, allUsers } = useTasks();
-  const { userProfile, isAdmin } = useAuth();
+  const { userProfile, can } = useAuth();
+  // The employee filter needs the company-wide list TaskContext loads for
+  // admins and for anyone granted tasks.viewAll.
+  const seeAllTasks = can('tasks.viewAll');
   const { viewMode } = useViewMode();
   const [selectedTask, setSelectedTask] = useState(null);
   const [isSelfTaskModalOpen, setIsSelfTaskModalOpen] = useState(false);
@@ -249,7 +252,7 @@ export default function EmployeeDashboard() {
     resetFilters,
     isFilterActive,
     taskCountByStatus,
-  } = useTaskFilters(filteredByTime, allUsers, isAdmin);
+  } = useTaskFilters(filteredByTime, allUsers, seeAllTasks);
 
   // Upcoming deadlines use the global tasks (not time-filtered) for accuracy
   const upcoming = getUpcomingTasks(7).length;
@@ -537,7 +540,7 @@ export default function EmployeeDashboard() {
 
         <TaskFilterBar
           state={state}
-          isAdmin={isAdmin}
+          isAdmin={seeAllTasks}
           workPartners={workPartners}
           employeeList={employeeList}
           isFilterActive={isFilterActive}
