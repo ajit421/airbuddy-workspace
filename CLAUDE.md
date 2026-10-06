@@ -11,7 +11,7 @@ npm run dev            # Vite dev server -> http://localhost:5173
 npm run build          # Production build -> dist/
 npm run preview        # Serve the built bundle
 npm run lint           # ESLint (dist/ and functions/ are globally ignored)
-npm test               # vitest run — 18 files, 421 tests (includes mcp/), ~6s
+npm test               # vitest run — 19 files, 434 tests (includes mcp/), ~6s
 
 npx vitest                                       # watch mode
 npx vitest run src/services/taskService.test.js  # single file
@@ -392,6 +392,10 @@ Things worth knowing before changing any of it:
 **Login is a session handoff, not a new OAuth client.** `airbuddy-mcp login` listens on `127.0.0.1:<random>` and opens `/connect/claude?port=&state=` ([src/pages/ConnectClaudePage.jsx](src/pages/ConnectClaudePage.jsx)), which form-POSTs `auth.currentUser.refreshToken` (plus the public `apiKey`/`projectId`) back to the loopback only after the user clicks Connect. No scope is involved, so no Google warning. The route sits **outside** `ProtectedRoute` on purpose: `ProtectedRoute` → `/login` → `/` drops `?port=&state=`, so the page signs in by itself.
 
 **Writes mirror the web app field-for-field**, and each method in `mcp/src/workspace.js` names the function it copies. Two traps are already handled there: `updatedBy` is written on milestones (as `updateNodeAsAssignee` does) but **never on tasks**, because `onTaskUpdate` skips notifying `updatedBy` and a stale value would silence that person for later web edits. And checklist edits use an `updateTime` precondition with retries in place of `runTransaction`.
+
+**Read and write only — nobody deletes or removes anything through it, admins included.** There is no delete/remove/archive tool, `update_milestone` only *adds* assignees, and `FirestoreClient.commit()` runs `assertNoRemoval()` on every write (rejects a document delete, a field delete via `updateMask`, and `removeAllFromArray`). `mcp/src/tools.test.js` fails the build if a destructive tool comes back. This is a client-side guarantee for Claude's use; the user's token could still delete via raw REST where rules allow, exactly as the web app can.
+
+**Access follows the three tiers: employee, admin, admin-granted permissions.** `roadmap.edit` unlocks `create_milestone`/`update_milestone` and whole-node edits on any milestone, `tasks.assign` unlocks `assign_task` (mirrors `createAdminTask`), `tasks.viewAll` unlocks `list_my_work` for somebody else. `hasPermission`, `PERMISSION_KEYS` and `MODULE_OPTIONS` in `mcp/src/workItems.js` are parity-tested copies — adding a catalog key means updating `PERMISSION_KEYS` there too. The signed-in profile is cached 60 s so a grant/revoke lands without restarting Claude. The admin "employee view" toggle does not apply here (rules don't know it either).
 
 **Parity is enforced by tests.** `mcp/src/workItems.test.js` imports `NODE_ASSIGNEE_WRITABLE_FIELDS`, `normalizeTodos`, `computeHierarchy`, `sortNodesByDueDate`, `permissions.js` and `checkCanAddPartner` from `src/` and compares them with the copies in `mcp/src/workItems.js`. Changing one of those in `src/` means changing the copy too. A new field in a rules `hasOnly()` list needs the same treatment.
 

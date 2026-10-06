@@ -19,7 +19,7 @@ Requires Node 20+.
 cd mcp; npm install; npm install -g .
 
 # or from a tarball someone shared (built with `npm pack` in mcp/)
-npm install -g airbuddy-workspace-mcp-0.1.0.tgz
+npm install -g airbuddy-workspace-mcp-0.2.0.tgz
 ```
 
 Then sign in:
@@ -62,23 +62,44 @@ On Windows, if Desktop can't find the command, use
 
 ## Tools
 
+The connector is **read and write only, for everybody, admins included**. No
+tool deletes, archives or removes anything, and `FirestoreClient.commit()`
+refuses any write that would (`assertNoRemoval`: a document delete, a field
+delete, or `removeAllFromArray`). `tools.test.js` fails the build if a tool
+with `delete`/`remove`/`archive` in its name, a `destructiveHint`, or a
+`remove_*` input comes back.
+
+Access follows the web app's three tiers: **employee** (their own work),
+**admin** (everything) and **admin-granted permissions** from the Admin Panel's
+Permissions tab. `hasPermission()` in `workItems.js` is a parity-tested copy of
+the one in `src/utils/permissions.js`; `can(key)` in `firestore.rules` is the
+real boundary. A permission change reaches a running server within a minute
+(the profile is cached for 60 s).
+
 | Tool | Who | What |
 |---|---|---|
-| `whoami`, `list_team` | everyone | Identity and the team directory |
-| `list_my_work` | everyone (admins: anyone's) | Same list as the Dashboard: tasks and milestones assigned or partnered |
+| `whoami` | everyone | Identity, role, granted permissions and what they unlock |
+| `list_team` | everyone | The team directory |
+| `list_my_work` | everyone (`tasks.viewAll`: anyone's) | Same list as the Dashboard: tasks and milestones assigned or partnered |
 | `get_work_item` | participants; milestones are readable by all | Detail, checklist, partners, recent activity; for milestones also breadcrumb, children and comments |
 | `browse_roadmap`, `search_roadmap` | everyone | Roadmap tree and search |
-| `update_progress` | assignees, creator, admin | Progress drives status the way the web app does; 100% needs a completion note |
-| `extend_due_date` | assignees, creator, admin | Sets `isExtended`; Calendar sync moves the event |
-| `add_work_partner` / `remove_work_partner` | add: participants · remove: creator, admin | Both partner arrays in one write |
-| `add_checklist_item`, `set_checklist_item`, `delete_checklist_item` | participants | Read-modify-write under an `updateTime` precondition, with retries |
+| `update_progress` | assignees, creator, admin; any milestone with `roadmap.edit` | Progress drives status the way the web app does; 100% needs a completion note |
+| `extend_due_date` | assignees, creator, admin; any milestone with `roadmap.edit` | Sets `isExtended`; Calendar sync moves the event |
+| `add_work_partner` | participants; any milestone with `roadmap.edit` | Both partner arrays in one write |
+| `add_checklist_item`, `set_checklist_item` | participants | Read-modify-write under an `updateTime` precondition, with retries |
 | `post_update` | participants | A "commit" on the collaboration timeline |
 | `comment_on_milestone` | everyone | Comments tab on a milestone |
 | `create_personal_task` | everyone | Same as "New Personal Task" |
-| `create_milestone`, `update_milestone` | admins | Create child/root milestones, edit fields, add/remove assignees |
+| `assign_task` | `tasks.assign` | Same as Admin Panel → Assign Task (`createAdminTask`); `onTaskCreate` notifies |
+| `create_milestone`, `update_milestone` | `roadmap.edit` | Create child/root milestones, edit fields, add assignees |
 
-Deliberately left out: deleting tasks (the modal's delete doesn't route roadmap
-tasks, a known open bug) and archiving milestones.
+Deliberately left out, for everyone: deleting tasks, milestones, checklist
+items or comments, archiving milestones, removing work partners or assignees,
+and clearing a date. Those are done in the web app.
+
+`roadmap.edit` does not extend to tasks: the `tasks` full-update rule is
+`isAdmin()` only, so a non-admin with `tasks.assign` can create an assigned
+task but cannot then edit its progress unless they are on it.
 
 ## How it fits together
 

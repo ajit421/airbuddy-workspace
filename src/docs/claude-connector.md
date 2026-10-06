@@ -5,8 +5,8 @@ for you. Ask it things like *"what's due this week?"*, *"set the wing-test
 milestone to 60% and add Archit as a work partner"* or *"tick off 'order parts'
 on my CAD task"*.
 
-Claude acts **as you**. It can do exactly what you can do in WorkSpace, nothing
-more, and every change it makes shows up in the app, on the timeline and in
+Claude acts **as you**. It can do what your role and the permissions an admin
+has given you allow in WorkSpace, nothing more, and every change it makes shows up in the app, on the timeline and in
 people's notifications as if you had made it yourself.
 
 ## Set it up (once per computer)
@@ -15,7 +15,7 @@ people's notifications as if you had made it yourself.
 2. Install the connector. Ask your admin for the `airbuddy-workspace-mcp`
    package, then run:
    ```
-   npm install -g airbuddy-workspace-mcp-0.1.0.tgz
+   npm install -g airbuddy-workspace-mcp-0.2.0.tgz
    ```
 3. Sign in:
    ```
@@ -30,16 +30,32 @@ people's notifications as if you had made it yourself.
 
 ## What Claude can do
 
+**Everyone:**
+
 - List your work, read any task or milestone, browse and search the roadmap
 - Update progress (marking something complete needs a short completion note)
 - Extend a due date
-- Add work partners (and remove them, if you created the item)
-- Add, tick and delete checklist items
+- Add work partners
+- Add checklist items, and tick or untick them
 - Post progress updates to the collaboration timeline, and comment on milestones
 - Create personal tasks
-- **Admins only:** create milestones and edit them (dates, status, assignees)
 
-Claude cannot delete tasks or archive milestones. Do those in the app.
+**Only with a permission** (an admin grants it in Admin Panel → Permissions;
+admins have all of them):
+
+| Permission | What it adds in Claude |
+|---|---|
+| Edit roadmap (`roadmap.edit`) | Create milestones, edit them (title, dates, status, priority) and add assignees |
+| Assign tasks (`tasks.assign`) | Assign a task to other people |
+| See all tasks (`tasks.viewAll`) | See anybody's work list, not only your own |
+
+Ask Claude *"what can you do for me in WorkSpace?"* to see your own role and
+permissions.
+
+**Nobody, not even an admin, can delete or remove anything through Claude**:
+no deleting tasks, milestones, checklist items or comments, no archiving, and no
+taking work partners or assignees off. Do those in the app. If you used version
+0.1.0, update to 0.2.0: it is the version with these limits.
 
 ## Disconnect
 
