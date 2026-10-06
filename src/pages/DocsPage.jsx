@@ -298,7 +298,6 @@ export default function DocsPage() {
                           : 'text-text-secondary hover:text-text-primary hover:bg-[#1C2128]'
                       }`}
                     >
-                      <span className="text-base">{doc.icon}</span>
                       <span>{doc.title}</span>
                     </button>
                   </li>

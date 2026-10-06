@@ -1,6 +1,6 @@
 # Getting Started
 
-Welcome to the **AirBuddy Aerospace WorkSpace** documentation. This platform is the central workforce management hub for the AirBuddy Aerospace team — handling task assignment, real-time collaboration, calendar sync, HRMS, and AI assistance.
+Welcome to the **AirBuddy Aerospace WorkSpace** documentation. This platform is the central workforce management hub for the AirBuddy Aerospace team, handling task assignment, real-time collaboration, calendar sync, HRMS, and AI assistance.
 
 ## Prerequisites
 
@@ -56,7 +56,7 @@ Open [http://localhost:5173](http://localhost:5173) in your browser. The app wil
 By default, every new Google sign-in is assigned the `employee` role. To promote yourself to admin:
 
 1. Sign in with your Google account at `/login`
-2. Open the Firebase Console → **Firestore** → `users` collection
+2. Open the Firebase Console > **Firestore** > `users` collection
 3. Find your document (matched by UID) and change `role` from `"employee"` to `"admin"`
-4. Refresh the app — the Admin Panel will now appear in the sidebar
+4. Refresh the app. The Admin Panel will now appear in the sidebar
 

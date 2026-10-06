@@ -117,7 +117,7 @@ Import from: `import { ... } from './services/hrmsService'`
 | `addEmployee(data)` | Creates a new user document with `role: "employee"` |
 | `updateEmployee(uid, data)` | Merges provided fields into an existing user document |
 | `deleteEmployee(uid)` | Hard-deletes a user document (does NOT delete the Firebase Auth account) |
-| `recordPunch(uid)` | Toggles punch state for today — creates a punch-in or writes a punch-out |
+| `recordPunch(uid)` | Toggles punch state for today: creates a punch-in or writes a punch-out |
 | `getTodayAttendance(uid)` | Returns today's attendance record or `null` |
 | `getAttendanceDateRange(uid, startDate, endDate)` | Returns attendance records between two YYYY-MM-DD strings |
 | `getAllEmployeesAttendanceSummary(employees, startDate, endDate)` | Admin: parallel queries for all employees |
@@ -143,7 +143,7 @@ Writes a notification document to `notifications/{uid}/items/` and fires an inst
 ```javascript
 await sendNotification(
   'user456',
-  '🆕 New Task Assigned',
+  'New Task Assigned',
   '"Avionics Integration" has been assigned to you.',
   'task_assigned',
   'https://calendar.google.com/...'  // optional
@@ -178,7 +178,7 @@ const { events, loading, error } = useTaskTimeline('task123');
 
 ### `useTeamMembers()`
 
-Provides a real-time list of all team members with merged task statistics. Task stats are computed synchronously from `TaskContext` data — no extra Firestore reads.
+Provides a real-time list of all team members with merged task statistics. Task stats are computed synchronously from `TaskContext` data, with no extra Firestore reads.
 
 ```javascript
 const { members, loading, error, refreshAttendance } = useTeamMembers();
@@ -204,6 +204,6 @@ a date changes, and disappear when the record is deleted or a person is taken of
 it.
 
 Nothing in the browser calls a Google API, and `googleProvider` carries no OAuth
-scopes — a Calendar scope there would make every team member's login show
+scopes. A Calendar scope there would make every team member's login show
 Google's "unverified app" warning. Do not add one.
 

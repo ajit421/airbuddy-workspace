@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the technical architecture of AirBuddy WorkSpace — the technology choices, data flows, and design patterns that underpin the platform.
+This document describes the technical architecture of AirBuddy WorkSpace: the technology choices, data flows, and design patterns that underpin the platform.
 
 ## Tech Stack
 
@@ -47,7 +47,7 @@ Two global context providers manage shared state:
 - Handles Google OAuth sign-in, sign-out, and token refresh
 - Implements the invite-only whitelist gate (`allowed_emails` collection check)
 - Resolves secondary email accounts to primary UIDs via `user_email_map`
-- Exposes: `user`, `userProfile`, `effectiveUid`, `isAdmin` (no Google OAuth token — the browser never calls a Google API)
+- Exposes: `user`, `userProfile`, `effectiveUid`, `isAdmin` (no Google OAuth token; the browser never calls a Google API)
 
 **`TaskContext`** (`src/context/TaskContext.jsx`)
 - Maintains a real-time Firestore subscription to tasks
@@ -63,7 +63,7 @@ Two global context providers manage shared state:
 2. `signInWithPopup(auth, googleProvider)` opens a Google OAuth popup
 3. On success, the Google access token is stored in `sessionStorage` for Calendar API use
 4. `onAuthStateChanged` fires with the Firebase user
-5. The `allowed_emails` collection is checked — if the email isn't whitelisted, the user is immediately signed out with an error toast
+5. The `allowed_emails` collection is checked. If the email isn't whitelisted, the user is immediately signed out with an error toast
 6. The `user_email_map` collection is checked for secondary email mapping
 7. The user's Firestore profile is fetched or created at `users/{effectiveUid}`
 
@@ -166,10 +166,10 @@ Firestore security rules (`firestore.rules`) implement multi-layer access contro
 
 ### Key Security Functions
 
-- **`isAuthenticated()`** — checks `request.auth != null`
-- **`isEmailAllowed()`** — checks the `allowed_emails/{email}` document exists
-- **`getEffectiveUid()`** — resolves secondary emails to primary UIDs via `user_email_map`
-- **`isAdmin()`** — checks the user's `role` field in their Firestore profile
+- **`isAuthenticated()`**: checks `request.auth != null`
+- **`isEmailAllowed()`**: checks the `allowed_emails/{email}` document exists
+- **`getEffectiveUid()`**: resolves secondary emails to primary UIDs via `user_email_map`
+- **`isAdmin()`**: checks the user's `role` field in their Firestore profile
 
 ### Permission Matrix
 
@@ -223,7 +223,7 @@ Four Cloud Functions are deployed:
 
 ---
 
-## Company Roadmap — Cloud Functions
+## Company Roadmap: Cloud Functions
 
 Three additional Cloud Functions power the Company Roadmap module. They are defined in `functions/roadmapTriggers.js` and are **pending deploy** (Blaze plan required).
 
@@ -250,9 +250,9 @@ Additionally, `onRoadmapNodeWrite` detects self-triggered writes by checking whe
 
 Progress propagation from a leaf task up to the root could be implemented as a chain of recursive triggers (each node write triggers its parent). This approach was rejected for three reasons:
 
-1. **Infinite loop risk** — without a precise guard, `updatedAt` timestamp changes re-trigger the function indefinitely.
-2. **Firestore cost amplification** — each recursive invocation is billed separately; deep trees produce O(depth) function calls per task write.
-3. **Testability** — a single, deterministic function that reads all ancestors from `ancestorIds` (already stored on every node) and performs one batched pass is far easier to unit-test and reason about.
+1. **Infinite loop risk**: without a precise guard, `updatedAt` timestamp changes re-trigger the function indefinitely.
+2. **Firestore cost amplification**: each recursive invocation is billed separately; deep trees produce O(depth) function calls per task write.
+3. **Testability**: a single, deterministic function that reads all ancestors from `ancestorIds` (already stored on every node) and performs one batched pass is far easier to unit-test and reason about.
 
 ### Audit History Immutability
 
@@ -265,11 +265,11 @@ match /history/{historyId} {
 }
 ```
 
-Cloud Functions use the **Admin SDK**, which bypasses Firestore Rules entirely. This is the only write path — history entries are therefore tamper-proof from any client.
+Cloud Functions use the **Admin SDK**, which bypasses Firestore Rules entirely. This is the only write path. History entries are therefore tamper-proof from any client.
 
 ---
 
-## Company Roadmap — Permission Matrix Addendum
+## Company Roadmap: Permission Matrix Addendum
 
 Additional rows for the roadmap collections (appended to the Permission Matrix table above):
 
@@ -278,5 +278,5 @@ Additional rows for the roadmap collections (appended to the Permission Matrix t
 | `roadmapNodes` | Read all | Full CRUD |
 | `roadmapNodes/{id}/tasks` | Read own assigned; update `status`/`progress`/`completionNote` only | Full CRUD |
 | `roadmapNodes/{id}/comments` | Read all; create own (authorUid check); delete own | Full CRUD |
-| `roadmapNodes/{id}/history` | Read only | Read only (write blocked — Cloud Function only) |
+| `roadmapNodes/{id}/history` | Read only | Read only (write blocked; Cloud Function only) |
 | `roadmapNodes/{id}/attachments` | Read all; create/update/delete own | Full CRUD |

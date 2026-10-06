@@ -1,6 +1,6 @@
 # Platform Features
 
-AirBuddy WorkSpace is a comprehensive workforce management platform purpose-built for aerospace teams. Below is a complete reference for every feature available to both employees and administrators.
+AirBuddy WorkSpace is a workforce management platform purpose-built for aerospace teams. Below is a complete reference for every feature available to both employees and administrators.
 
 ## Authentication & Access Control
 
@@ -29,10 +29,10 @@ The main dashboard provides a real-time overview of your work.
 
 Four KPI cards at the top of the dashboard show filtered statistics:
 
-- **Total Tasks** — all tasks in the selected timeframe
-- **Completed** — tasks with `status: "completed"`
-- **Pending** — tasks with `status: "pending"` or `"in-progress"`
-- **Due This Week** — tasks due within the next 7 days
+- **Total Tasks**: all tasks in the selected timeframe
+- **Completed**: tasks with `status: "completed"`
+- **Pending**: tasks with `status: "pending"` or `"in-progress"`
+- **Due This Week**: tasks due within the next 7 days
 
 Use the **Month / Week / Day** toggle in the top-right to filter the timeframe.
 
@@ -40,18 +40,18 @@ Use the **Month / Week / Day** toggle in the top-right to filter the timeframe.
 
 Three interactive charts visualize your workload:
 
-- **Donut Chart** — task status distribution (Pending / In Progress / Completed)
-- **Bar Chart** — task counts grouped by day of the week
-- **Line Chart** — cumulative completion trend over the selected timeframe
+- **Donut Chart**: task status distribution (Pending / In Progress / Completed)
+- **Bar Chart**: task counts grouped by day of the week
+- **Line Chart**: cumulative completion trend over the selected timeframe
 
 ### Task List & Status Tabs
 
 All your tasks are listed below the charts, sortable by due date. Use the status tabs to filter:
 
-- **All** — every task assigned to you
-- **In Progress** — tasks with `status: "in-progress"`
-- **Pending** — tasks not yet started
-- **Completed** — finished tasks
+- **All**: every task assigned to you
+- **In Progress**: tasks with `status: "in-progress"`
+- **Pending**: tasks not yet started
+- **Completed**: finished tasks
 
 Click any task card to open the full **Task Detail Modal**.
 
@@ -72,24 +72,24 @@ Clicking any task card opens a full-screen modal with:
 - A **Todo List** checklist for breaking the task into steps (see below)
 - A **Work Partners** section for collaborative tasks
 - A **GitHub-style collaboration timeline** showing all commits, status changes, and partner additions
-- Tasks appear on your **Google Calendar automatically** — no button to press, no permission to grant. Work partners get the event too, and it follows any edit or reschedule
+- Tasks appear on your **Google Calendar automatically**: no button to press, no permission to grant. Work partners get the event too, and it follows any edit or reschedule
 - Approved leave, roadmap milestones assigned to you, and announcements land there as well, so the calendar alone tells you everything even if you never open the app
-- **Reminders arrive at 09:00**, by popup and by email — the morning before a task is due, and up to four mornings before a milestone. An announcement alerts you the moment it is posted
-- Nothing happens quietly any more: a task being **rescheduled**, a **leave decision**, and being **assigned to a milestone** all notify you now. Each one reaches you three ways — the in-app bell, a push notification, and a Google Calendar reminder
+- **Reminders arrive at 09:00**, by popup and by email: the morning before a task is due, and up to four mornings before a milestone. An announcement alerts you the moment it is posted
+- Nothing happens quietly any more: a task being **rescheduled**, a **leave decision**, and being **assigned to a milestone** all notify you now. Each one reaches you three ways: the in-app bell, a push notification, and a Google Calendar reminder
 
 ### Todo List (task checklist)
 
-Every task carries its own checklist, shown under **Progress** in the Task Detail Modal and in the Work Partner task drawer — the same list in both places.
+Every task carries its own checklist, shown under **Progress** in the Task Detail Modal and in the Work Partner task drawer. It is the same list in both places.
 
 - **Add** an item by typing in *Add a checklist item…* and pressing <kbd>Enter</kbd> (or tapping **+**)
 - **Check / uncheck** an item with its checkbox; done items are struck through
-- **Edit** an item's text with the pencil icon — <kbd>Enter</kbd> saves, <kbd>Esc</kbd> cancels
+- **Edit** an item's text with the pencil icon (<kbd>Enter</kbd> saves, <kbd>Esc</kbd> cancels)
 - **Delete** an item with the trash icon
 - A counter (e.g. **3/5**), a percentage, and a bar show how much of the checklist is done
 
-The checklist counter is **separate from the task's own progress slider** — ticking items off does not move task progress, so you stay in control of what the task reports.
+The checklist counter is **separate from the task's own progress slider**: ticking items off does not move task progress, so you stay in control of what the task reports.
 
-Anyone who works the task can use the checklist: admins, the task creator, assignees, and work partners. Everyone else sees it read-only. Items record who added them and who completed them — hover an item to see that.
+Anyone who works the task can use the checklist: admins, the task creator, assignees, and work partners. Everyone else sees it read-only. Items record who added them and who completed them; hover an item to see that.
 
 Changes appear live for everyone viewing the task, and each change is applied inside a transaction, so two people ticking different items at the same moment can't undo each other's work.
 
@@ -129,9 +129,9 @@ A card grid showing all registered users with their roles and join dates.
 
 The Calendar view (`/calendar`) renders all your tasks as color-coded events:
 
-- 🔴 **Red** — High priority
-- 🟡 **Yellow/Orange** — Medium priority
-- 🔵 **Blue** — Low priority
+- **Red**: High priority
+- **Yellow/Orange**: Medium priority
+- **Blue**: Low priority
 
 Supports **Month**, **Week**, **Day**, and **Agenda** views. Click any event to open the Task Detail Modal.
 
@@ -231,7 +231,7 @@ Admins can set a **Custom Role Label** (displayed as a violet badge) and update 
 
 A floating chat widget (bottom-right corner) powered by **Google Gemini 2.5 Flash Lite**. The assistant has context-awareness of your current task list and can help with prioritization, scheduling advice, and task questions.
 
-> The AI is **read-only** — it can help you understand your work but will always direct you to the app UI for any mutations.
+> The AI is **read-only**: it can help you understand your work but will always direct you to the app UI for any mutations.
 
 All API calls are routed through a Vercel Serverless Function (`/api/gemini`) so the API key never reaches the browser.
 
@@ -249,8 +249,8 @@ Click any notification to mark it as read. Use **Mark all read** to clear the ba
 
 ### Push notifications
 
-The first time you sign in, your browser asks for permission to show notifications. Allow it and you will also receive alerts **while the app is closed** — new task assignments, status changes, announcements, and a daily reminder each morning for anything due the next day.
+The first time you sign in, your browser asks for permission to show notifications. Allow it and you will also receive alerts **while the app is closed**: new task assignments, status changes, announcements, and a daily reminder each morning for anything due the next day.
 
-Each device is registered separately, so allowing it on your laptop does not cover your phone; sign in there and allow it too. Signing out removes that device, which matters on a shared computer. If you decline, nothing breaks — you simply see notifications only in the bell while the app is open.
+Each device is registered separately, so allowing it on your laptop does not cover your phone; sign in there and allow it too. Signing out removes that device, which matters on a shared computer. If you decline, nothing breaks; you simply see notifications only in the bell while the app is open.
 
 Web push is unavailable in a few browsers (notably older Safari and most in-app browsers such as the one inside LinkedIn or Instagram). Open the workspace in Chrome, Edge, Firefox, or Safari 16.4+ if you want alerts while it is closed.

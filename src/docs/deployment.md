@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide covers all deployment options for AirBuddy WorkSpace — from local development to full production deployment on Vercel and Firebase.
+This guide covers all deployment options for AirBuddy WorkSpace, from local development to full production deployment on Vercel and Firebase.
 
 ## Development Setup
 
@@ -9,12 +9,12 @@ This guide covers all deployment options for AirBuddy WorkSpace — from local d
 In the [Firebase Console](https://console.firebase.google.com/project/airbuddy-workspace):
 
 #### Enable Authentication
-1. Go to **Authentication** → **Sign-in method**
+1. Go to **Authentication** > **Sign-in method**
 2. Enable **Google** as a provider
 3. Add your domain (e.g. `localhost`, your Vercel domain) to **Authorized domains**
 
 #### Create Firestore Database
-1. Go to **Firestore Database** → **Create database**
+1. Go to **Firestore Database** > **Create database**
 2. Select **Start in production mode**
 3. Choose region `asia-south1` (recommended) or closest to your team
 
@@ -39,31 +39,31 @@ delegation, so nobody is ever asked for permission and sign-in is untouched.
 
 Requires Workspace **super admin** access for the domain.
 
-1. **Create the service account.** [Google Cloud Console](https://console.cloud.google.com/)
-   → **IAM & Admin** → **Service Accounts** → **Create service account**. Name it
-   something like `calendar-sync`. No project roles are needed — it authenticates
+1. **Create the service account.** [Google Cloud Console](https://console.cloud.google.com/) >
+   **IAM & Admin** > **Service Accounts** > **Create service account**. Name it
+   something like `calendar-sync`. No project roles are needed; it authenticates
    as employees, not as itself. Open it and copy the **Unique ID** (a 21-digit
    number); that is the "Client ID" the Admin console asks for.
-2. **Enable the API.** **APIs & Services** → **Library** → *Google Calendar API*
-   → **Enable**.
-3. **Authorize domain-wide delegation.** [admin.google.com](https://admin.google.com)
-   → **Security** → **Access and data control** → **API controls** → *Domain wide
-   delegation* → **Manage Domain Wide Delegation** → **Add new**:
+2. **Enable the API.** **APIs & Services** > **Library** > *Google Calendar API* >
+   **Enable**.
+3. **Authorize domain-wide delegation.** [admin.google.com](https://admin.google.com) >
+   **Security** > **Access and data control** > **API controls** > *Domain wide
+   delegation* > **Manage Domain Wide Delegation** > **Add new**:
    - **Client ID**: the Unique ID from step 1
    - **OAuth scopes**: `https://www.googleapis.com/auth/calendar.events`
    - **Authorize**
 
-   One scope only — `calendar.events` can write events but cannot create or
+   One scope only: `calendar.events` can write events but cannot create or
    delete calendars. Propagation usually takes a few minutes.
-4. **Store the key as a secret.** On the service account → **Keys** → **Add key**
-   → **Create new key** → **JSON**. Then paste the whole file contents into:
+4. **Store the key as a secret.** On the service account > **Keys** > **Add key** >
+   **Create new key** > **JSON**. Then paste the whole file contents into:
 
    ```bash
    npx firebase-tools functions:secrets:set CALENDAR_SA_KEY
    ```
 
    The secret has to exist before the functions deploy, or the deploy fails.
-   Delete the downloaded JSON afterwards — it is a live credential.
+   Delete the downloaded JSON afterwards; it is a live credential.
 5. **Deploy.**
 
    ```bash
@@ -72,12 +72,12 @@ Requires Workspace **super admin** access for the domain.
    ```
 
 To verify: create a task, then check the assignee's Google Calendar. If nothing
-appears, `npx firebase-tools functions:log --only onTaskCreate` names the reason —
+appears, `npx firebase-tools functions:log --only onTaskCreate` names the reason:
 a missing delegation is logged with the exact console page and scope to fix.
 
-### 3. Set Up FCM (Optional — Push Notifications)
+### 3. Set Up FCM (Optional: Push Notifications)
 
-1. In Firebase Console → **Project Settings** → **Cloud Messaging**
+1. In Firebase Console > **Project Settings** > **Cloud Messaging**
 2. Generate a **Web Push certificate** (VAPID key)
 3. Copy the key into `.env` as `VITE_FIREBASE_VAPID_KEY`
 
@@ -96,7 +96,7 @@ In your [Vercel project dashboard](https://vercel.com/dashboard), add the follow
 GEMINI_API_KEY = your_google_ai_studio_key
 ```
 
-All `VITE_*` variables from your `.env` file must also be added — they are required at build time.
+All `VITE_*` variables from your `.env` file must also be added; they are required at build time.
 
 #### Automatic Deployments
 
@@ -128,7 +128,7 @@ Set the Gemini secret. `functions.config()` was removed in `firebase-functions` 
 npx firebase-tools functions:secrets:set GEMINI_API_KEY
 ```
 
-Deploy rules and indexes first — the roadmap deadline cron queries an index that must already exist:
+Deploy rules and indexes first, since the roadmap deadline cron queries an index that must already exist:
 
 ```bash
 npx firebase-tools deploy --only firestore:rules
@@ -151,18 +151,18 @@ The first deploy enables Cloud Build, Artifact Registry, Cloud Scheduler and Eve
 
 | Function | Type | Trigger |
 |---|---|---|
-| `onTaskCreate` | Firestore | Document created in `tasks/{taskId}` — pushes to assignees |
-| `onTaskUpdate` | Firestore | Document updated in `tasks/{taskId}` — pushes on status change only |
+| `onTaskCreate` | Firestore | Document created in `tasks/{taskId}`; pushes to assignees |
+| `onTaskUpdate` | Firestore | Document updated in `tasks/{taskId}`; pushes on status change only |
 | `onAnnouncementCreate` | Firestore | Document created in `announcements/{id}` |
-| `onDueDateApproach` | Scheduled | Daily at **09:00 Asia/Kolkata** — tasks due tomorrow |
-| `roadmapDeadlineCheck` | Scheduled | Daily at **09:15 Asia/Kolkata** — roadmap tasks due tomorrow or overdue |
-| `onRoadmapTaskWrite` | Firestore | Task written under a roadmap node — recomputes node progress |
-| `onRoadmapNodeProgressChange` | Firestore | Roadmap node written — propagates progress to ancestors |
-| `onRoadmapNodeHistory` | Firestore | Roadmap node written — writes the audit history entry |
-| `onRoadmapTaskHistory` | Firestore | Roadmap task written — writes the audit history entry |
+| `onDueDateApproach` | Scheduled | Daily at **09:00 Asia/Kolkata**, for tasks due tomorrow |
+| `roadmapDeadlineCheck` | Scheduled | Daily at **09:15 Asia/Kolkata**, for roadmap tasks due tomorrow or overdue |
+| `onRoadmapTaskWrite` | Firestore | Task written under a roadmap node; recomputes node progress |
+| `onRoadmapNodeProgressChange` | Firestore | Roadmap node written; propagates progress to ancestors |
+| `onRoadmapNodeHistory` | Firestore | Roadmap node written; writes the audit history entry |
+| `onRoadmapTaskHistory` | Firestore | Roadmap task written; writes the audit history entry |
 | `askGemini` | Callable | Unused by the web app, which calls `/api/gemini` on Vercel |
 
-The roadmap **History** tab is populated by the two history triggers and records changes from the deploy forward only — existing nodes will show an empty log until they are next edited.
+The roadmap **History** tab is populated by the two history triggers and records changes from the deploy forward only. Existing nodes will show an empty log until they are next edited.
 
 ### Push notifications
 
@@ -176,16 +176,16 @@ Each browser registers its own device token on `users/{uid}.fcmTokens` at sign-i
 
 ### Monitoring Functions
 
-View logs and execution history in the [Firebase Console](https://console.firebase.google.com/project/airbuddy-workspace/functions) under **Functions** → **Logs**.
+View logs and execution history in the [Firebase Console](https://console.firebase.google.com/project/airbuddy-workspace/functions) under **Functions** > **Logs**.
 
 ## Whitelisting New Users
 
 The platform uses an invite-only access system. To grant a new user access:
 
 1. Open the [Firebase Console](https://console.firebase.google.com/project/airbuddy-workspace/firestore)
-2. Navigate to **Firestore** → `allowed_emails` collection
+2. Navigate to **Firestore** > `allowed_emails` collection
 3. Create a new document with the user's email address as the **Document ID**
-4. The document can be empty (`{}`) — its existence is all that matters
+4. The document can be empty (`{}`); its existence is all that matters
 
 The user can now sign in with that Google account.
 
@@ -193,7 +193,7 @@ The user can now sign in with that Google account.
 
 To allow a user to sign in with a different Google account and access the same workspace profile:
 
-1. In Firestore → `user_email_map` collection
+1. In Firestore > `user_email_map` collection
 2. Create a document with the **secondary email** as the Document ID
 3. Set the field `primaryUid` to the user's primary Firebase Auth UID
 

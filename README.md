@@ -1,6 +1,6 @@
 # AirBuddy Aerospace WorkSpace
 
-A role-based **workforce platform** for the `@airbuddy.in` team — tasks and
+A role-based **workforce platform** for the `@airbuddy.in` team: tasks and
 collaboration, a company roadmap, HRMS, KPI tracking, an AI assistant, push
 notifications and automatic Google Calendar sync.
 
@@ -37,7 +37,7 @@ Functions) as the backend, Gemini for the assistant.
 ## Overview
 
 AirBuddy WorkSpace is a single-page application with **no server of our own in
-the data path** — the browser talks to Firestore directly, and
+the data path**. The browser talks to Firestore directly, and
 [firestore.rules](firestore.rules) is the real authorization layer. Two thin
 server tiers exist for the things a browser must not do: a Vercel serverless
 function that holds the Gemini key, and Firebase Cloud Functions that own push
@@ -46,9 +46,9 @@ history.
 
 | Tier | Runs where | Contents |
 |---|---|---|
-| [src/](src/) | Browser | The SPA. ESLint **blocks `firebase-admin` imports here** — it would bypass all security rules. |
+| [src/](src/) | Browser | The SPA. ESLint **blocks `firebase-admin` imports here**, since it would bypass all security rules. |
 | [api/](api/) | Vercel serverless | Only [api/gemini.js](api/gemini.js). |
-| [functions/](functions/) | Firebase (CommonJS, Node 22) | 16 v2 functions — triggers, three crons, two callables. Blaze plan only. |
+| [functions/](functions/) | Firebase (CommonJS, Node 22) | 16 v2 functions: triggers, three crons, two callables. Blaze plan only. |
 | `scripts/` | Local Node, Admin SDK | Gitignored one-off maintenance scripts. Needs `serviceAccountKey.json` at the repo root; run with `--dry-run` first. |
 
 ---
@@ -60,16 +60,16 @@ history.
 | **Frontend** | React 19, Vite 7, React Router v7 |
 | **Styling** | Tailwind CSS 3 (fixed dark palette) |
 | **Validation** | Zod 4 at every service write boundary |
-| **Backend** | Firebase 12 — Auth, Firestore, Storage, Cloud Messaging |
+| **Backend** | Firebase 12: Auth, Firestore, Storage, Cloud Messaging |
 | **Cloud Functions** | `firebase-functions` 7 (v2 API), `firebase-admin` 14, Node 22 |
 | **Serverless API** | Vercel Functions (`/api/gemini`) |
 | **AI** | Google Gemini 2.5 Flash Lite (`@google/genai`) |
-| **Calendar** | Google Calendar API v3 — server-side, Workspace domain-wide delegation |
+| **Calendar** | Google Calendar API v3, server-side, Workspace domain-wide delegation |
 | **Charts** | Chart.js + react-chartjs-2 |
 | **Calendar UI** | react-big-calendar (moment localizer) |
 | **Markdown** | react-markdown + remark-gfm + rehype-slug (in-app docs) |
 | **Dates** | date-fns |
-| **Tests** | Vitest — 13 files, 368 tests |
+| **Tests** | Vitest, 13 files, 368 tests |
 
 ---
 
@@ -95,7 +95,7 @@ BrowserRouter > AuthProvider > ViewModeProvider > Routes
     KpiProvider > /kpi, /kpi/{industries,clients,products,sales,ip}
 ```
 
-The sidebar hiding a link is **not** access control — a new route needs both an
+The sidebar hiding a link is **not** access control; a new route needs both an
 entry in `navItems` ([src/components/shared/Sidebar.jsx](src/components/shared/Sidebar.jsx))
 and a guard in `App.jsx`.
 
@@ -107,7 +107,7 @@ things that touch everything:
 1. **Access gate.** `@airbuddy.in` emails are auto-trusted. Every other email
    needs an `allowed_emails/{email}` document that is not suspended; otherwise
    the user is signed straight back out with a toast. The same logic is
-   duplicated as `isEmailAllowed()` in `firestore.rules` — change both together,
+   duplicated as `isEmailAllowed()` in `firestore.rules`; change both together,
    or the client and the rules will disagree.
 2. **`effectiveUid`, never `user.uid`.** A secondary Google account can be mapped
    onto a primary user via `user_email_map/{email}.primaryUid`. All reads and
@@ -117,7 +117,7 @@ things that touch everything:
 3. **`isAdmin` vs `realIsAdmin`.** Admins can toggle "employee view". `isAdmin`
    is the *effective* role that drives the UI, the route guards and the query
    shape; `realIsAdmin` is the actual role and only decides whether the toggle
-   shows. Rules know nothing about the toggle — an admin in employee view still
+   shows. Rules know nothing about the toggle, so an admin in employee view still
    has admin write power at the database level.
 
 **The browser holds no Google OAuth access token, and `googleProvider` must never
@@ -130,28 +130,28 @@ be given a scope.** See [Google Calendar Sync](#google-calendar-sync) for why.
 ### Dashboard
 
 - Attendance **punch in / punch out** widget with a live clock.
-- Time-filtered stats (Day / Week / Month, plus custom ranges — last 7d, 30d,
+- Time-filtered stats (Day / Week / Month, plus custom ranges: last 7d, 30d,
   90d, 6mo, 1yr): total, completed, pending, in progress.
 - Donut, bar and line charts over the filtered window.
-- Status tabs — All / In Progress / Pending / Completed — plus a filter bar and
+- Status tabs (All / In Progress / Pending / Completed) plus a filter bar and
   an admin-only employee picker.
 - **Create Personal Task** modal for self-assigned work.
 - Card or table layout, following the global view-mode toggle.
 
-The list is `myWorkItems` from `TaskContext` — ordinary tasks **plus roadmap
+The list is `myWorkItems` from `TaskContext`: ordinary tasks **plus roadmap
 milestones assigned to you**, which live in `roadmapNodes` and are projected into
 task shape by `nodeToWorkItem()`.
 
-### Admin Panel — 5 tabs
+### Admin Panel (5 tabs)
 
-1. **Team Overview** — every member with task counts and completion rate.
-2. **Assign Task** — create and assign to one or more employees. Cloud Functions
+1. **Team Overview**: every member with task counts and completion rate.
+2. **Assign Task**: create and assign to one or more employees. Cloud Functions
    then push-notify each assignee and put the task on their own Google Calendar.
    This tab also holds the **Sync now** button, which calls the
    `syncAllCalendars` callable to reconcile every calendar on demand.
-3. **Task Monitor** — searchable, filterable table of all tasks, with delete.
-4. **Announcements** — create/delete with priority and an optional meeting link.
-5. **Employee Management** — all registered users, roles and join dates.
+3. **Task Monitor**: searchable, filterable table of all tasks, with delete.
+4. **Announcements**: create/delete with priority and an optional meeting link.
+5. **Employee Management**: all registered users, roles and join dates.
 
 ### Calendar
 
@@ -169,13 +169,13 @@ One modal serves both an ordinary task and a roadmap milestone
   `todos` array and mutated in a Firestore transaction so concurrent edits can't
   be lost. Open to admins, the creator, assignees and work partners; read-only
   for everyone else. Deliberately separate from the item's own progress value.
-- **Work partners** — add or remove collaborators.
-- **Collaboration timeline** — partner added, status changed, progress updated,
+- **Work partners**: add or remove collaborators.
+- **Collaboration timeline**: partner added, status changed, progress updated,
   and commit entries.
-- **Extend** — push a due date out, leaving an "Extended" badge.
+- **Extend**: push a due date out, leaving an "Extended" badge.
 - Writes are routed by `_source`: a milestone's progress, status and completion
   go to `roadmapNodes/{id}` via `updateNodeAsAssignee`, and Delete is hidden for
-  one — archiving is the correct operation, since a task-style delete would
+  one; archiving is the correct operation, since a task-style delete would
   orphan the whole subtree.
 
 ### Work Partner
@@ -186,20 +186,20 @@ events, commit posts with optional Drive links, and the same todo list.
 
 Work partners are stored **twice** on the document: `workPartners` (rich objects,
 what the UI renders) and `workPartnerUids` (a flat string array, the only thing
-security rules can actually test — CEL cannot query into an array of maps). Both
+security rules can actually test, since CEL cannot query into an array of maps). Both
 are updated in the same `updateDoc` via `arrayUnion` / `arrayRemove`. Never
 render `workPartnerUids`.
 
 ### Company Roadmap
 
-A hierarchical planning module. Hierarchy is **materialized** on every node —
-`parentId`, `path`, `ancestorIds[]`, `depth` — via `computeHierarchy()` rather
+A hierarchical planning module. Hierarchy is **materialized** on every node
+(`parentId`, `path`, `ancestorIds[]`, `depth`) via `computeHierarchy()` rather
 than derived ad hoc.
 
-- **List view** — recursive expand/collapse, subscribing per node on expand and
+- **List view**: recursive expand/collapse, subscribing per node on expand and
   unsubscribing on collapse. Clicking a title opens the detail *and* expands the
   branch (expand only, never collapse, and never on a leaf).
-- **Journey view** — a winding-path visualisation of a milestone's levels with a
+- **Journey view**: a winding-path visualisation of a milestone's levels with a
   "You are here" marker.
 - **Milestones are the unit of work.** The old `roadmapNodes/{id}/tasks`
   subcollection and its Tasks tab were removed; breaking a milestone down means
@@ -207,20 +207,20 @@ than derived ad hoc.
   right-hand detail panel (breadcrumb, comments, attachments, history, Add
   Child), while a **child** opens the ordinary task detail modal, because a child
   *is* the unit of work.
-- **Detail panel — 4 tabs:** Overview, Comments, Attachments, History.
-- **Attachments** — images, PDFs, Word docs, CSV/text, max 10 MB, in Firebase
+- **Detail panel (4 tabs):** Overview, Comments, Attachments, History.
+- **Attachments**: images, PDFs, Word docs, CSV/text, max 10 MB, in Firebase
   Storage under `roadmapAttachments/{nodeId}/`.
-- **Audit history** — written only by Cloud Functions with the Admin SDK;
+- **Audit history**: written only by Cloud Functions with the Admin SDK;
   `history` is `allow write: if false` for every client. History starts from the
   deploy forward and is not backfilled.
-- **Progress rollup runs twice, on purpose** — client-side for instant feedback
+- **Progress rollup runs twice, on purpose**: client-side for instant feedback
   and in a Cloud Function authoritatively. Both are idempotent and walk the
   ancestor chain capped at 10 levels.
 - **Sibling order is by `dueDate`**, tiebreaking `dueDate → order → title → id`.
   Undated nodes sink below every dated one, so a parent with no due date of its
-  own lists alphabetically. (`order` is a dead field today — nothing writes it —
+  own lists alphabetically. (`order` is a dead field today, since nothing writes it,
   but is still honoured so a future manual-ordering feature needs no change.)
-- **KPI strip** — node counts by status and overall weighted progress.
+- **KPI strip**: node counts by status and overall weighted progress.
 - Read is open to every whitelisted user; structural writes are admin-only, with
   field-scoped carve-outs so an assignee can update their own milestone and a
   partner can tick a checklist item.
@@ -240,11 +240,11 @@ than derived ad hoc.
 
 `KpiProvider` runs five Firestore listeners, scoped to `/kpi` routes only.
 Panels: **Industries**, **Clients**, **Products**, **Sales** and **IP**
-(`kpi_patents` doubles as general IP — Patent / Trademark / Software-Calculator;
+(`kpi_patents` doubles as general IP: Patent / Trademark / Software-Calculator;
 `/kpi/patents` redirects to `/kpi/ip`). The dashboard shows counts and derived
 progress.
 
-**Progress percentages are derived, never stored** — they come from
+**Progress percentages are derived, never stored**. They come from
 `FILING_STAGE_PROGRESS` / `DEV_STAGE_PROGRESS` in
 [src/context/KpiContext.jsx](src/context/KpiContext.jsx), so adding a stage means
 editing the map, not Firestore.
@@ -266,7 +266,7 @@ fresh Firebase ID token. [api/gemini.js](api/gemini.js) verifies that token with
 the Admin SDK, applies a **30 requests/minute per-UID** in-memory rate limit,
 restricts CORS to a single origin, caps message length and the last 20 history
 turns, then calls Gemini. Without `FIREBASE_SERVICE_ACCOUNT` it returns **503**
-rather than serving unauthenticated traffic — so a local `/api/gemini` will 503
+rather than serving unauthenticated traffic, so a local `/api/gemini` will 503
 until that variable is set. The assistant is intentionally read-only and points
 users at the UI for changes.
 
@@ -363,7 +363,7 @@ Work_flow/
 
 ```mermaid
 graph LR
-    subgraph FE ["🖥️ Browser — React SPA"]
+    subgraph FE ["Browser — React SPA"]
         direction TB
         AuthContext["AuthContext\n(access gate, effectiveUid)"]
         TaskContext["TaskContext\n(onSnapshot listeners)"]
@@ -372,16 +372,16 @@ graph LR
         SW["firebase-messaging-sw.js\n(background push)"]
     end
 
-    subgraph VERCEL ["⚡ Vercel"]
+    subgraph VERCEL ["Vercel"]
         VercelFunc["POST /api/gemini\n(ID-token verify + rate limit)"]
     end
 
-    subgraph GCLOUD ["🤖 Google Cloud"]
+    subgraph GCLOUD ["Google Cloud"]
         GeminiAPI["Gemini 2.5 Flash Lite"]
         GCalAPI["Google Calendar API v3\n(domain-wide delegation)"]
     end
 
-    subgraph FIREBASE ["🔥 Firebase"]
+    subgraph FIREBASE ["Firebase"]
         direction TB
         FirebaseAuth["Firebase Auth\n(Google provider — no scopes)"]
         Firestore["Cloud Firestore\n(asia-south2)"]
@@ -414,7 +414,7 @@ graph LR
     class FIREBASE fbStyle
 ```
 
-Note that **the browser never calls the Calendar API** — that arrow runs from
+Note that **the browser never calls the Calendar API**; that arrow runs from
 Cloud Functions only, and deliberately so.
 
 ---
@@ -426,9 +426,9 @@ Components should not import `firebase/firestore` directly; add a function to th
 relevant service instead. Every file in [src/services/](src/services/) follows
 the same contract:
 
-- **Zod validation at every write boundary** — `Schema.parse(form)` before the
+- **Zod validation at every write boundary**: `Schema.parse(form)` before the
   write, so a bad shape throws before it reaches Firestore.
-- `serverTimestamp()` for `createdAt` / `updatedAt` — never `new Date()`.
+- `serverTimestamp()` for `createdAt` / `updatedAt`, never `new Date()`.
 - **No `orderBy()` in queries; sort client-side in the subscribe callback.** This
   is deliberate, to avoid needing a composite index per query. The exceptions are
   the paths that do have indexes: roadmap queries, `notifications`, admin `tasks`.
@@ -437,8 +437,8 @@ the same contract:
 - Errors: `console.error('[serviceName] functionName:', err)` then re-throw.
 
 `TaskContext` runs one broad listener for admins (`orderBy('createdAt','desc')`)
-and three narrower ones for employees — assigned, work-partner and
-roadmap-assigned — into **separate state slices** merged in a `useMemo`. Keeping
+and three narrower ones for employees (assigned, work-partner and
+roadmap-assigned) into **separate state slices** merged in a `useMemo`. Keeping
 them separate avoids `clear()` races between snapshot callbacks; do not collapse
 them back into one shared mutable map.
 
@@ -446,7 +446,7 @@ Shared services resolve their collection through
 [src/utils/workItemRef.js](src/utils/workItemRef.js) instead of hardcoding
 `tasks`. `todoService` and `collaborationService` take the **work item object**,
 not a bare id, and `workItemCollection()` maps `_source: 'roadmapNode'` onto
-`roadmapNodes` — which is how one detail modal drives both. `useTaskTodos` and
+`roadmapNodes`, which is how one detail modal drives both. `useTaskTodos` and
 `useTaskTimeline` therefore key their effect on a derived `collection/id`
 **string**, never on the object, or the snapshot listener would be torn down and
 rebuilt on every render.
@@ -460,17 +460,17 @@ rebuilt on every render.
 | Path | Write access | Notes |
 |---|---|---|
 | `users/{uid}` | Self (safe fields) / admin | Self-update **denies** `role, uid, email, salaryBase, department, designation` and the three FCM keys. Create must be `role: 'employee'` and is blocked for mapped secondary emails. |
-| `users/{uid}.fcmToken(s)` | Self, own branch only | `fcmToken`, `fcmTokens`, `fcmTokenUpdatedAt` have a **separate** update branch guarded by `hasOnly` — a write touching anything else alongside them is rejected. |
+| `users/{uid}.fcmToken(s)` | Self, own branch only | `fcmToken`, `fcmTokens`, `fcmTokenUpdatedAt` have a **separate** update branch guarded by `hasOnly`; a write touching anything else alongside them is rejected. |
 | `allowed_emails/{email}` | Admin | External-collaborator whitelist. Read is restricted to your own email (anti-enumeration). |
 | `user_email_map/{email}` | Admin | Secondary email → `primaryUid`. Same read restriction. |
 
-**`users/{uid}`** — `uid`, `name`, `email`, `role` (`employee` | `admin`),
+**`users/{uid}`**: `uid`, `name`, `email`, `role` (`employee` | `admin`),
 `avatar`, `viewMode` (`card` | `table`), `department`, `designation`, `joinDate`,
 `salaryBase`, `fcmToken`, `fcmTokens[]`, `fcmTokenUpdatedAt`, `createdAt`.
 
 ### Work
 
-**`tasks/{taskId}`** — `title`, `description`, `module`, `priority`
+**`tasks/{taskId}`**: `title`, `description`, `module`, `priority`
 (`low`/`medium`/`high`), `status` (`pending`/`in-progress`/`completed`),
 `progress` (0–100), `startDate`, `dueDate`, `assignedTo[]`, `assignedBy`,
 `createdBy`, `isAdminTask`, `links[]`, `attachments[]`, `todos[]`,
@@ -481,14 +481,14 @@ rebuilt on every render.
 > **Task update rules are field-scoped.** An assignee may write anything *except*
 > `title, description, assignedTo, startDate, priority, module, isAdminTask`; any
 > participant may write *only* `workPartners, workPartnerUids, updatedAt`. When
-> you add a field to a task, decide which bucket it belongs in — otherwise the
+> you add a field to a task, decide which bucket it belongs in; otherwise the
 > write is rejected in production but passes locally against an admin account.
 
-**`tasks/{taskId}/events/{id}`** — the collaboration timeline: `partner_added`,
-`status_changed`, `progress_updated`, `commit`. `authorUid` must equal
+**`tasks/{taskId}/events/{id}`**: the collaboration timeline (`partner_added`,
+`status_changed`, `progress_updated`, `commit`). `authorUid` must equal
 `getEffectiveUid()`.
 
-**`roadmapNodes/{id}`** — `title`, `description`, `status`
+**`roadmapNodes/{id}`**: `title`, `description`, `status`
 (`pending`/`in-progress`/`completed`/`blocked`/`archived`), `priority`
 (`low`/`medium`/`high`/`critical`), `startDate`, `dueDate`, `assignedTo[]`,
 `createdBy`, `updatedBy`, `parentId`, `path`, `ancestorIds[]`, `depth`, `order`,
@@ -498,11 +498,11 @@ rebuilt on every render.
 Subcollections: `tasks` (legacy), `events`, `comments`, `history` (function-write
 only), `attachments`.
 
-**`announcements/{id}`** — `title`, `message`, `priority`
+**`announcements/{id}`**: `title`, `message`, `priority`
 (`normal`/`medium`/`high`), `targetAudience`, `meetingLink`, `adminId`,
 `adminName`, `adminAvatar`, `isRead[]`, `createdAt`.
 
-**`notifications/{uid}/items/{id}`** — `title`, `message`, `type`, `read`,
+**`notifications/{uid}/items/{id}`**: `title`, `message`, `type`, `read`,
 `senderUid`, `eventLink`, `createdAt`.
 
 ### HRMS
@@ -510,11 +510,11 @@ only), `attachments`.
 | Path | Shape |
 |---|---|
 | `leaves/{id}` | `uid`, `applicantName`, `type` (`sick`/`casual`/`unpaid`), `startDate`, `endDate` (`YYYY-MM-DD`), `reason`, `status` (`pending`/`approved`/`rejected`), `reviewedBy`, `createdAt`, `updatedAt` |
-| `attendance/{uid}/records/{id}` | `date` (`YYYY-MM-DD`, **local** not UTC), `punchIn`, `punchOut`, `createdAt`, `updatedAt` — owner-write only; admins read all |
+| `attendance/{uid}/records/{id}` | `date` (`YYYY-MM-DD`, **local** not UTC), `punchIn`, `punchOut`, `createdAt`, `updatedAt`. Owner-write only; admins read all |
 | `candidates/{id}` | `name`, `email`, `role`, `experience`, `resumeUrl`, `notes`, `status` (starts at `Applied`), `createdAt`, `updatedAt` |
 | `performances/{id}` | `uid`, `employeeName`, `reviewedBy`, `period`, `skills: { communication, technical, leadership, teamwork, punctuality }`, `goalsAssigned`, `goalsCompleted`, `notes`, `createdAt` |
 
-### KPI — admin write, all read
+### KPI: admin write, all read
 
 | Collection | Shape |
 |---|---|
@@ -533,11 +533,11 @@ mostly roadmap queries (`parentId+isArchived+order`, `ancestorIds`
 array-contains, collection-group `tasks` and `history`). A new roadmap query
 almost certainly needs an entry there.
 
-> ⚠️ **`fieldOverrides` in that file is destructive.** `firebase deploy --only
+> Warning: **`fieldOverrides` in that file is destructive.** `firebase deploy --only
 > firestore:indexes` treats the array as the *complete* set of single-field
 > overrides for the project: anything live but absent from the file is
 > **deleted**. Adding one entry therefore silently drops every other field's
-> exemption. That is exactly how it went wrong once — adding a `tasks.dueDate`
+> exemption. That is exactly how it went wrong once: adding a `tasks.dueDate`
 > override removed the `tasks.assignedTo` `COLLECTION_GROUP`/`CONTAINS`
 > exemption, and the collection-group listener in `TaskContext` started failing
 > with `failed-precondition` in production. Before editing the array, list what
@@ -547,14 +547,14 @@ Two related traps in the same area:
 
 - A **composite** index does not serve a single-field `array-contains` query.
   Index 5 (`assignedTo + status`) looks like it covers the `assignedTo`-only
-  listener; it does not — that needs its own `CONTAINS` single-field index.
+  listener; it does not; that needs its own `CONTAINS` single-field index.
 - Automatic single-field indexes are **`COLLECTION`-scoped only**. Any
   `collectionGroup()` query filtering on a single field needs an explicit
   `COLLECTION_GROUP` entry, and declaring one replaces the automatic `COLLECTION`
   ones, so restate those too.
 
 The symptom is `The query requires a COLLECTION_GROUP_CONTAINS index` in the
-browser console — quiet enough to survive a casual look, because the listener
+browser console. It is quiet enough to survive a casual look, because the listener
 degrades gracefully and only the affected items go missing.
 
 ---
@@ -564,7 +564,7 @@ degrades gracefully and only the affected items go missing.
 [firestore.rules](firestore.rules) is the only real authorization layer;
 [src/utils/permissions.js](src/utils/permissions.js) merely gates UI affordances.
 **Granting a capability means editing both.** The client helpers check
-`userProfile.role` directly rather than `isAdmin` from context — intentionally,
+`userProfile.role` directly rather than `isAdmin` from context, intentionally,
 for consistency across helpers.
 
 | Collection | Rule summary |
@@ -578,14 +578,14 @@ for consistency across helpers.
 | `leaves`, `attendance`, `candidates`, `performances` | Owner-or-admin patterns. Attendance records are owner-write only; admins read all and may delete. |
 | `kpi_*` | All read, admin write. |
 | `roadmapNodes` | Read: all whitelisted. Structural write: admin. Non-admin carve-outs: the rollup fields (`progress, childCompletedCount, status, updatedAt`), an **assignee** carve-out matching `NODE_ASSIGNEE_WRITABLE_FIELDS` exactly, and a **participant** carve-out for the shared arrays (`workPartners, workPartnerUids, todos`) so a partner can tick a checklist item without gaining the right to set progress. |
-| `roadmapNodes/{id}/history` | `allow write: if false` — Cloud Functions only. Do not "fix" an empty log by writing history from the client; that would mean weakening the audit-trail rule. |
+| `roadmapNodes/{id}/history` | `allow write: if false`; Cloud Functions only. Do not "fix" an empty log by writing history from the client; that would mean weakening the audit-trail rule. |
 | Storage `roadmapAttachments/{nodeId}/{file}` | Signed-in read/write, 10 MB cap, matching the Firestore metadata check. Everything else in the bucket is closed. |
 
-`hasOnly()` fails the **whole** update for one stray key — which is why
+`hasOnly()` fails the **whole** update for one stray key, which is why
 `updateNodeAsAssignee` writes nothing outside `NODE_ASSIGNEE_WRITABLE_FIELDS`.
 Keep that constant and the rule's list identical.
 
-Passing the wrong `senderUid` — or omitting it — is the usual cause of a
+Passing the wrong `senderUid` (or omitting it) is the usual cause of a
 silently rejected notification. The two crons write bell entries with
 `senderUid: 'system'`, which is legal only because the Admin SDK bypasses rules
 entirely.
@@ -598,7 +598,7 @@ rules are in `firestore.rules`; don't edit the draft.
 ## Cloud Functions
 
 Sixteen functions, all **v2** (`firebase-functions` 7, whose root export *is* the
-v2 namespace — `functions.firestore.document` and `functions.pubsub.schedule` do
+v2 namespace; `functions.firestore.document` and `functions.pubsub.schedule` do
 not exist there). Runtime Node 22, `maxInstances: 10`, 256 MiB, set once via
 `setGlobalOptions` in [functions/index.js](functions/index.js).
 
@@ -616,16 +616,16 @@ not exist there). Runtime Node 22, `maxInstances: 10`, 256 MiB, set once via
 | `onRoadmapNodeHistory` / `onRoadmapTaskHistory` | same paths | Audit-history writes |
 | `onDueDateApproach` | cron **09:00 IST** | Bell + push for root tasks due tomorrow |
 | `roadmapDeadlineCheck` | cron **09:15 IST** | Bell + push for roadmap tasks due tomorrow or overdue |
-| `dailyCalendarReconcile` | cron **07:30 IST** | Creates any missing Calendar event — the backfill, run daily |
+| `dailyCalendarReconcile` | cron **07:30 IST** | Creates any missing Calendar event (the backfill, run daily) |
 | `syncAllCalendars` | callable, admin-only | The same reconcile on demand, behind the Admin Panel's **Sync now** button |
 | `askGemini` | callable | Unused by the SPA (which calls `/api/gemini`); kept as a non-Vercel fallback |
 
-### The region split is deliberate — do not tidy it into one region
+### The region split is deliberate; do not tidy it into one region
 
 | | Region | Why |
 |---|---|---|
 | The 11 triggers + `askGemini` + `syncAllCalendars` | `asia-south2` (Delhi) | The Firestore database lives there. A Firestore trigger creates its Eventarc trigger in the *database's* region no matter where the function runs, so anything else means a cross-region hop plus egress on every document the rollup and history triggers read. |
-| `onDueDateApproach`, `roadmapDeadlineCheck`, `dailyCalendarReconcile` | `asia-south1` (Mumbai) | **Cloud Scheduler has no `asia-south2` presence** — deploying a scheduled function there fails with `Location 'asia-south2' is not a valid location`. The cross-region reads are irrelevant for a once-a-day scan. |
+| `onDueDateApproach`, `roadmapDeadlineCheck`, `dailyCalendarReconcile` | `asia-south1` (Mumbai) | **Cloud Scheduler has no `asia-south2` presence**; deploying a scheduled function there fails with `Location 'asia-south2' is not a valid location`. The cross-region reads are irrelevant for a once-a-day scan. |
 
 Shared modules are required rather than duplicated:
 [functions/adminApp.js](functions/adminApp.js) holds the **single**
@@ -637,7 +637,7 @@ the bell entry and sends the push together; [functions/time.js](functions/time.j
 owns IST day boundaries.
 
 **No legacy `admin` namespace anywhere in `functions/`.** `firebase-admin` 14
-removed it — `require('firebase-admin')` still resolves but `admin.apps`,
+removed it: `require('firebase-admin')` still resolves but `admin.apps`,
 `admin.firestore` and `admin.messaging` are all `undefined`. A single
 `admin.apps.length` throws at module load and the deploy then fails with the
 unhelpful *"User code failed to load. Cannot determine backend specification"*,
@@ -648,7 +648,7 @@ with the real TypeError a few lines above it. Always import from
 is on IST, so `new Date().getDate()` inside a function is the *previous* calendar
 day for ~5.5 hours every night. `dueDate` is written client-side as UTC midnight
 of the picked day, so the correct query boundary is "UTC midnight of the
-**Indian** calendar day" — `istTodayUtcMidnight()`. Do not reach for
+**Indian** calendar day", which is `istTodayUtcMidnight()`. Do not reach for
 `new Date()` arithmetic in a scheduled function.
 
 Two cost guards worth knowing before changing a query: `roadmapDeadlineCheck`'s
@@ -659,14 +659,14 @@ the query, because combining that with a `dueDate` range would mean two
 inequality fields, needing another composite index and an `orderBy`.
 
 The pure rollup math in `functions/roadmapService.server.js` is unit-tested from
-`src/` via `createRequire` — keep it dependency-free so that keeps working.
+`src/` via `createRequire`, so keep it dependency-free so that keeps working.
 
 ---
 
 ## Google Calendar Sync
 
 Everything the app notifies people about, and everything on its own Calendar
-page, also lands on the relevant person's Google Calendar —
+page, also lands on the relevant person's Google Calendar, via
 [functions/calendar.js](functions/calendar.js) plus the pure half in
 [functions/calendarEvent.js](functions/calendarEvent.js). **There is no client
 involvement at all**: no button, no scope, no popup, no `gapi`.
@@ -678,7 +678,7 @@ The browser version was built first and rolled back.
 the `signInWithPopup()` request, and because this OAuth app is not verified by
 Google, every team member's *login* was interrupted by a full-page "Google hasn't
 verified this app" / "Access blocked" warning. On top of that, a browser token
-can only write to the calendar of whoever is signed in — so assigning work to
+can only write to the calendar of whoever is signed in, so assigning work to
 somebody else put it on the *admin's* calendar.
 
 The standing requirement is that signing out and back in shows no Google warning
@@ -689,9 +689,9 @@ site.
 ### How impersonation works
 
 A service account holds Workspace **domain-wide delegation** for
-`https://www.googleapis.com/auth/calendar.events` (least privilege — it can write
+`https://www.googleapis.com/auth/calendar.events` (least privilege: it can write
 events but cannot create or delete calendars), authorised once by the super admin
-in admin.google.com → Security → Access and data control → API controls → Domain
+in admin.google.com > Security > Access and data control > API controls > Domain
 wide delegation. `calendar.js` builds a JWT with
 `subject: '<employee>@airbuddy.in'` and writes to that person's `primary`
 calendar. The consent is org-level, so individual employees are never prompted
@@ -708,19 +708,19 @@ and sync works with their browser closed. The service-account JSON lives in the
 | `announcements/{id}` | every Workspace account | `onAnnouncementCreate` / `onAnnouncementDelete` |
 
 Work partners are included because a partnered task already shows on their
-Dashboard — the calendar was the one place the work was invisible to them. Only
+Dashboard; the calendar was the one place the work was invisible to them. Only
 the leave *applicant* gets a leave event: admins see everybody's leave on the
 app's Calendar page, but mirroring the whole team's time off into an admin's
 personal calendar would bury their own days. Milestones with no assignee, and
 nodes that are archived or undated, sync to nobody.
 
-The two deadline crons deliberately create **no** calendar entries — the event
+The two deadline crons deliberately create **no** calendar entries, because the event
 for the task already carries reminders a day and an hour ahead.
 
 ### Things worth knowing before changing any of it
 
 - **Triggers only fire on writes, so a backfill is mandatory.** Anything created
-  before the feature was deployed has no event and never would — on day one the
+  before the feature was deployed has no event and never would. On day one the
   entire backlog was invisible in everybody's calendar while new tasks synced
   correctly, which read as "the feature does not work". `backfillAll()` walks
   current state and creates only what is missing; `dailyCalendarReconcile` runs
@@ -731,7 +731,7 @@ for the task already carries reminders a day and an hour ahead.
 - **Only `@airbuddy.in` accounts sync.** Delegation cannot impersonate an
   external `allowed_emails` collaborator or a gmail account, so those are skipped
   with a log line. Roughly half the team is on gmail today; this is not a bug to
-  fix in code — either those people get Workspace accounts, or the sync falls
+  fix in code. Either those people get Workspace accounts, or the sync falls
   back to attendee invitations for them.
 - **`calendarEventIds: { uid: eventId }`** on the record is how an edit or delete
   finds the right event in each person's calendar. It is written with the Admin
@@ -743,7 +743,7 @@ for the task already carries reminders a day and an hour ahead.
   loops. Timestamps are compared by value and arrays element-wise, because two
   `Timestamp` objects for the same instant are never `===` and `assignedTo` is a
   fresh array on every snapshot.
-- **`progress` is not in `NODE_SYNCED_FIELDS`, and must not be** — the rollup
+- **`progress` is not in `NODE_SYNCED_FIELDS`, and must not be**: the rollup
   rewrites it on every tick anywhere below a node. The event shows `status`
   instead, and carries no progress percentage, which would be permanently stale.
 - **Node and leave sync are `onDocumentWritten`, not create/update/delete**,
@@ -753,15 +753,15 @@ for the task already carries reminders a day and an hour ahead.
   the 21st, or Google renders it as ending on the 19th.
 - **All-day reminder offsets are counted from midnight**, so the obvious-looking
   `{ minutes: 60 }` fires at 23:00 the night before and `{ minutes: 1440 }` at
-  midnight — both while everyone is asleep, which is why the first version felt
+  midnight, both while everyone is asleep, which is why the first version felt
   silent even though reminders were set. The offsets are `900`, `2340` and
-  `5220`, all landing at 09:00 IST. Do not "tidy" them into round day multiples —
+  `5220`, all landing at 09:00 IST. Do not "tidy" them into round day multiples;
   [src/services/calendarReminders.server.test.js](src/services/calendarReminders.server.test.js)
   asserts `minutes % 1440 === 900` precisely so that tidying fails the build.
-- **Every event carries an `email` reminder as well as popups** — email is the one
+- **Every event carries an `email` reminder as well as popups**, since email is the one
   channel that still arrives when a user has denied browser notifications and has
   the app closed.
-- **The announcement event is timed, not all-day** — a 15-minute slot at the
+- **The announcement event is timed, not all-day**: a 15-minute slot at the
   moment of posting with a 0-minute popup and email, so the reminder fires
   immediately. It is also `transparency: 'transparent'`, so it marks nobody busy.
 - **A leave event has no reminders at all**, deliberately: a day off is not a
@@ -782,25 +782,25 @@ sees, push is what reaches a user whose tab is closed, and the Google Calendar
 reminder is what fires later at 09:00 IST.
 
 [functions/notify.js](functions/notify.js) is the single server-side entry
-point — `notifyUsers(uids, { title, body, type })` writes the bell entries and
+point: `notifyUsers(uids, { title, body, type })` writes the bell entries and
 sends the push together, so the two cannot drift. Before it existed, each cron
 wrote its own bell document inline, and three things happened **completely
 silently**: a task being rescheduled, a leave being approved or rejected, and
 somebody being put on a roadmap milestone.
 
-**In-app (client-written)** — `notifications/{uid}/items`, written by
+**In-app (client-written):** `notifications/{uid}/items`, written by
 [src/services/notificationService.js](src/services/notificationService.js), read
 by the Navbar bell, plus a foreground browser `Notification` for the acting
 user's own session.
 
-**Background push (FCM)** — four pieces, and it only works when all four line up:
+**Background push (FCM).** Four pieces, and it only works when all four line up:
 
 1. [public/firebase-messaging-sw.js](public/firebase-messaging-sw.js), at exactly
    that origin path. A service worker cannot read `import.meta.env` and Vite
    copies `public/` verbatim, so the Firebase config is passed **through the
    registration URL's query string** and read back off `self.location`. Bump
    `SW_VERSION` in `pushService.js` to force a re-install.
-2. [src/services/pushService.js](src/services/pushService.js) — `isSupported()`
+2. [src/services/pushService.js](src/services/pushService.js): `isSupported()`
    feature detection (not a bare `getMessaging()` in a try/catch, which does not
    reliably throw), permission prompt, SW registration,
    `getToken({ vapidKey, serviceWorkerRegistration })`, and the Firestore write.
@@ -818,7 +818,7 @@ Dead tokens are pruned automatically after a
 dead devices. Browsers without web push (Safari < 16.4, most in-app browsers)
 fall back to foreground-only.
 
-**A new notification type has to be added in three places** — the enum in
+**A new notification type has to be added in three places**: the enum in
 [firestore.rules](firestore.rules), `NOTIF_TYPES` in `functions/notify.js`, and
 `NOTIF_ICON_MAP` in [src/components/shared/Navbar.jsx](src/components/shared/Navbar.jsx)
 (a missing icon silently falls back to a grey circle). The current fourteen:
@@ -833,7 +833,7 @@ server writes.
 
 ## Environment Variables
 
-### Frontend — `.env` at the repo root (gitignored)
+### Frontend: `.env` at the repo root (gitignored)
 
 ```env
 VITE_FIREBASE_API_KEY=
@@ -852,12 +852,12 @@ FIREBASE_SERVICE_ACCOUNT=       # JSON string — used by the local /api/gemini 
 > browser bundle is built there, so a key that is only in the local `.env` works
 > in `npm run dev` and silently disables the feature in production.
 
-> `VITE_GOOGLE_CLIENT_ID` and `VITE_GOOGLE_CALENDAR_API_KEY` are **dead** —
+> `VITE_GOOGLE_CLIENT_ID` and `VITE_GOOGLE_CALENDAR_API_KEY` are **dead**;
 > nothing in `src/` reads them since Calendar sync moved server-side, and they
 > can be deleted from `.env` and from Vercel. Calendar needs nothing in the
 > browser, and a Calendar OAuth scope must never be added to `googleProvider`.
 
-### Vercel — project dashboard
+### Vercel: project dashboard
 
 ```env
 GEMINI_API_KEY=            # Google AI Studio key, server-side only
@@ -865,7 +865,7 @@ FIREBASE_SERVICE_ACCOUNT=  # Admin SDK JSON — without it /api/gemini returns 5
 ALLOWED_ORIGIN=            # optional; defaults to https://airbuddy-workspace.vercel.app
 ```
 
-### Cloud Functions — secrets, not `functions.config()`
+### Cloud Functions: secrets, not `functions.config()`
 
 `functions.config()` was removed in `firebase-functions` v7 and no longer works.
 
@@ -874,7 +874,7 @@ npx firebase-tools functions:secrets:set GEMINI_API_KEY
 npx firebase-tools functions:secrets:set CALENDAR_SA_KEY   # service-account JSON for Calendar
 ```
 
-`APP_URL` — the push and calendar click target — is a `defineString` parameter
+`APP_URL` (the push and calendar click target) is a `defineString` parameter
 and is prompted for on the first deploy.
 
 ---
@@ -883,7 +883,7 @@ and is prompted for on the first deploy.
 
 ### Prerequisites
 
-- **Node.js 20+** and npm (the Functions runtime is Node 22 — match it locally if
+- **Node.js 20+** and npm (the Functions runtime is Node 22; match it locally if
   you plan to deploy).
 - A Google account with access to the Firebase project `workspace-airbuddy`.
 - A **Google AI Studio API key** for Gemini ([aistudio.google.com](https://aistudio.google.com)).
@@ -895,13 +895,13 @@ npm install
 cd functions; npm install; cd ..
 ```
 
-Cloud Functions have a separate dependency tree — `npm install` at the root does
+Cloud Functions have a separate dependency tree; `npm install` at the root does
 not cover them.
 
 ### 2. Configure Firebase
 
-1. **Authentication** → enable **Google** as a sign-in provider.
-2. **Firestore** → create the database (this project's lives in `asia-south2`).
+1. **Authentication**: enable **Google** as a sign-in provider.
+2. **Firestore**: create the database (this project's lives in `asia-south2`).
 3. Deploy rules and indexes:
 
 ```powershell
@@ -922,13 +922,13 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ### 4. Promote yourself to admin
 
-Every new Google sign-in gets the `employee` role. In the Firebase Console →
-Firestore → `users` → your document, change `role` from `"employee"` to
+Every new Google sign-in gets the `employee` role. In the Firebase Console >
+Firestore > `users` > your document, change `role` from `"employee"` to
 `"admin"` and refresh. The Admin Panel link then appears in the sidebar.
 
 ### Emulators
 
-Rules and function discovery can be validated offline without deploying — the
+Rules and function discovery can be validated offline without deploying; the
 emulator refuses to start if either rules file fails to compile:
 
 ```powershell
@@ -950,7 +950,7 @@ npx vitest run src/services/taskService.test.js  # single file
 npx vitest run -t "computes correct average"     # single test by name
 ```
 
-Vitest, **service- and util-level only** — there is no jsdom and there are no
+Vitest, **service- and util-level only**: there is no jsdom and there are no
 component tests, so don't add a `.jsx` test expecting a DOM.
 
 The pattern: `vi.mock('firebase/firestore', ...)` with stubbed `addDoc` /
@@ -963,7 +963,7 @@ timezone regressions.
 Sort order inside a `subscribeToX` callback is testable without jsdom: pull the
 callback back out of the mocked `onSnapshot` (`onSnapshot.mock.calls.at(-1)[1]`)
 and invoke it with a fake snapshot (`{ docs: [{ id, data: () => ({...}) }] }`).
-Where the sort is a standalone function, export it for testing instead — the
+Where the sort is a standalone function, export it for testing instead, following the
 `computeHierarchy` precedent. The CommonJS server modules
 (`functions/roadmapService.server.js`, `functions/calendarEvent.js`) are tested
 from `src/` via `createRequire`, so keep them free of `firebase-admin` and
@@ -982,7 +982,7 @@ npx vercel --prod
 [vercel.json](vercel.json) rewrites `/api/*` to the serverless functions and
 everything else to `index.html` for SPA routing.
 
-### Rules and indexes — deploy these first
+### Rules and indexes: deploy these first
 
 Index builds take a few minutes on a large collection, and the crons need their
 indexes to exist.
@@ -1005,7 +1005,7 @@ npx firebase-tools deploy --only functions
 ```
 
 The first deploy enables Cloud Build, Artifact Registry, Cloud Scheduler and
-Eventarc — expect several minutes and a confirmation prompt.
+Eventarc; expect several minutes and a confirmation prompt.
 
 ---
 
@@ -1019,7 +1019,7 @@ Eventarc — expect several minutes and a confirmation prompt.
 | `npm run lint` | ESLint across the whole repo (`dist/` and `functions/` are globally ignored) |
 | `npm test` | Vitest, single run |
 
-**Lint scope matters.** `npm run lint` is `eslint .`, which covers `scripts/` —
+**Lint scope matters.** `npm run lint` is `eslint .`, which covers `scripts/`, but
 `npx eslint src/` does not, so a clean `src/` run can hide real errors.
 `scripts/` is linted rather than globally ignored precisely because it runs
 against production Firestore with admin privileges, and every non-browser
@@ -1027,7 +1027,7 @@ directory needs its own globals block in [eslint.config.js](eslint.config.js).
 
 The ~51 remaining warnings are a settled decision, not a to-do:
 `react-hooks/set-state-in-effect` and `react-refresh/only-export-components` are
-downgraded to `warn` with the reasoning inline — `setLoading(true)` before a
+downgraded to `warn` with the reasoning inline: `setLoading(true)` before a
 Firestore subscription, and context files exporting both a provider and its hook,
 are the house patterns, spread across ~35 files. Don't "fix" them wholesale.
 
@@ -1044,7 +1044,7 @@ Tailwind with a fixed dark palette in [tailwind.config.js](tailwind.config.js)
 utility stacks.
 
 [src/components/shared/Modal.jsx](src/components/shared/Modal.jsx) is the shared
-dialog — a bottom sheet under 640px, a centred dialog above, with body-scroll
+dialog: a bottom sheet under 640px, a centred dialog above, with body-scroll
 locking. New modals should use it rather than hand-rolling a fixed overlay.
 
 [src/context/ViewModeContext.jsx](src/context/ViewModeContext.jsx) provides a
@@ -1082,11 +1082,11 @@ Testing · Other
 
 ## Gotchas Worth Knowing
 
-**Dates.** Never derive a calendar date with `toISOString().slice(0,10)` — it
+**Dates.** Never derive a calendar date with `toISOString().slice(0,10)`; it
 yields the previous day for UTC+ users (an IST user at 00:15 is 18:45 UTC the day
 before). That broke attendance punch-in matching, and later the Dashboard's "last
 30 days" pre-fill. Use `toLocalDateString()` from
-[src/utils/dateHelpers.js](src/utils/dateHelpers.js) — the single implementation
+[src/utils/dateHelpers.js](src/utils/dateHelpers.js), the single implementation
 (`getLocalDateString` in `hrmsService.js` is now just an alias delegating to it).
 `toDate()` in the same file normalizes Firestore `Timestamp` | `Date` | string
 and is what every formatter goes through. On the server, `istDateString()` in
@@ -1100,13 +1100,13 @@ milestone a second Calendar event on top of the one `onRoadmapNodeCalendar`
 already creates, and would need a backfill for every existing node; folding them
 into `tasks` would draw each one twice on the Calendar and let `useTeamMembers`
 count milestones for the viewer alone. The listener is scoped like the `tasks`
-query beside it — per-user for an employee, company-wide for an admin — and that
+query beside it (per-user for an employee, company-wide for an admin), and that
 breadth is load-bearing: the Dashboard's admin employee filter narrows the
 *viewer's* list by `assignedTo`, so a viewer-scoped listener showed nothing when
 filtering by a teammate.
 
 `nodeToWorkItem` passes `workPartners`, `workPartnerUids`, `attachments` and
-`isExtended` straight through — hardcoding them empty was a bug, since the modal
+`isExtended` straight through; hardcoding them empty was a bug, since the modal
 renders all four and the rules carve-out means a node genuinely carries them.
 
 **Legacy roadmap tasks are written twice** (Phase 23): to
@@ -1121,7 +1121,7 @@ never lists it.
 
 > **Known open bug:** `handleDelete` in `TaskDetailModal` only deletes
 > `tasks/{id}`, and Firestore resolves a delete of a non-existent document as
-> success — so for a roadmap task the modal closes with no error and the task
+> success, so for a roadmap task the modal closes with no error and the task
 > reappears on refresh. Deleting one must go through
 > `deleteRoadmapTask(nodeId, taskId)`, which removes source *and* mirror and
 > recomputes the rollup. The Roadmap task card is currently the only UI that does.
@@ -1132,20 +1132,20 @@ Calendar dedup interacts with the mirror: `getRoadmapCalendarEvents()` returns a
 filter. Changing one side without the other produces duplicate or missing entries.
 
 **Journey view geometry.** The SVG `viewBox` height must equal the container
-height — the winding path uses `preserveAspectRatio="none"` with x in 0–100
+height: the winding path uses `preserveAspectRatio="none"` with x in 0–100
 (percent), so the y axis must stay 1:1 or the curve stretches off the level
 circles. `PATH_TOP`, `CIRCLE_R` and `FOOT_ROOM` are shared by both the layout and
 `centerFor()`; keep them that way.
 
 **Docs live in the app.** [src/docs/](src/docs/) is rendered at `/docs`.
-`rehype-raw` was removed as an XSS vector — don't add it back.
+`rehype-raw` was removed as an XSS vector, so don't add it back.
 
 **Issue-tag comments.** `HI-11 fix`, `ME-3 fix`, `CR-6 fix`, `Phase 19` and
 similar tags mark deliberate, non-obvious choices from past audits. Read the
-comment before simplifying the code around it — most are load-bearing.
+comment before simplifying the code around it; most are load-bearing.
 
 ---
 
 ## License
 
-Private project — AirBuddy Aerospace WorkSpace. All rights reserved.
+AirBuddy Aerospace WorkSpace is a private project. All rights reserved.

@@ -25,7 +25,7 @@ people's notifications as if you had made it yourself.
    if asked, then click **Connect Claude**.
 4. Add it to Claude:
    - **Claude Code:** `claude mcp add airbuddy -s user -- airbuddy-mcp`
-   - **Claude Desktop:** Settings → Developer → Edit Config, then add
+   - **Claude Desktop:** Settings > Developer > Edit Config, then add
      `"airbuddy": { "command": "airbuddy-mcp" }` under `"mcpServers"`, and restart Claude.
 
 ## What Claude can do
@@ -40,7 +40,7 @@ people's notifications as if you had made it yourself.
 - Post progress updates to the collaboration timeline, and comment on milestones
 - Create personal tasks
 
-**Only with a permission** (an admin grants it in Admin Panel → Permissions;
+**Only with a permission** (an admin grants it in Admin Panel > Permissions;
 admins have all of them):
 
 | Permission | What it adds in Claude |
@@ -67,11 +67,11 @@ to revoke your sessions. That signs you out everywhere, including the web app.
 
 | Action | Employee | With permission | Admin |
 |---|---|---|---|
-| Read own work, roadmap, team | ✅ | ✅ | ✅ |
-| Progress / due date / checklist / partners / updates on **own** work | ✅ | ✅ | ✅ |
-| Comment on a milestone, create a personal task | ✅ | ✅ | ✅ |
-| Progress / dates / partners on **any** milestone | ❌ | `roadmap.edit` | ✅ |
-| Create or edit milestones, add assignees | ❌ | `roadmap.edit` | ✅ |
-| Assign a task to someone | ❌ | `tasks.assign` | ✅ |
-| See somebody else's work | ❌ | `tasks.viewAll` | ✅ |
-| **Delete / remove / archive anything** | ❌ | ❌ | ❌ |
+| Read own work, roadmap, team | Yes | Yes | Yes |
+| Progress / due date / checklist / partners / updates on **own** work | Yes | Yes | Yes |
+| Comment on a milestone, create a personal task | Yes | Yes | Yes |
+| Progress / dates / partners on **any** milestone | No | `roadmap.edit` | Yes |
+| Create or edit milestones, add assignees | No | `roadmap.edit` | Yes |
+| Assign a task to someone | No | `tasks.assign` | Yes |
+| See somebody else's work | No | `tasks.viewAll` | Yes |
+| **Delete / remove / archive anything** | No | No | No |

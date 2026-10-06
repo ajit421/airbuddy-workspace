@@ -1,4 +1,4 @@
-# airbuddy-mcp — WorkSpace for your own Claude
+# airbuddy-mcp: WorkSpace for your own Claude
 
 A local [MCP](https://modelcontextprotocol.io) server that lets an employee's
 own Claude (Claude Desktop or Claude Code) read and update their AirBuddy
@@ -47,7 +47,7 @@ Google account if asked, then click **Connect Claude**. The session is saved to
 claude mcp add airbuddy -s user -- airbuddy-mcp
 ```
 
-**Claude Desktop**: Settings → Developer → Edit Config, then add:
+**Claude Desktop**: Settings > Developer > Edit Config, then add:
 
 ```json
 {
@@ -90,7 +90,7 @@ real boundary. A permission change reaches a running server within a minute
 | `post_update` | participants | A "commit" on the collaboration timeline |
 | `comment_on_milestone` | everyone | Comments tab on a milestone |
 | `create_personal_task` | everyone | Same as "New Personal Task" |
-| `assign_task` | `tasks.assign` | Same as Admin Panel → Assign Task (`createAdminTask`); `onTaskCreate` notifies |
+| `assign_task` | `tasks.assign` | Same as Admin Panel > Assign Task (`createAdminTask`); `onTaskCreate` notifies |
 | `create_milestone`, `update_milestone` | `roadmap.edit` | Create child/root milestones, edit fields, add assignees |
 
 Deliberately left out, for everyone: deleting tasks, milestones, checklist

@@ -1,6 +1,6 @@
 # Company Roadmap
 
-The Company Roadmap is a hierarchical project-planning module that lets admins structure work into a tree of **Roadmap Nodes** — nested phases, milestones, and deliverables — each with its own tasks, comments, file attachments, and a fully immutable audit history. Employees can view the tree and update the progress of tasks assigned to them; all structural changes are admin-only.
+The Company Roadmap is a hierarchical project-planning module that lets admins structure work into a tree of **Roadmap Nodes** (nested phases, milestones and deliverables), each with its own tasks, comments, file attachments, and an immutable audit history. Employees can view the tree and update the progress of tasks assigned to them; all structural changes are admin-only.
 
 ---
 
@@ -8,16 +8,16 @@ The Company Roadmap is a hierarchical project-planning module that lets admins s
 
 | Capability | Admin | Employee |
 |---|---|---|
-| View the full roadmap tree | ✅ | ✅ |
-| Create / edit / archive / delete nodes | ✅ | ❌ |
-| Assign tasks to employees | ✅ | ❌ |
-| Update task status & progress | ✅ | ✅ (own tasks only) |
-| Post & delete own comments | ✅ | ✅ |
-| Delete any comment | ✅ | ❌ |
-| Upload file attachments | ✅ | ✅ |
-| Delete attachments | ✅ | ✅ (own uploads only) |
-| View audit history | ✅ | ✅ (read-only) |
-| Write to audit history | ❌ (Cloud Function only) | ❌ |
+| View the full roadmap tree | Yes | Yes |
+| Create / edit / archive / delete nodes | Yes | No |
+| Assign tasks to employees | Yes | No |
+| Update task status & progress | Yes | Yes (own tasks only) |
+| Post & delete own comments | Yes | Yes |
+| Delete any comment | Yes | No |
+| Upload file attachments | Yes | Yes |
+| Delete attachments | Yes | Yes (own uploads only) |
+| View audit history | Yes | Yes (read-only) |
+| Write to audit history | No (Cloud Function only) | No |
 
 ---
 
@@ -41,14 +41,14 @@ CompanyRoadmap (src/components/Roadmap/CompanyRoadmap.jsx)
 
 Clicking a node's **title** does two things at once: it opens that node's detail
 *and* expands its children, so you never have to click the chevron separately
-just to see what is underneath. It only ever expands — to collapse a branch, use
+just to see what is underneath. It only ever expands; to collapse a branch, use
 the chevron, which stays a pure expand/collapse toggle.
 
 Clicking a **root milestone** opens the slide-in detail panel on the right. A
 root is a container: the panel is where its breadcrumb, comments, attachments,
 audit history and **Add Child** live.
 
-Clicking a **child node** opens **Task Details** instead — the very same modal
+Clicking a **child node** opens **Task Details** instead: the very same modal
 the Dashboard, Calendar and Work Partner drawer use for a task, with the same
 progress slider, checklist, work partners, Extend control and activity feed. A
 child node is the unit of work, so it is worked on exactly the way a task is.
@@ -59,9 +59,9 @@ and Add Child stay reachable. Deep links (`/roadmap/:nodeId`) always open the
 panel, whatever the node's depth.
 
 Supporting components:
-- **`RoadmapBreadcrumb`** — ancestry path navigation (Phase 11)
-- **`RoadmapNodeModal`** — create/edit node form modal (Phase 5)
-- **`RoadmapTaskModal`** — create/edit task form modal (Phase 13)
+- **`RoadmapBreadcrumb`**: ancestry path navigation (Phase 11)
+- **`RoadmapNodeModal`**: create/edit node form modal (Phase 5)
+- **`RoadmapTaskModal`**: create/edit task form modal (Phase 13)
 
 ---
 
@@ -71,13 +71,13 @@ Supporting components:
 |---|---|---|
 | `/roadmap` | `CompanyRoadmap` | All authenticated users |
 
-Route is lazy-loaded via `React.lazy()` — excluded from the initial JS bundle. The async chunk is approximately **18.6 kB gzip**.
+Route is lazy-loaded via `React.lazy()`, so it is excluded from the initial JS bundle. The async chunk is approximately **18.6 kB gzip**.
 
 ---
 
 ## Firestore Schema
 
-### `roadmapNodes/{nodeId}` — top-level collection
+### `roadmapNodes/{nodeId}` (top-level collection)
 
 | Field | Type | Description |
 |---|---|---|
@@ -104,7 +104,7 @@ Route is lazy-loaded via `React.lazy()` — excluded from the initial JS bundle.
 | `createdAt` | `Timestamp` | Server timestamp. Immutable after create. |
 | `updatedAt` | `Timestamp` | Server timestamp. Updated on every write. |
 
-### `roadmapNodes/{nodeId}/tasks/{taskId}` — tasks subcollection
+### `roadmapNodes/{nodeId}/tasks/{taskId}` (tasks subcollection)
 
 | Field | Type | Description |
 |---|---|---|
@@ -116,14 +116,14 @@ Route is lazy-loaded via `React.lazy()` — excluded from the initial JS bundle.
 | `assignedTo` | `string[]` | UIDs of assigned employees. |
 | `dueDate` | `Timestamp \| null` | Optional due date. |
 | `completionNote` | `string` | Optional note when marking complete. |
-| `nodeId` | `string` | **Denormalized** parent node ID — required for `collectionGroup('tasks')` queries (analytics). |
+| `nodeId` | `string` | **Denormalized** parent node ID, required for `collectionGroup('tasks')` queries (analytics). |
 | `assignedBy` | `string` | UID of assigning admin. Immutable after create. |
 | `createdBy` | `string` | UID of creator. Immutable after create. |
 | `updatedBy` | `string` | UID of last editor. |
 | `createdAt` | `Timestamp` | Server timestamp. Immutable. |
 | `updatedAt` | `Timestamp` | Server timestamp. Updated on every write. |
 
-### `roadmapNodes/{nodeId}/comments/{commentId}` — comments subcollection
+### `roadmapNodes/{nodeId}/comments/{commentId}` (comments subcollection)
 
 | Field | Type | Description |
 |---|---|---|
@@ -133,7 +133,7 @@ Route is lazy-loaded via `React.lazy()` — excluded from the initial JS bundle.
 | `authorAvatar` | `string` | Denormalized avatar URL (may be empty string). |
 | `createdAt` | `Timestamp` | Server timestamp. |
 
-### `roadmapNodes/{nodeId}/history/{historyId}` — audit history subcollection
+### `roadmapNodes/{nodeId}/history/{historyId}` (audit history subcollection)
 
 > **Write-locked for all clients.** Only Cloud Functions via Admin SDK can write here.
 
@@ -149,12 +149,12 @@ Route is lazy-loaded via `React.lazy()` — excluded from the initial JS bundle.
 | `nodeTitle` | `string?` | Denormalized node title at time of event. |
 | `timestamp` | `Timestamp` | Server timestamp. Used for ordering (newest-first). |
 
-### `roadmapNodes/{nodeId}/attachments/{attachmentId}` — attachments subcollection
+### `roadmapNodes/{nodeId}/attachments/{attachmentId}` (attachments subcollection)
 
 | Field | Type | Description |
 |---|---|---|
 | `fileName` | `string` | Original file name. |
-| `fileSize` | `number` | File size in bytes. Max 10,485,760 (10 MB) — enforced by Firestore Rules. |
+| `fileSize` | `number` | File size in bytes. Max 10,485,760 (10 MB), enforced by Firestore Rules. |
 | `fileType` | `string` | MIME type. |
 | `storagePath` | `string` | Full Firebase Storage path for deletion. |
 | `downloadUrl` | `string` | Public download URL from Firebase Storage. |
@@ -174,7 +174,7 @@ These composite indexes must be deployed before the module is usable:
 | Collection | Fields | Direction |
 |---|---|---|
 | `roadmapNodes` | `parentId`, `isArchived`, `order` | ASC, ASC, ASC |
-| `roadmapNodes` | `ancestorIds` (array-contains), `isArchived` | —, ASC |
+| `roadmapNodes` | `ancestorIds` (array-contains), `isArchived` | n/a, ASC |
 | `roadmapNodes/{id}/history` | `timestamp` | DESC |
 | `roadmapNodes/{id}/attachments` | `uploadedAt` | DESC |
 
@@ -186,43 +186,43 @@ These composite indexes must be deployed before the module is usable:
 
 | Operation | Admin | Auth Employee | Unauthenticated |
 |---|---|---|---|
-| Read | ✅ | ✅ | ❌ |
-| Create | ✅ | ❌ | ❌ |
-| Update | ✅ | ❌ | ❌ |
-| Delete | ✅ | ❌ | ❌ |
+| Read | Yes | Yes | No |
+| Create | Yes | No | No |
+| Update | Yes | No | No |
+| Delete | Yes | No | No |
 
 ### `roadmapNodes/{nodeId}/tasks/{taskId}`
 
 | Operation | Admin | Assigned Employee | Other Employee |
 |---|---|---|---|
-| Read | ✅ | ✅ | ❌ |
-| Create | ✅ | ❌ | ❌ |
-| Update (all fields) | ✅ | ❌ | ❌ |
-| Update (`status`, `progress`, `completionNote`) | ✅ | ✅ | ❌ |
-| Delete | ✅ | ❌ | ❌ |
+| Read | Yes | Yes | No |
+| Create | Yes | No | No |
+| Update (all fields) | Yes | No | No |
+| Update (`status`, `progress`, `completionNote`) | Yes | Yes | No |
+| Delete | Yes | No | No |
 
 ### `roadmapNodes/{nodeId}/comments/{commentId}`
 
 | Operation | Admin | Own Comment Author | Other Employee |
 |---|---|---|---|
-| Read | ✅ | ✅ | ✅ |
-| Create (`authorUid == effectiveUid`, text ≤ 2000) | ✅ | ✅ | ✅ |
-| Update / Delete | ✅ | ✅ | ❌ |
+| Read | Yes | Yes | Yes |
+| Create (`authorUid == effectiveUid`, text ≤ 2000) | Yes | Yes | Yes |
+| Update / Delete | Yes | Yes | No |
 
 ### `roadmapNodes/{nodeId}/history/{historyId}`
 
 | Operation | Anyone (client) | Cloud Function (Admin SDK) |
 |---|---|---|
-| Read | ✅ (all authenticated) | ✅ |
-| Write | **BLOCKED** (`allow write: if false`) | ✅ (bypasses rules) |
+| Read | Yes (all authenticated) | Yes |
+| Write | **BLOCKED** (`allow write: if false`) | Yes (bypasses rules) |
 
 ### `roadmapNodes/{nodeId}/attachments/{attachmentId}`
 
 | Operation | Admin | Uploader | Other Employee |
 |---|---|---|---|
-| Read | ✅ | ✅ | ✅ |
-| Create (`uploadedBy == effectiveUid`, size ≤ 10 MB) | ✅ | ✅ | ✅ |
-| Update / Delete | ✅ | ✅ | ❌ |
+| Read | Yes | Yes | Yes |
+| Create (`uploadedBy == effectiveUid`, size ≤ 10 MB) | Yes | Yes | Yes |
+| Update / Delete | Yes | Yes | No |
 
 ---
 
@@ -279,9 +279,9 @@ Creates a new roadmap node. Uses a two-step write (`addDoc` → `updateDoc`) to 
 | `adminUid` | `string` | `effectiveUid` of creating admin |
 | `parentNode` | `object \| null` | Full parent node (default: `null` = root) |
 
-Returns `Promise<string>` — new document ID.
+Returns `Promise<string>`: the new document ID.
 
-**Stripped from write:** `progress`, `childCount`, `childCompletedCount`, `path`, `ancestorIds`, `depth`, `createdAt`, `createdBy` are all computed internally — never trusted from `form`.
+**Stripped from write:** `progress`, `childCount`, `childCompletedCount`, `path`, `ancestorIds`, `depth`, `createdAt`, `createdBy` are all computed internally and never trusted from `form`.
 
 ---
 
@@ -295,7 +295,7 @@ Returns `Promise<void>`.
 
 #### `archiveNode(nodeId, adminUid)`
 
-Sets `isArchived = true`. Soft-delete — the document and all subcollections are preserved. Archived nodes are excluded from default queries.
+Sets `isArchived = true`. This is a soft delete: the document and all subcollections are preserved. Archived nodes are excluded from default queries.
 
 Returns `Promise<void>`. Throws if `nodeId` is falsy.
 
@@ -305,7 +305,7 @@ Returns `Promise<void>`. Throws if `nodeId` is falsy.
 
 Hard-deletes a leaf node. **Blocked** if `childCount > 0` (throws). Reads the live document before deleting to enforce this guard and decrement the parent's `childCount`.
 
-> Subcollection cleanup (tasks, comments, history, attachments) must be handled by a Cloud Function — Firestore does not cascade-delete subcollections.
+> Subcollection cleanup (tasks, comments, history, attachments) must be handled by a Cloud Function, because Firestore does not cascade-delete subcollections.
 
 Returns `Promise<void>`.
 
@@ -341,13 +341,13 @@ Creates a task under a node. `nodeId` is denormalized into the document for `col
 | `form` | `object` | Validated against `CreateTaskSchema` (Zod). |
 | `adminUid` | `string` | Sets `assignedBy`, `createdBy`, `updatedBy`. |
 
-Returns `Promise<string>` — new task ID.
+Returns `Promise<string>`: the new task ID.
 
 ---
 
 #### `updateRoadmapTask(nodeId, taskId, data, uid)`
 
-Updates a task. Strips `createdAt`, `createdBy`, `nodeId` (immutable). Field restrictions for employees (`status`, `progress`, `completionNote` only) are enforced by Firestore Rules — this function does not re-check.
+Updates a task. Strips `createdAt`, `createdBy`, `nodeId` (immutable). Field restrictions for employees (`status`, `progress`, `completionNote` only) are enforced by Firestore Rules; this function does not re-check.
 
 Returns `Promise<void>`. Throws if either `nodeId` or `taskId` is falsy.
 
@@ -403,7 +403,7 @@ Returns `Promise<void>`.
 
 ## Custom Hooks Reference
 
-### `useRoadmapTree()` — `src/hooks/useRoadmapTree.js`
+### `useRoadmapTree()` in `src/hooks/useRoadmapTree.js`
 
 Manages the expand/collapse state of the roadmap tree and triggers recursive subscriptions for expanded nodes.
 
@@ -413,7 +413,7 @@ Manages the expand/collapse state of the roadmap tree and triggers recursive sub
 | `toggleExpand` | `(nodeId: string) => void` | Toggles a node's expanded state. Stable reference (ref pattern). |
 | `isExpanded` | `(nodeId: string) => boolean` | Returns `true` if the node is expanded. Stable reference. |
 
-### `useRoadmapNode(nodeId)` — `src/hooks/useRoadmapNode.js`
+### `useRoadmapNode(nodeId)` in `src/hooks/useRoadmapNode.js`
 
 Subscribes to a single node document and its tasks.
 
@@ -423,11 +423,11 @@ Subscribes to a single node document and its tasks.
 | `tasks` | `object[]` | Live task array (sorted by `createdAt`) |
 | `loading` | `boolean` | True on initial load |
 
-### `useRoadmapKpi()` — `src/hooks/useRoadmapKpi.js`
+### `useRoadmapKpi()` in `src/hooks/useRoadmapKpi.js`
 
 Computes summary KPIs over the entire roadmap (total nodes, by status, overall progress).
 
-### `useRoadmapCalendarEvents()` — `src/hooks/useRoadmapCalendarEvents.js`
+### `useRoadmapCalendarEvents()` in `src/hooks/useRoadmapCalendarEvents.js`
 
 Returns roadmap calendar events ready for `react-big-calendar`, with deduplication of node / task due dates.
 
@@ -436,7 +436,7 @@ Returns roadmap calendar events ready for `react-big-calendar`, with deduplicati
 ## Cloud Functions
 
 > **File:** `functions/roadmapTriggers.js`
-> **Deploy status:** Deferred — requires Firebase Blaze plan.
+> **Deploy status:** Deferred; requires Firebase Blaze plan.
 
 ### `onRoadmapTaskWrite` (Firestore trigger)
 
@@ -456,9 +456,9 @@ Returns roadmap calendar events ready for `react-big-calendar`, with deduplicati
 
 Propagating progress through a tree could be done recursively (each node write triggers its parent). This was rejected because:
 
-1. **Infinite loop risk** — without a precise loop guard, a cascade of `updatedAt` changes would re-trigger indefinitely.
-2. **Firestore cost** — each trigger invocation reads and writes at least one document; deep trees would amplify costs exponentially.
-3. **Predictability** — a single Cloud Function that reads all ancestors in one batch and writes only changed values is deterministic and easier to test.
+1. **Infinite loop risk**: without a precise loop guard, a cascade of `updatedAt` changes would re-trigger indefinitely.
+2. **Firestore cost**: each trigger invocation reads and writes at least one document; deep trees would amplify costs exponentially.
+3. **Predictability**: a single Cloud Function that reads all ancestors in one batch and writes only changed values is deterministic and easier to test.
 
 The current design reads the full ancestor path from `ancestorIds` (already stored on each node) and does a single batched propagation pass.
 
@@ -466,10 +466,10 @@ The current design reads the full ancestor path from `ancestorIds` (already stor
 
 ## Performance Notes
 
-- **`React.memo`** on `RoadmapNodeCard` with a 13-field custom comparator (`areNodePropsEqual`) — prevents re-renders when unrelated nodes update.
-- **Stable hook refs** — `toggleExpand` and `isExpanded` are wrapped in a ref pattern so they never change identity, allowing `React.memo` to work correctly.
-- **Virtualization shim** — root level capped at 50 visible nodes; child levels capped at 30. "Show more" button loads 50 more per click. Full `react-window` virtualization deferred (incompatible with variable-height recursive tree without architectural restructuring).
-- **Code splitting** — `CompanyRoadmap` is lazy-loaded (18.6 kB gzip, separate async chunk). Does not affect initial bundle.
+- **`React.memo`** on `RoadmapNodeCard` with a 13-field custom comparator (`areNodePropsEqual`), which prevents re-renders when unrelated nodes update.
+- **Stable hook refs**: `toggleExpand` and `isExpanded` are wrapped in a ref pattern so they never change identity, allowing `React.memo` to work correctly.
+- **Virtualization shim**: root level capped at 50 visible nodes; child levels capped at 30. "Show more" button loads 50 more per click. Full `react-window` virtualization deferred (incompatible with variable-height recursive tree without architectural restructuring).
+- **Code splitting**: `CompanyRoadmap` is lazy-loaded (18.6 kB gzip, separate async chunk). Does not affect initial bundle.
 
 ---
 
