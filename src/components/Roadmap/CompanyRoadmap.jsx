@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useParams } from 'react-router-dom';
 import { useRoadmap }      from '../../context/RoadmapContext';
 import { useRoadmapTree }  from '../../hooks/useRoadmapTree';
@@ -11,7 +11,21 @@ import RoadmapNodeModal    from './RoadmapNodeModal';
 import RoadmapNodeDetail   from './RoadmapNodeDetail';
 import RoadmapNodeTaskModal from './RoadmapNodeTaskModal';
 
+// Gantt is its own chunk: List and Journey users never download it, and its
+// exceljs export is a further lazy import on top of that.
+const RoadmapGanttView = lazy(() => import('./RoadmapGanttView'));
+
 const ROADMAP_VIEW_STORAGE_KEY = 'roadmap-view-mode';
+const VIEW_MODES = ['list', 'journey', 'gantt'];
+
+const readStoredViewMode = () => {
+  try {
+    const v = localStorage.getItem(ROADMAP_VIEW_STORAGE_KEY);
+    return VIEW_MODES.includes(v) ? v : 'list';
+  } catch {
+    return 'list';
+  }
+};
 
 /**
  * CompanyRoadmap.jsx
@@ -36,6 +50,11 @@ const ROADMAP_VIEW_STORAGE_KEY = 'roadmap-view-mode';
  *    - Toolbar selects visible but compact
  *  Desktop (lg+ / >1024px):
  *    - Unchanged from Phase 11
+ *
+ * Views: List (tree), Journey (level map) and Gantt (timeline of the whole
+ * tree, with Excel / CSV export). All three send clicks through handleSelect.
+ * The toolbar filters narrow roots in List and Journey; the Gantt applies them
+ * to every level itself, keeping the parents of a match.
  */
 export default function CompanyRoadmap() {
   const { nodeId: deepLinkId }  = useParams();
@@ -66,12 +85,10 @@ export default function CompanyRoadmap() {
   // Phase 18: mobile filter row toggle
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // View mode: 'list' (tree) or 'journey' (gamified level-map)
-  const [viewMode, setViewMode] = useState(
-    () => localStorage.getItem(ROADMAP_VIEW_STORAGE_KEY) || 'list'
-  );
+  // View mode: 'list' (tree), 'journey' (gamified level-map) or 'gantt'
+  const [viewMode, setViewMode] = useState(readStoredViewMode);
   useEffect(() => {
-    localStorage.setItem(ROADMAP_VIEW_STORAGE_KEY, viewMode);
+    try { localStorage.setItem(ROADMAP_VIEW_STORAGE_KEY, viewMode); } catch { /* private mode */ }
   }, [viewMode]);
 
   // ── Deep-link: auto-select nodeId from URL ────────────────────────────────
@@ -184,6 +201,12 @@ export default function CompanyRoadmap() {
 
   const closeDetail = useCallback(() => setSelectedNodeId(null), []);
 
+  // Stable identity so the Gantt's filter memo does not rerun every render.
+  const ganttFilters = useMemo(
+    () => ({ search: searchQuery, status: filterStatus, priority: filterPriority }),
+    [searchQuery, filterStatus, filterPriority]
+  );
+
   const hasActiveFilters = searchQuery || filterStatus !== 'all' || filterPriority !== 'all';
   const clearFilters = useCallback(() => {
     setSearchQuery('');
@@ -264,6 +287,20 @@ export default function CompanyRoadmap() {
                   d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
               <span className="hidden sm:inline">Journey</span>
+            </button>
+            <button
+              id="roadmap-view-gantt"
+              onClick={() => setViewMode('gantt')}
+              className={`flex items-center gap-1.5 px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
+                viewMode === 'gantt' ? 'bg-orange text-white' : 'text-text-secondary hover:text-text-primary'
+              }`}
+              title="Gantt view"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 6h9M8 12h10M6 18h7" />
+              </svg>
+              <span className="hidden sm:inline">Gantt</span>
             </button>
           </div>
 
@@ -350,7 +387,7 @@ export default function CompanyRoadmap() {
           </button>
 
           {/* Collapse all — visible when expanded nodes exist */}
-          {treeHook.expandedIds.size > 0 && (
+          {viewMode === 'list' && treeHook.expandedIds.size > 0 && (
             <button
               id="roadmap-collapse-all"
               onClick={handleCollapseAll}
@@ -402,7 +439,7 @@ export default function CompanyRoadmap() {
               </select>
             </div>
             <div className="flex gap-2">
-              {treeHook.expandedIds.size > 0 && (
+              {viewMode === 'list' && treeHook.expandedIds.size > 0 && (
                 <button onClick={handleCollapseAll} className="btn-ghost h-7 text-xs flex-1">
                   Collapse all
                 </button>
@@ -431,7 +468,15 @@ export default function CompanyRoadmap() {
           flex-1 min-w-0 overflow-y-auto transition-all duration-300
           ${detailOpen ? 'sm:pr-3' : ''}
         `}>
-          {filteredRoots.length > 0 ? (
+          {viewMode === 'gantt' && rootNodes.length > 0 ? (
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-16">
+                <div className="w-6 h-6 border-2 border-orange border-t-transparent rounded-full animate-spin" />
+              </div>
+            }>
+              <RoadmapGanttView filters={ganttFilters} onSelect={handleSelect} />
+            </Suspense>
+          ) : filteredRoots.length > 0 ? (
             viewMode === 'journey' ? (
               <RoadmapJourneyView
                 nodes={filteredRoots}

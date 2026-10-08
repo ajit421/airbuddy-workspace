@@ -182,6 +182,33 @@ export function subscribeToSubtree(ancestorId, onData, onError) {
 }
 
 /**
+ * Subscribe to every non-archived roadmap node, for the Gantt view.
+ *
+ * The Gantt draws the whole tree at once, while RoadmapContext and
+ * useRoadmapTree only load roots and expanded branches. One equality filter,
+ * so the automatic single-field index serves it and firestore.indexes.json
+ * needs no new entry. Unsorted: buildGanttRows orders the tree itself.
+ *
+ * @param {function} onData   - Called with a flat array of nodes
+ * @param {function} [onError]
+ * @returns {function} unsubscribe
+ */
+export function subscribeToAllNodes(onData, onError) {
+  const q = query(
+    collection(db, ROADMAP_NODES_COL),
+    where('isArchived', '==', false),
+  );
+  return onSnapshot(
+    q,
+    (snap) => onData(snapToArray(snap)),
+    (err) => {
+      console.error('[roadmapService] subscribeToAllNodes:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+/**
  * Subscribe to a single roadmap node document.
  *
  * @param {string}   nodeId
@@ -431,8 +458,8 @@ export async function createNode(form, adminUid, parentNode = null) {
 
     await setDoc(docRef, {
       ...validated,
-      startDate:           validated.startDate ? new Date(validated.startDate) : null,
-      dueDate:             validated.dueDate   ? new Date(validated.dueDate)   : null,
+      startDate:           toStoredDate(validated.startDate),
+      dueDate:             toStoredDate(validated.dueDate),
       isArchived:          false,
       progress:            0,
       childCount:          0,
@@ -463,6 +490,36 @@ export async function createNode(form, adminUid, parentNode = null) {
 }
 
 
+const UpdateNodeSchema = z.object({
+  title:       z.string().min(1, 'Title is required'),
+  description: z.string(),
+  status:      z.enum(['pending', 'in-progress', 'completed', 'blocked', 'archived']),
+  priority:    z.enum(['low', 'medium', 'high', 'critical']),
+  startDate:   z.any(),
+  dueDate:     z.any(),
+  assignedTo:  z.array(z.string()),
+  tags:        z.array(z.string()),
+}).partial().loose();
+
+/**
+ * A node date in the shape createNode stores: a Date for a 'YYYY-MM-DD'
+ * string (UTC midnight, exactly as `new Date(form.dueDate)` in createNode),
+ * an existing Date or Timestamp unchanged, null when cleared.
+ */
+function toStoredDate(value) {
+  if (!value) return null;
+  if (value instanceof Date || typeof value?.toDate === 'function') return value;
+  const d = new Date(value);
+  if (isNaN(d)) throw new Error(`Invalid date "${value}"`);
+  // A date input accepts year 0006 when someone types "6" for the year; one
+  // live milestone was saved like that and broke the Gantt range. Refuse it.
+  const year = d.getUTCFullYear();
+  if (year < 2000 || year > 2100) {
+    throw new Error(`Invalid date "${value}": the year must be between 2000 and 2100`);
+  }
+  return d;
+}
+
 /**
  * Update structural fields of a roadmap node (admin only).
  * Strips rollup fields that must never be written client-side.
@@ -476,9 +533,22 @@ export async function updateNode(nodeId, data, editorUid) {
   if (!nodeId) throw new Error('[roadmapService] updateNode: nodeId is required');
   // Strip fields owned by Cloud Functions or immutable after create
   const { progress: _progress, childCount: _childCount, childCompletedCount: _childCompletedCount, path: _path, ancestorIds: _ancestorIds, depth: _depth, createdAt: _createdAt, createdBy: _createdBy, id: _id, ...safeData } = data;
+
+  // Validate the fields the edit form sends; anything else passes through as
+  // before (loose), so existing callers keep working.
+  const validated = UpdateNodeSchema.parse(safeData);
+
+  // Dates used to be written as the raw 'YYYY-MM-DD' form string, while
+  // createNode writes a Date. One milestone edit flipped dueDate from a
+  // Timestamp to a string, and Timestamp range queries on dueDate silently
+  // skipped it from then on. Store the same shape createNode does.
+  for (const key of ['startDate', 'dueDate']) {
+    if (key in validated) validated[key] = toStoredDate(validated[key]);
+  }
+
   try {
     await updateDoc(doc(db, ROADMAP_NODES_COL, nodeId), {
-      ...safeData,
+      ...validated,
       updatedBy: editorUid,
       updatedAt: serverTimestamp(),
     });

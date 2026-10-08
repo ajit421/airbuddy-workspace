@@ -201,6 +201,9 @@ than derived ad hoc.
   branch (expand only, never collapse, and never on a leaf).
 - **Journey view**: a winding-path visualisation of a milestone's levels with a
   "You are here" marker.
+- **Gantt view**: the whole tree on one timeline (week, month or quarter zoom),
+  with an Export menu for Excel (table plus a coloured Gantt sheet), CSV, and an
+  .xlsx for Google Sheets. Export runs in the browser; no Google API scope.
 - **Milestones are the unit of work.** The old `roadmapNodes/{id}/tasks`
   subcollection and its Tasks tab were removed; breaking a milestone down means
   adding child nodes. On the roadmap page a **root** milestone opens the

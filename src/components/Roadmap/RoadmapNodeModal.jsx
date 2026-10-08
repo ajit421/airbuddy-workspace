@@ -5,6 +5,10 @@ import { createNode, updateNode } from '../../services/roadmapService';
 import { subscribeToAllUsers } from '../../services/teamMembersService';
 import { notifyUsers, ROADMAP_NOTIF_TYPES } from '../../services/notificationService';
 
+// Plausible range for milestone dates; mirrors toStoredDate in roadmapService.
+const DATE_MIN = '2000-01-01';
+const DATE_MAX = '2100-12-31';
+
 /**
  * RoadmapNodeModal.jsx
  * Admin-only create/edit form for roadmap nodes. Wraps shared/Modal.jsx.
@@ -136,7 +140,12 @@ export default function RoadmapNodeModal({
   const validate = () => {
     const errs = {};
     if (!form.title.trim()) errs.title = 'Title is required';
-    if (form.dueDate && form.startDate && form.dueDate < form.startDate) {
+    // A date input accepts year 0006 if the year is typed as "6", and then
+    // 0006 < 2026 sails through the order check below.
+    const badYear = (v) => v && (v < DATE_MIN || v > DATE_MAX);
+    if (badYear(form.startDate)) errs.startDate = 'Check the year: it must be between 2000 and 2100';
+    if (badYear(form.dueDate))   errs.dueDate   = 'Check the year: it must be between 2000 and 2100';
+    if (!errs.dueDate && form.dueDate && form.startDate && form.dueDate < form.startDate) {
       errs.dueDate = 'Due date must be after start date';
     }
     setErrors(errs);
@@ -281,10 +290,13 @@ export default function RoadmapNodeModal({
             <input
               id="rm-node-start-date"
               type="date"
+              min={DATE_MIN}
+              max={DATE_MAX}
               value={form.startDate}
               onChange={(e) => setField('startDate', e.target.value)}
-              className="input-field"
+              className={`input-field ${errors.startDate ? 'border-red-500' : ''}`}
             />
+            {errors.startDate && <p className="text-red-400 text-xs">{errors.startDate}</p>}
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
@@ -293,6 +305,8 @@ export default function RoadmapNodeModal({
             <input
               id="rm-node-due-date"
               type="date"
+              min={DATE_MIN}
+              max={DATE_MAX}
               value={form.dueDate}
               onChange={(e) => setField('dueDate', e.target.value)}
               className={`input-field ${errors.dueDate ? 'border-red-500' : ''}`}

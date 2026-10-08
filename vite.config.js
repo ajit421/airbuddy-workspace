@@ -35,14 +35,21 @@ export default defineConfig({
          *  - vendor-firebase  → all firebase/* subpackages
          *  - vendor-charts    → chart.js + react-chartjs-2
          *  - vendor-utils     → date-fns + zod (lighter libs, still versioned separately)
+         *  - exceljs          → no rule on purpose: it is only reached through the
+         *                       dynamic import in roadmapExportService, so Rollup
+         *                       gives it its own chunk, loaded on Export click
          *  - Everything else  → app code chunks (split by dynamic import boundaries)
          */
         manualChunks(id) {
-          // React ecosystem
-          if (id.includes('node_modules/react') ||
-              id.includes('node_modules/react-dom') ||
-              id.includes('node_modules/react-router-dom') ||
-              id.includes('node_modules/scheduler')) {
+          // React ecosystem. The trailing slashes matter: a bare
+          // 'node_modules/react' also matched react-big-calendar, react-markdown
+          // and react-chartjs-2, so all three landed in vendor-react (534 KB on
+          // every first load) and vendor-calendar was never emitted.
+          if (id.includes('node_modules/react/') ||
+              id.includes('node_modules/react-dom/') ||
+              id.includes('node_modules/react-router/') ||
+              id.includes('node_modules/react-router-dom/') ||
+              id.includes('node_modules/scheduler/')) {
             return 'vendor-react';
           }
 

@@ -233,6 +233,38 @@ describe('updateNode', () => {
     expect(callArgs.depth).toBeUndefined();
   });
 
+  it('stores form date strings as Dates, the same shape createNode writes', async () => {
+    const { updateDoc } = await import('firebase/firestore');
+    await updateNode('node-123', { startDate: '2026-08-31', dueDate: '2026-09-05' }, 'uid');
+    const callArgs = updateDoc.mock.calls[0][1];
+    expect(callArgs.startDate).toBeInstanceOf(Date);
+    expect(callArgs.startDate.toISOString()).toBe('2026-08-31T00:00:00.000Z');
+    expect(callArgs.dueDate.toISOString()).toBe('2026-09-05T00:00:00.000Z');
+  });
+
+  it('writes null for a cleared date and leaves absent dates out', async () => {
+    const { updateDoc } = await import('firebase/firestore');
+    await updateNode('node-123', { title: 'X', dueDate: '' }, 'uid');
+    const callArgs = updateDoc.mock.calls[0][1];
+    expect(callArgs.dueDate).toBeNull();
+    expect('startDate' in callArgs).toBe(false);
+  });
+
+  it('keeps an existing Timestamp-like date unchanged', async () => {
+    const { updateDoc } = await import('firebase/firestore');
+    const ts = { toDate: () => new Date('2026-09-05') };
+    await updateNode('node-123', { dueDate: ts }, 'uid');
+    expect(updateDoc.mock.calls[0][1].dueDate).toBe(ts);
+  });
+
+  it('rejects an invalid status or an unparseable date before writing', async () => {
+    const { updateDoc } = await import('firebase/firestore');
+    await expect(updateNode('node-123', { status: 'done' }, 'uid')).rejects.toThrow();
+    await expect(updateNode('node-123', { dueDate: 'soon' }, 'uid')).rejects.toThrow('Invalid date');
+    await expect(updateNode('node-123', { startDate: '0006-11-23' }, 'uid')).rejects.toThrow('between 2000 and 2100');
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
   it('strips immutable audit fields: createdAt, createdBy', async () => {
     const { updateDoc } = await import('firebase/firestore');
     await updateNode('node-123', { title: 'X', createdAt: 'old', createdBy: 'old-uid' }, 'new-uid');

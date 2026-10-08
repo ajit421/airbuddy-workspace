@@ -17,6 +17,8 @@ The Company Roadmap is a hierarchical project-planning module that lets admins s
 | Upload file attachments | Yes | Yes |
 | Delete attachments | Yes | Yes (own uploads only) |
 | View audit history | Yes | Yes (read-only) |
+| View the Gantt chart | Yes | Yes |
+| Export the roadmap (Excel, CSV, Google Sheets) | Yes | Yes |
 | Write to audit history | No (Cloud Function only) | No |
 
 ---
@@ -34,7 +36,9 @@ CompanyRoadmap (src/components/Roadmap/CompanyRoadmap.jsx)
 │   ├── Comments tab          — RoadmapCommentsTab
 │   ├── Attachments tab       — RoadmapAttachmentsTab
 │   └── History tab           — RoadmapHistoryLog (paginated)
-└── RoadmapNodeTaskModal      — child node → the ordinary Task Details modal
+├── RoadmapNodeTaskModal      — child node → the ordinary Task Details modal
+└── RoadmapGanttView          (Gantt view, lazy-loaded)
+    └── GanttExportMenu       (Excel, CSV, Google Sheets)
 ```
 
 ### Which panel a click opens
@@ -57,6 +61,53 @@ The panel is still available for a child: the **Company Roadmap** link at the
 top of the modal opens it, which is how a child's comments, attachments, history
 and Add Child stay reachable. Deep links (`/roadmap/:nodeId`) always open the
 panel, whatever the node's depth.
+
+### Gantt view
+
+The view switch at the top right has three options: **List**, **Journey** and
+**Gantt**. The Gantt shows the whole roadmap on one timeline, every milestone
+and every child, so you can see what is happening in which week and what
+overlaps. The choice is remembered in your browser.
+
+- **Rows.** Each row is one milestone, in the same order as the List view, with
+  an outline number (1, 1.1, 1.2, 2 ...), the people assigned, and its progress.
+  Click the arrow next to a parent row to fold its children away.
+- **Bars.** A bar runs from the start date to the due date. The coloured part is
+  the progress. The colours match the List view: yellow for pending, blue for in
+  progress, green for completed, red for blocked. A red outline means the
+  milestone is overdue.
+- **Diamonds.** A milestone with only a due date (or only a start date) is drawn
+  as a diamond on that day.
+- **Dashed bars.** A parent milestone with no dates of its own (the three root
+  milestones today) gets a thin dashed bar from the earliest start to the latest
+  due date of the milestones under it. It is a summary, not a planned date. Give
+  the parent its own dates and it becomes a normal bar.
+- **Today.** The orange line marks today, and the chart opens scrolled to it.
+- **Zoom.** Week shows single days, Month and Quarter show whole weeks.
+- **Clicking** a bar or a title works exactly like the List view: a root
+  milestone opens the side panel, a child opens Task Details.
+- **Filters.** Search, status and priority apply to every row. A parent stays
+  visible when one of its children matches, so searching for "PCB" still shows
+  which product each PCB step belongs to.
+- Hover a bar (or focus it with Tab) to see its dates, status, progress, the
+  people assigned, and how many days it is overdue.
+
+### Exporting the roadmap
+
+In the Gantt view, **Export** downloads exactly the rows the chart is showing.
+Clear the filters and unfold every branch first if you want everything. There
+are three options:
+
+| Option | What you get |
+|---|---|
+| Excel (.xlsx) | Opens on the **Gantt** sheet: the same chart as the app, on a white background. It has the same columns (WBS, Milestone, Owner, %), one column per day under month and date headers, shaded weekends, the same legend and bar colours, the progress part filled in with its %, red outlines for overdue work, diamonds, dashed bars for root milestones, and the orange today line. Hover the first cell of a bar to see its details. The **Roadmap** sheet is the same rows as a table (outline number, parent, milestone, status, priority, progress, start, due, duration, assigned to, overdue, days overdue, and a link back to the app), with real dates you can sort and filter. **About** records who exported it, when, and which filters were on. |
+| CSV | The same table as plain text. Opens in Excel, Numbers, LibreOffice or Google Sheets. |
+| Google Sheets (.xlsx) | The same Excel file. Upload it to Google Drive and open it with Google Sheets; the colours and frozen headers carry over. |
+
+The export runs entirely in your browser; nothing is sent to a server. There is
+no direct "open in Google Sheets" button on purpose: it would need extra Google
+permissions at sign-in, which would bring back Google's "unverified app" warning
+for everyone.
 
 Supporting components:
 - **`RoadmapBreadcrumb`**: ancestry path navigation (Phase 11)
@@ -261,6 +312,16 @@ Returns `unsubscribe` function.
 
 ---
 
+#### `subscribeToAllNodes(onData, onError?)`
+
+Every non-archived node, as one flat unsorted array. Used only by the Gantt view
+(through `useRoadmapGantt`), which mounts it while the Gantt is on screen. One
+equality filter on `isArchived`, so no composite index is needed.
+
+Returns `() => void` (unsubscribe).
+
+---
+
 #### `subscribeToNode(nodeId, onData, onError?)`
 
 Real-time subscription to a single node document. Calls `onData(null)` if the node does not exist.
@@ -287,7 +348,7 @@ Returns `Promise<string>`: the new document ID.
 
 #### `updateNode(nodeId, data, editorUid)`
 
-Updates structural fields of a node (admin only). Strips rollup and hierarchy fields before writing.
+Updates structural fields of a node (admin only). Strips rollup and hierarchy fields before writing, validates the edit-form fields with Zod, and stores `startDate`/`dueDate` as `Date` values (a form string becomes UTC midnight of that day, the same shape `createNode` writes). Earlier versions stored the raw `'YYYY-MM-DD'` string, so older edited nodes may still hold strings; readers go through `toDate()` / `toDayKey()`, which accept both.
 
 Returns `Promise<void>`.
 
@@ -412,6 +473,12 @@ Manages the expand/collapse state of the roadmap tree and triggers recursive sub
 | `expandedIds` | `Set<string>` | Set of currently expanded node IDs |
 | `toggleExpand` | `(nodeId: string) => void` | Toggles a node's expanded state. Stable reference (ref pattern). |
 | `isExpanded` | `(nodeId: string) => boolean` | Returns `true` if the node is expanded. Stable reference. |
+
+### `useRoadmapGantt()` in `src/hooks/useRoadmapGantt.js`
+
+Subscribes to `subscribeToAllNodes` and `subscribeToAllUsers` and returns `{ rows, userNames, today, loading, error }`. `rows` comes from `buildGanttRows()` in `src/utils/ganttHelpers.js`, which also holds the filter, timeline and export helpers (all pure and unit-tested). Mounted only by `RoadmapGanttView`.
+
+---
 
 ### `useRoadmapNode(nodeId)` in `src/hooks/useRoadmapNode.js`
 
